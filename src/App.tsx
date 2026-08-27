@@ -64,10 +64,7 @@ export default function App() {
     setStatus('')
 
     const normalizedEmail = email.trim().toLowerCase()
-    if (!normalizedEmail) return setStatus('Ingresa tu correo corporativo.', 'error')
-    if (!normalizedEmail.endsWith('@losportales.com.pe')) {
-      return setStatus('Utiliza tu correo corporativo de Los Portales.', 'error')
-    }
+    if (!normalizedEmail) return setStatus('Ingresa tu correo autorizado.', 'error')
     if (!isSupabaseConfigured || !supabase) {
       return setStatus('No se pudo conectar con el servicio de autenticación.', 'error')
     }
@@ -242,7 +239,7 @@ export default function App() {
               <div className="access-options">
                 <button className="access-option access-option--primary" onClick={() => resetView('corporate')}>
                   <span className="option-icon"><Mail size={27}/></span>
-                  <span className="option-copy"><strong>Ingresar con correo corporativo</strong><small>Recibe un código de acceso en tu correo empresarial para iniciar sesión de forma segura.</small></span>
+                  <span className="option-copy"><strong>Ingresar con correo autorizado</strong><small>Recibe un código de acceso en tu correo para iniciar sesión de forma segura.</small></span>
                   <span className="arrow-circle"><ArrowRight size={23}/></span>
                 </button>
 
@@ -340,7 +337,7 @@ function AuthForm(props: {
   onSubmit: (event: FormEvent) => void | Promise<void>
 }) {
   const corporate = props.view === 'corporate'
-  const title = corporate ? 'Correo corporativo' : 'Iniciar sesión'
+  const title = corporate ? 'Correo autorizado' : 'Iniciar sesión'
   const subtitle = corporate ? 'Validaremos que tu correo esté autorizado y luego te enviaremos un código de acceso.' : 'Ingresa con tu correo electrónico y contraseña.'
 
   return (
@@ -351,7 +348,7 @@ function AuthForm(props: {
       <h2>{title}</h2>
       <p className="subtitle">{subtitle}</p>
       <form className="auth-form" onSubmit={props.onSubmit}>
-        <label>Correo electrónico<input type="email" value={props.email} onChange={e => props.onEmail(e.target.value)} placeholder={corporate ? 'nombre@losportales.com.pe' : 'correo@ejemplo.com'} autoComplete="email" /></label>
+        <label>Correo electrónico<input type="email" value={props.email} onChange={e => props.onEmail(e.target.value)} placeholder={corporate ? 'correo@ejemplo.com' : 'correo@ejemplo.com'} autoComplete="email" /></label>
         {!corporate && <label>Contraseña<input type="password" value={props.password} onChange={e => props.onPassword(e.target.value)} placeholder="Contraseña" autoComplete="current-password" /></label>}
         <button className="submit-button" type="submit" disabled={props.busy}>{props.busy ? 'Procesando...' : corporate ? 'Enviar código de acceso' : 'Iniciar sesión'}<ArrowRight size={19}/></button>
       </form>
