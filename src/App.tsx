@@ -6,13 +6,20 @@ type View = 'chooser' | 'corporate' | 'verify' | 'personal'
 
 type MessageTone = 'info' | 'success' | 'error'
 
-type Profile = {
+type UnitAccess = {
+  code: 'HU' | 'DEP' | 'VS' | 'HOT' | 'CENTRAL'
+  name: string
+  unit_role: 'GERENTE_UNIDAD' | 'EQUIPO_UNIDAD' | 'GLOBAL'
+}
+
+type AccessContext = {
   user_id: string
   email: string
   full_name: string | null
-  role: string | null
-  unit: string | null
+  global_role: 'GESTION_ESTRATEGICA' | 'GERENTE_GENERAL' | null
   active: boolean
+  global_access: boolean
+  units: UnitAccess[]
 }
 
 function BrandMark() {
@@ -24,6 +31,19 @@ function BrandMark() {
   )
 }
 
+function roleLabel(access: AccessContext) {
+  if (access.global_role === 'GESTION_ESTRATEGICA') return 'Gestión Estratégica'
+  if (access.global_role === 'GERENTE_GENERAL') return 'Gerente General'
+  if (access.units.some(unit => unit.unit_role === 'GERENTE_UNIDAD')) return 'Gerente de Unidad'
+  return 'Equipo de Unidad'
+}
+
+function unitRoleLabel(role: UnitAccess['unit_role']) {
+  if (role === 'GERENTE_UNIDAD') return 'Gerente de Unidad'
+  if (role === 'EQUIPO_UNIDAD') return 'Equipo encargado'
+  return 'Acceso global'
+}
+
 export default function App() {
   const [view, setView] = useState<View>('chooser')
   const [email, setEmail] = useState('')
@@ -32,7 +52,7 @@ export default function App() {
   const [message, setMessage] = useState('')
   const [messageTone, setMessageTone] = useState<MessageTone>('info')
   const [busy, setBusy] = useState(false)
-  const [profile, setProfile] = useState<Profile | null>(null)
+  const [access, setAccess] = useState<AccessContext | null>(null)
 
   function setStatus(text: string, tone: MessageTone = 'info') {
     setMessage(text)
@@ -44,10 +64,7 @@ export default function App() {
     setStatus('')
 
     const normalizedEmail = email.trim().toLowerCase()
-    if (!normalizedEmail) return setStatus('Ingresa tu correo corporativo.', 'error')
-    if (!normalizedEmail.endsWith('@losportales.com.pe')) {
-      return setStatus('Utiliza tu correo corporativo de Los Portales.', 'error')
-    }
+    if (!normalizedEmail) return setStatus('Ingresa tu correo autorizado.', 'error')
     if (!isSupabaseConfigured || !supabase) {
       return setStatus('No se pudo conectar con el servicio de autenticación.', 'error')
     }
@@ -105,15 +122,21 @@ export default function App() {
       return setStatus('El código no es válido o ya venció. Solicita uno nuevo.', 'error')
     }
 
-    const { data, error: profileError } = await supabase.rpc('current_profile')
+    const { data, error: accessError } = await supabase.rpc('current_access')
     setBusy(false)
 
-    if (profileError || !data?.[0]?.active) {
+    const currentAccess = data as AccessContext | null
+    if (accessError || !currentAccess?.active) {
       await supabase.auth.signOut()
       return setStatus('Tu cuenta no tiene un perfil activo autorizado.', 'error')
     }
 
-    setProfile(data[0] as Profile)
+    if (!currentAccess.global_access && (!currentAccess.units || currentAccess.units.length === 0)) {
+      await supabase.auth.signOut()
+      return setStatus('Tu usuario está autorizado, pero todavía no tiene una unidad asignada.', 'error')
+    }
+
+    setAccess(currentAccess)
     setStatus('Acceso verificado correctamente.', 'success')
   }
 
@@ -144,11 +167,11 @@ export default function App() {
     setPassword('')
     setOtp('')
     setMessage('')
-    setProfile(null)
+    setAccess(null)
     setView(next)
   }
 
-  if (profile) {
+  if (access) {
     return (
       <main className="auth-shell">
         <section className="brand-panel">
@@ -157,21 +180,29 @@ export default function App() {
             <div className="eyebrow cyan"><ShieldCheck size={16} /> ACCESO VERIFICADO</div>
             <h1>Control de Gestión</h1>
             <div className="accent-line" />
-            <p>Tu identidad corporativa fue validada correctamente.</p>
+            <p>Tu identidad corporativa y tus permisos fueron validados correctamente.</p>
           </div>
         </section>
         <section className="access-panel">
           <div className="access-card-wrap form-screen">
             <div className="form-icon"><CheckCircle2 /></div>
             <div className="eyebrow">BIENVENIDO</div>
-            <h2>{profile.full_name || profile.email}</h2>
-            <p className="subtitle">Tu acceso ya está listo. El dashboard será el siguiente módulo que construiremos.</p>
+            <h2>{access.full_name || access.email}</h2>
+            <p className="subtitle">Tu acceso ya está listo. Estas son las unidades habilitadas para tu usuario.</p>
             <div className="security-banner">
               <ShieldCheck size={25}/>
               <div>
-                <strong>{profile.role || 'Usuario autorizado'}</strong>
-                <small>{profile.unit || 'Sin unidad asignada todavía'}</small>
+                <strong>{roleLabel(access)}</strong>
+                <small>{access.global_access ? 'Acceso a las 5 unidades de negocio' : `${access.units.length} unidad${access.units.length === 1 ? '' : 'es'} asignada${access.units.length === 1 ? '' : 's'}`}</small>
               </div>
+            </div>
+            <div className="access-options">
+              {access.units.map(unit => (
+                <div className="access-option" key={unit.code}>
+                  <span className="option-icon"><Building2 size={24}/></span>
+                  <span className="option-copy"><strong>{unit.name}</strong><small>{unitRoleLabel(unit.unit_role)}</small></span>
+                </div>
+              ))}
             </div>
             <button className="submit-button" onClick={async () => { await supabase?.auth.signOut(); resetView('chooser') }}>Cerrar sesión</button>
           </div>
@@ -208,7 +239,7 @@ export default function App() {
               <div className="access-options">
                 <button className="access-option access-option--primary" onClick={() => resetView('corporate')}>
                   <span className="option-icon"><Mail size={27}/></span>
-                  <span className="option-copy"><strong>Ingresar con correo corporativo</strong><small>Recibe un código de acceso en tu correo empresarial para iniciar sesión de forma segura.</small></span>
+                  <span className="option-copy"><strong>Ingresar con correo autorizado</strong><small>Recibe un código de acceso en tu correo para iniciar sesión de forma segura.</small></span>
                   <span className="arrow-circle"><ArrowRight size={23}/></span>
                 </button>
 
@@ -306,7 +337,7 @@ function AuthForm(props: {
   onSubmit: (event: FormEvent) => void | Promise<void>
 }) {
   const corporate = props.view === 'corporate'
-  const title = corporate ? 'Correo corporativo' : 'Iniciar sesión'
+  const title = corporate ? 'Correo autorizado' : 'Iniciar sesión'
   const subtitle = corporate ? 'Validaremos que tu correo esté autorizado y luego te enviaremos un código de acceso.' : 'Ingresa con tu correo electrónico y contraseña.'
 
   return (
@@ -317,7 +348,7 @@ function AuthForm(props: {
       <h2>{title}</h2>
       <p className="subtitle">{subtitle}</p>
       <form className="auth-form" onSubmit={props.onSubmit}>
-        <label>Correo electrónico<input type="email" value={props.email} onChange={e => props.onEmail(e.target.value)} placeholder={corporate ? 'nombre@losportales.com.pe' : 'correo@ejemplo.com'} autoComplete="email" /></label>
+        <label>Correo electrónico<input type="email" value={props.email} onChange={e => props.onEmail(e.target.value)} placeholder={corporate ? 'correo@ejemplo.com' : 'correo@ejemplo.com'} autoComplete="email" /></label>
         {!corporate && <label>Contraseña<input type="password" value={props.password} onChange={e => props.onPassword(e.target.value)} placeholder="Contraseña" autoComplete="current-password" /></label>}
         <button className="submit-button" type="submit" disabled={props.busy}>{props.busy ? 'Procesando...' : corporate ? 'Enviar código de acceso' : 'Iniciar sesión'}<ArrowRight size={19}/></button>
       </form>
