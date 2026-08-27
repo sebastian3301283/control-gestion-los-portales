@@ -1,8 +1,8 @@
 import { FormEvent, useState } from 'react'
-import { ArrowLeft, ArrowRight, Building2, CheckCircle2, HelpCircle, KeyRound, LockKeyhole, Mail, ShieldCheck, UserPlus } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Building2, CheckCircle2, HelpCircle, KeyRound, LockKeyhole, Mail, ShieldCheck } from 'lucide-react'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 
-type View = 'chooser' | 'corporate' | 'verify' | 'signup' | 'personal'
+type View = 'chooser' | 'corporate' | 'verify' | 'personal'
 
 type MessageTone = 'info' | 'success' | 'error'
 
@@ -128,17 +128,6 @@ export default function App() {
     setStatus(error ? error.message : 'Te enviamos un nuevo código de acceso.', error ? 'error' : 'success')
   }
 
-  async function signUp(event: FormEvent) {
-    event.preventDefault()
-    setStatus('')
-    if (!email.trim() || password.length < 8) return setStatus('Ingresa un correo válido y una contraseña de al menos 8 caracteres.', 'error')
-    if (!isSupabaseConfigured || !supabase) return setStatus('No se pudo conectar con Supabase.', 'error')
-    setBusy(true)
-    const { error } = await supabase.auth.signUp({ email: email.trim(), password })
-    setBusy(false)
-    setStatus(error ? error.message : 'Cuenta creada. Revisa tu correo para confirmar el registro.', error ? 'error' : 'success')
-  }
-
   async function signIn(event: FormEvent) {
     event.preventDefault()
     setStatus('')
@@ -228,12 +217,6 @@ export default function App() {
                   <span className="option-copy"><strong>Continuar con Microsoft</strong><small>Inicio de sesión con Microsoft corporativo próximamente disponible.</small></span>
                   <span className="soon">PRÓXIMAMENTE</span>
                 </button>
-
-                <button className="access-option" onClick={() => resetView('signup')}>
-                  <span className="option-icon"><UserPlus size={27}/></span>
-                  <span className="option-copy"><strong>Crear una cuenta</strong><small>Regístrate utilizando tu correo electrónico para crear tu cuenta personal.</small></span>
-                  <span className="arrow-circle light"><ArrowRight size={22}/></span>
-                </button>
               </div>
 
               <div className="security-banner"><LockKeyhole size={25}/><div><strong>Comprometidos con tu seguridad</strong><small>Protegemos tu información aplicando buenas prácticas de seguridad.</small></div><ShieldCheck className="shield-bg" size={84}/></div>
@@ -262,7 +245,7 @@ export default function App() {
               onEmail={setEmail}
               onPassword={setPassword}
               onBack={() => resetView('chooser')}
-              onSubmit={view === 'corporate' ? sendOtp : view === 'signup' ? signUp : signIn}
+              onSubmit={view === 'corporate' ? sendOtp : signIn}
             />
           )}
         </div>
@@ -323,21 +306,20 @@ function AuthForm(props: {
   onSubmit: (event: FormEvent) => void | Promise<void>
 }) {
   const corporate = props.view === 'corporate'
-  const signup = props.view === 'signup'
-  const title = corporate ? 'Correo corporativo' : signup ? 'Crear una cuenta' : 'Iniciar sesión'
-  const subtitle = corporate ? 'Validaremos que tu correo esté autorizado y luego te enviaremos un código de acceso.' : signup ? 'Crea tu cuenta personal para acceder a la plataforma.' : 'Ingresa con tu correo electrónico y contraseña.'
+  const title = corporate ? 'Correo corporativo' : 'Iniciar sesión'
+  const subtitle = corporate ? 'Validaremos que tu correo esté autorizado y luego te enviaremos un código de acceso.' : 'Ingresa con tu correo electrónico y contraseña.'
 
   return (
     <div className="form-screen">
       <button className="back-button" onClick={props.onBack}><ArrowLeft size={18}/> Volver</button>
-      <div className="form-icon">{corporate ? <Mail/> : signup ? <UserPlus/> : <Building2/>}</div>
+      <div className="form-icon">{corporate ? <Mail/> : <Building2/>}</div>
       <div className="eyebrow">CONTROL DE GESTIÓN</div>
       <h2>{title}</h2>
       <p className="subtitle">{subtitle}</p>
       <form className="auth-form" onSubmit={props.onSubmit}>
         <label>Correo electrónico<input type="email" value={props.email} onChange={e => props.onEmail(e.target.value)} placeholder={corporate ? 'nombre@losportales.com.pe' : 'correo@ejemplo.com'} autoComplete="email" /></label>
-        {!corporate && <label>Contraseña<input type="password" value={props.password} onChange={e => props.onPassword(e.target.value)} placeholder="Mínimo 8 caracteres" autoComplete={signup ? 'new-password' : 'current-password'} /></label>}
-        <button className="submit-button" type="submit" disabled={props.busy}>{props.busy ? 'Procesando...' : corporate ? 'Enviar código de acceso' : signup ? 'Crear cuenta' : 'Iniciar sesión'}<ArrowRight size={19}/></button>
+        {!corporate && <label>Contraseña<input type="password" value={props.password} onChange={e => props.onPassword(e.target.value)} placeholder="Contraseña" autoComplete="current-password" /></label>}
+        <button className="submit-button" type="submit" disabled={props.busy}>{props.busy ? 'Procesando...' : corporate ? 'Enviar código de acceso' : 'Iniciar sesión'}<ArrowRight size={19}/></button>
       </form>
       {props.message && <div className={`form-message form-message--${props.tone}`}><CheckCircle2 size={18}/>{props.message}</div>}
       <div className="form-security"><ShieldCheck size={18}/> Conexión segura y protegida</div>
