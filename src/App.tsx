@@ -105,8 +105,8 @@ export default function App() {
     setStatus('')
 
     const token = otp.replace(/\s/g, '')
-    if (!/^\d{6}$/.test(token)) {
-      return setStatus('Ingresa el código de 6 dígitos que recibiste por correo.', 'error')
+    if (!/^\d{6,10}$/.test(token)) {
+      return setStatus('Ingresa el código numérico que recibiste por correo.', 'error')
     }
     if (!supabase) return setStatus('No se pudo conectar con el servicio de autenticación.', 'error')
 
@@ -302,17 +302,17 @@ function OtpVerification(props: {
       <div className="form-icon"><KeyRound/></div>
       <div className="eyebrow">VERIFICACIÓN DE ACCESO</div>
       <h2>Ingresa tu código</h2>
-      <p className="subtitle">Enviamos un código de 6 dígitos a <strong>{props.email}</strong>.</p>
+      <p className="subtitle">Enviamos un código de acceso a <strong>{props.email}</strong>.</p>
       <form className="auth-form" onSubmit={props.onVerify}>
         <label>Código de acceso
           <input
             className="otp-input"
             inputMode="numeric"
             autoComplete="one-time-code"
-            maxLength={6}
+            maxLength={10}
             value={props.otp}
-            onChange={e => props.onOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-            placeholder="000000"
+            onChange={e => props.onOtp(e.target.value.replace(/\D/g, '').slice(0, 10))}
+            placeholder="00000000"
           />
         </label>
         <button className="submit-button" type="submit" disabled={props.busy}>{props.busy ? 'Verificando...' : 'Verificar y continuar'}<ArrowRight size={19}/></button>
