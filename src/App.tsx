@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
 import { ArrowLeft, ArrowRight, Building2, CheckCircle2, HelpCircle, KeyRound, LockKeyhole, Mail, ShieldCheck } from 'lucide-react'
 import Dashboard from './Dashboard'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
@@ -41,6 +41,25 @@ export default function App() {
   const [messageTone, setMessageTone] = useState<MessageTone>('info')
   const [busy, setBusy] = useState(false)
   const [access, setAccess] = useState<AccessContext | null>(null)
+
+  useEffect(() => {
+    let mounted = true
+
+    async function restoreAccess() {
+      if (!supabase) return
+      const { data: sessionData } = await supabase.auth.getSession()
+      if (!sessionData.session || !mounted) return
+
+      const { data, error } = await supabase.rpc('current_access')
+      const currentAccess = data as AccessContext | null
+      if (!mounted || error || !currentAccess?.active) return
+      if (!currentAccess.global_access && (!currentAccess.units || currentAccess.units.length === 0)) return
+      setAccess(currentAccess)
+    }
+
+    restoreAccess()
+    return () => { mounted = false }
+  }, [])
 
   function setStatus(text: string, tone: MessageTone = 'info') {
     setMessage(text)
