@@ -72,7 +72,7 @@ type Guideline = {
 }
 
 type Management = { id: string; name: string; active: boolean }
-type Manager = { id: string; name: string; email: string | null; active: boolean }
+type Manager = { id: string; name: string; active: boolean }
 type ManagerManagement = { manager_id: string; management_id: string }
 type UnitCatalog = { managements: Management[]; managers: Manager[]; links: ManagerManagement[] }
 
@@ -467,7 +467,7 @@ function HomeView({ access, displayName, today, units, selectedUnit, selectedHom
         <div className="section-title-row"><div><span>Accesos rápidos</span><h2>¿Qué quieres hacer?</h2></div></div>
         <div className="friendly-actions">
           <button className="friendly-action friendly-action--planning" onClick={() => navigate('planificacion')}><span className="friendly-action__icon"><ClipboardList size={25}/></span><span className="friendly-action__copy"><strong>Planificar</strong><small>Periodos y lineamientos</small></span><ArrowRight size={19}/></button>
-          <button className="friendly-action friendly-action--settings" onClick={() => navigate('configuracion')}><span className="friendly-action__icon"><SlidersHorizontal size={25}/></span><span className="friendly-action__copy"><strong>Configurar</strong><small>Gerencias y responsables</small></span><ArrowRight size={19}/></button>
+          <button className="friendly-action friendly-action--settings" onClick={() => navigate('configuracion')}><span className="friendly-action__icon"><SlidersHorizontal size={25}/></span><span className="friendly-action__copy"><strong>Configurar</strong><small>Gerencias y bonistas</small></span><ArrowRight size={19}/></button>
           <button className="friendly-action friendly-action--reports" onClick={() => navigate('reportes')}><span className="friendly-action__icon"><FileBarChart size={25}/></span><span className="friendly-action__copy"><strong>Ver reportes</strong><small>Avance y resultados</small></span><ArrowRight size={19}/></button>
         </div>
       </section>
@@ -555,7 +555,7 @@ function PlanningView({ access, units, initialYear, initialUnitCode, onPeriodsCh
   useEffect(() => {
     if (step === 'guidelines' && selectedPeriod && selectedPlanningUnit) {
       void loadGuidelines(selectedPeriod.id, selectedPlanningUnit.code)
-      void loadUnitCatalog().then(setCatalog).catch(() => setError('No pudimos cargar la configuración de gerencias y responsables.'))
+      void loadUnitCatalog(selectedPlanningUnit.code).then(setCatalog).catch(() => setError('No pudimos cargar la configuración de gerencias y bonistas.'))
     }
   }, [step, selectedPeriod, selectedPlanningUnit])
 
@@ -582,11 +582,11 @@ function PlanningView({ access, units, initialYear, initialUnitCode, onPeriodsCh
     setGuidelines((data || []) as Guideline[])
   }
 
-  async function loadUnitCatalog(): Promise<UnitCatalog> {
+  async function loadUnitCatalog(unitCode: UnitAccess['code']): Promise<UnitCatalog> {
     if (!supabase) return { managements: [], managers: [], links: [] }
     const [managementResult, managerResult, linkResult] = await Promise.all([
-      supabase.from('managements_global').select('id, name, active').eq('active', true).order('name'),
-      supabase.from('managers').select('id, name, email, active').eq('active', true).order('name'),
+      supabase.from('managements_global').select('id, name, active').eq('unit_code', unitCode).eq('active', true).order('name'),
+      supabase.from('managers').select('id, name, active').eq('unit_code', unitCode).eq('active', true).order('name'),
       supabase.from('manager_managements').select('manager_id, management_id'),
     ])
     if (managementResult.error || managerResult.error || linkResult.error) throw new Error('CATALOG_LOAD')
@@ -750,7 +750,7 @@ function PlanningView({ access, units, initialYear, initialUnitCode, onPeriodsCh
       }).filter(row => row.title).slice(0, 500)
 
       if (parsedRows.length === 0) throw new Error('NO_ROWS')
-      const freshCatalog = await loadUnitCatalog()
+      const freshCatalog = await loadUnitCatalog(selectedPlanningUnit.code)
       const validationErrors = validateImportedRows(parsedRows, freshCatalog)
       if (validationErrors.length) {
         setError(`Excel no importado. Corrige primero: ${validationErrors.slice(0, 6).join(' · ')}${validationErrors.length > 6 ? ` · y ${validationErrors.length - 6} error(es) más.` : ''}`)
@@ -842,11 +842,11 @@ function PlanningView({ access, units, initialYear, initialUnitCode, onPeriodsCh
 
             <label>Gerente(s) / Responsable(s)
               <MultiPicker value={responsibleManagerIds} options={managerOptions} placeholder={responsibleManagementIds.length ? 'Seleccionar uno o varios responsables' : 'Primero selecciona una gerencia'} onChange={setResponsibleManagerIds} />
-              {responsibleManagementIds.length > 0 && managerOptions.length === 0 && <small className="new-field-note">Las gerencias seleccionadas todavía no tienen responsables relacionados en Configuración.</small>}
+              {responsibleManagementIds.length > 0 && managerOptions.length === 0 && <small className="new-field-note">Las gerencias seleccionadas todavía no tienen bonistas relacionados en Configuración.</small>}
             </label>
 
             <label>Estatus<select value={guidelineStatus} onChange={event => setGuidelineStatus(event.target.value)}><option value="pendiente">Pendiente</option><option value="enviado">Enviado</option><option value="observado">Observado</option><option value="aprobado">Aprobado</option></select></label>
-            {catalog.managements.length === 0 && <div className="guideline-catalog-warning">Primero registra las gerencias y responsables en Configuración.</div>}
+            {catalog.managements.length === 0 && <div className="guideline-catalog-warning">Primero registra las gerencias y bonistas en Configuración.</div>}
             <div className="guideline-form__actions"><button className="planning-primary" disabled={saving || !guidelineTitle.trim()}>{saving ? <LoaderCircle className="spin" size={17}/> : <Plus size={17}/>} Guardar lineamiento</button><button type="button" className="planning-secondary" onClick={() => { resetGuidelineForm(); setShowGuidelineForm(false) }}>Cancelar</button></div>
           </form>}
 
