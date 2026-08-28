@@ -20,6 +20,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  Trash2,
   Upload,
   Users,
   X,
@@ -27,6 +28,7 @@ import {
 import { supabase } from './lib/supabase'
 import './dashboard.css'
 import './planning.css'
+import './interaction-fixes.css'
 
 type UnitAccess = {
   code: 'HU' | 'DEP' | 'VS' | 'HOT' | 'CENTRAL'
@@ -63,6 +65,12 @@ type Guideline = {
 
 type Section = 'inicio' | 'planificacion' | 'configuracion' | 'reportes'
 type PlanningStep = 'periods' | 'units' | 'guidelines'
+
+type PlanningEntry = {
+  year: number
+  unitCode: UnitAccess['code']
+  token: number
+} | null
 
 const sectionLabels: Record<Section, string> = {
   inicio: 'Inicio',
@@ -125,7 +133,11 @@ function sortUnits(units: UnitAccess[]) {
 export default function Dashboard({ access, onSignOut }: { access: DashboardAccess; onSignOut: () => void | Promise<void> }) {
   const [section, setSection] = useState<Section>('inicio')
   const [menuOpen, setMenuOpen] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
   const [selectedUnit, setSelectedUnit] = useState<string>('TODAS')
+  const [periods, setPeriods] = useState<PlanningPeriod[]>([])
+  const [selectedHomeYear, setSelectedHomeYear] = useState(2026)
+  const [planningEntry, setPlanningEntry] = useState<PlanningEntry>(null)
 
   const today = useMemo(() => new Intl.DateTimeFormat('es-PE', {
     weekday: 'long',
@@ -137,10 +149,39 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
   const displayName = friendlyName(access)
   const units = sortUnits(access.units || [])
 
-  const navigate = (next: Section) => {
+  useEffect(() => {
+    void loadDashboardPeriods()
+  }, [])
+
+  async function loadDashboardPeriods() {
+    if (!supabase) return
+    const { data } = await supabase
+      .from('planning_periods')
+      .select('id, year, name, status')
+      .order('year', { ascending: true })
+
+    const next = (data || []) as PlanningPeriod[]
+    setPeriods(next)
+    if (next.length && !next.some(period => period.year === selectedHomeYear)) {
+      const preferred = next.find(period => period.status === 'OPEN') || next[0]
+      setSelectedHomeYear(preferred.year)
+    }
+  }
+
+  function navigate(next: Section) {
+    if (next === 'planificacion') setPlanningEntry(null)
     setSection(next)
     setMenuOpen(false)
+    setProfileOpen(false)
   }
+
+  function openLineamientos(unitCode: UnitAccess['code']) {
+    setPlanningEntry({ year: selectedHomeYear, unitCode, token: Date.now() })
+    setSection('planificacion')
+    setSelectedUnit(unitCode)
+  }
+
+  const selectedHomeUnit = units.find(unit => unit.code === selectedUnit) || null
 
   return (
     <div className="dashboard-shell">
@@ -172,9 +213,20 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
             <button className="mobile-menu" onClick={() => setMenuOpen(true)} aria-label="Abrir menú"><Menu size={22}/></button>
             <div className="dashboard-search"><Search size={18}/><input aria-label="Buscar" placeholder="Buscar" /></div>
           </div>
-          <div className="topbar-actions">
+          <div className="topbar-actions profile-menu-wrap">
             <button className="icon-button" aria-label="Notificaciones"><Bell size={19}/><span className="notification-dot" /></button>
-            <button className="profile-chip"><span className="profile-avatar">{initials(access)}</span><span className="profile-copy"><strong>{displayName}</strong><small>{roleLabel(access)}</small></span><ChevronDown size={16}/></button>
+            <button className={`profile-chip ${profileOpen ? 'profile-chip--open' : ''}`} onClick={() => setProfileOpen(value => !value)}>
+              <span className="profile-avatar">{initials(access)}</span>
+              <span className="profile-copy"><strong>{displayName}</strong><small>{roleLabel(access)}</small></span>
+              <ChevronDown className={profileOpen ? 'chevron-open' : ''} size={16}/>
+            </button>
+            {profileOpen && (
+              <div className="profile-dropdown">
+                <div><strong>{displayName}</strong><small>{access.email}</small></div>
+                <span>{roleLabel(access)}</span>
+                <button onClick={onSignOut}><LogOut size={16}/> Cerrar sesión</button>
+              </div>
+            )}
           </div>
         </header>
 
@@ -186,8 +238,13 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
               today={today}
               units={units}
               selectedUnit={selectedUnit}
+              selectedHomeUnit={selectedHomeUnit}
               setSelectedUnit={setSelectedUnit}
               navigate={navigate}
+              periods={periods}
+              selectedYear={selectedHomeYear}
+              setSelectedYear={setSelectedHomeYear}
+              openLineamientos={openLineamientos}
             />
           ) : (
             <>
@@ -198,7 +255,16 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
                   <p>{sectionDescription(section)}</p>
                 </div>
               </div>
-              {section === 'planificacion' && <PlanningView access={access} units={units} />}
+              {section === 'planificacion' && (
+                <PlanningView
+                  key={planningEntry ? `${planningEntry.year}-${planningEntry.unitCode}-${planningEntry.token}` : 'planning-default'}
+                  access={access}
+                  units={units}
+                  initialYear={planningEntry?.year}
+                  initialUnitCode={planningEntry?.unitCode}
+                  onPeriodsChanged={loadDashboardPeriods}
+                />
+              )}
               {section === 'configuracion' && <ConfigurationView />}
               {section === 'reportes' && <ReportsView />}
             </>
@@ -209,14 +275,32 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
   )
 }
 
-function HomeView({ access, displayName, today, units, selectedUnit, setSelectedUnit, navigate }: {
+function HomeView({
+  access,
+  displayName,
+  today,
+  units,
+  selectedUnit,
+  selectedHomeUnit,
+  setSelectedUnit,
+  navigate,
+  periods,
+  selectedYear,
+  setSelectedYear,
+  openLineamientos,
+}: {
   access: DashboardAccess
   displayName: string
   today: string
   units: UnitAccess[]
   selectedUnit: string
+  selectedHomeUnit: UnitAccess | null
   setSelectedUnit: (unit: string) => void
   navigate: (section: Section) => void
+  periods: PlanningPeriod[]
+  selectedYear: number
+  setSelectedYear: (year: number) => void
+  openLineamientos: (unit: UnitAccess['code']) => void
 }) {
   return (
     <>
@@ -232,31 +316,23 @@ function HomeView({ access, displayName, today, units, selectedUnit, setSelected
         </div>
         <div className="welcome-period">
           <span>Periodo</span>
-          <strong>2026</strong>
-          <button><CalendarDays size={16}/> Cambiar <ChevronDown size={15}/></button>
+          <strong>{selectedYear}</strong>
+          <label className="period-select-control">
+            <CalendarDays size={16}/>
+            <select value={selectedYear} onChange={event => setSelectedYear(Number(event.target.value))} aria-label="Cambiar periodo">
+              {periods.map(period => <option key={period.id} value={period.year}>{period.year} · {period.status === 'OPEN' ? 'Actual' : period.status === 'CLOSED' ? 'Cerrado' : 'Borrador'}</option>)}
+            </select>
+            <ChevronDown size={15}/>
+          </label>
         </div>
       </section>
 
       <section className="dashboard-section action-section">
-        <div className="section-title-row">
-          <div><span>Accesos rápidos</span><h2>¿Qué quieres hacer?</h2></div>
-        </div>
+        <div className="section-title-row"><div><span>Accesos rápidos</span><h2>¿Qué quieres hacer?</h2></div></div>
         <div className="friendly-actions">
-          <button className="friendly-action friendly-action--planning" onClick={() => navigate('planificacion')}>
-            <span className="friendly-action__icon"><ClipboardList size={25}/></span>
-            <span className="friendly-action__copy"><strong>Planificar</strong><small>Periodos y matrices</small></span>
-            <ArrowRight size={19}/>
-          </button>
-          <button className="friendly-action friendly-action--settings" onClick={() => navigate('configuracion')}>
-            <span className="friendly-action__icon"><SlidersHorizontal size={25}/></span>
-            <span className="friendly-action__copy"><strong>Configurar</strong><small>Usuarios y accesos</small></span>
-            <ArrowRight size={19}/>
-          </button>
-          <button className="friendly-action friendly-action--reports" onClick={() => navigate('reportes')}>
-            <span className="friendly-action__icon"><FileBarChart size={25}/></span>
-            <span className="friendly-action__copy"><strong>Ver reportes</strong><small>Avance y resultados</small></span>
-            <ArrowRight size={19}/>
-          </button>
+          <button className="friendly-action friendly-action--planning" onClick={() => navigate('planificacion')}><span className="friendly-action__icon"><ClipboardList size={25}/></span><span className="friendly-action__copy"><strong>Planificar</strong><small>Periodos y lineamientos</small></span><ArrowRight size={19}/></button>
+          <button className="friendly-action friendly-action--settings" onClick={() => navigate('configuracion')}><span className="friendly-action__icon"><SlidersHorizontal size={25}/></span><span className="friendly-action__copy"><strong>Configurar</strong><small>Usuarios y accesos</small></span><ArrowRight size={19}/></button>
+          <button className="friendly-action friendly-action--reports" onClick={() => navigate('reportes')}><span className="friendly-action__icon"><FileBarChart size={25}/></span><span className="friendly-action__copy"><strong>Ver reportes</strong><small>Avance y resultados</small></span><ArrowRight size={19}/></button>
         </div>
       </section>
 
@@ -277,6 +353,21 @@ function HomeView({ access, displayName, today, units, selectedUnit, setSelected
           ))}
         </div>
       </section>
+
+      {selectedHomeUnit && (
+        <section className="dashboard-section unit-module-section">
+          <div className="section-title-row">
+            <div><span>{selectedHomeUnit.name}</span><h2>¿Qué quieres revisar?</h2></div>
+          </div>
+          <div className="unit-module-grid">
+            <button className={`unit-module-card unit-module-card--${selectedHomeUnit.code.toLowerCase()}`} onClick={() => openLineamientos(selectedHomeUnit.code)}>
+              <span className="unit-module-icon"><ClipboardList size={28}/></span>
+              <div><small>Periodo {selectedYear}</small><strong>Lineamientos</strong><p>Ver los lineamientos escritos o importados desde Excel.</p></div>
+              <ArrowRight size={20}/>
+            </button>
+          </div>
+        </section>
+      )}
     </>
   )
 }
@@ -287,7 +378,19 @@ function sectionDescription(section: Section) {
   return 'Consulta el avance y los resultados de gestión.'
 }
 
-function PlanningView({ access, units }: { access: DashboardAccess; units: UnitAccess[] }) {
+function PlanningView({
+  access,
+  units,
+  initialYear,
+  initialUnitCode,
+  onPeriodsChanged,
+}: {
+  access: DashboardAccess
+  units: UnitAccess[]
+  initialYear?: number
+  initialUnitCode?: UnitAccess['code']
+  onPeriodsChanged: () => void | Promise<void>
+}) {
   const [step, setStep] = useState<PlanningStep>('periods')
   const [periods, setPeriods] = useState<PlanningPeriod[]>([])
   const [selectedPeriod, setSelectedPeriod] = useState<PlanningPeriod | null>(null)
@@ -314,6 +417,16 @@ function PlanningView({ access, units }: { access: DashboardAccess; units: UnitA
   }, [])
 
   useEffect(() => {
+    if (!initialYear || !initialUnitCode || periods.length === 0) return
+    const period = periods.find(item => item.year === initialYear)
+    const unit = units.find(item => item.code === initialUnitCode)
+    if (!period || !unit) return
+    setSelectedPeriod(period)
+    setSelectedPlanningUnit(unit)
+    setStep('guidelines')
+  }, [periods, initialYear, initialUnitCode, units])
+
+  useEffect(() => {
     if (step === 'guidelines' && selectedPeriod && selectedPlanningUnit) {
       void loadGuidelines(selectedPeriod.id, selectedPlanningUnit.code)
     }
@@ -323,10 +436,7 @@ function PlanningView({ access, units }: { access: DashboardAccess; units: UnitA
     if (!supabase) return
     setLoading(true)
     setError('')
-    const { data, error: queryError } = await supabase
-      .from('planning_periods')
-      .select('id, year, name, status')
-      .order('year', { ascending: true })
+    const { data, error: queryError } = await supabase.from('planning_periods').select('id, year, name, status').order('year', { ascending: true })
     setLoading(false)
     if (queryError) {
       setError('No pudimos cargar los periodos.')
@@ -366,11 +476,7 @@ function PlanningView({ access, units }: { access: DashboardAccess; units: UnitA
     setSaving(true)
     setError('')
     setNotice('')
-    const { error: insertError } = await supabase.from('planning_periods').insert({
-      year,
-      name: `Periodo ${year}`,
-      status: 'DRAFT',
-    })
+    const { error: insertError } = await supabase.from('planning_periods').insert({ year, name: `Periodo ${year}`, status: 'DRAFT' })
     setSaving(false)
     if (insertError) {
       setError(insertError.code === '23505' ? 'Ese periodo ya existe.' : 'No pudimos crear el periodo.')
@@ -379,6 +485,25 @@ function PlanningView({ access, units }: { access: DashboardAccess; units: UnitA
     setNewYear('')
     setShowPeriodForm(false)
     await loadPeriods()
+    await onPeriodsChanged()
+  }
+
+  async function deletePeriod(period: PlanningPeriod) {
+    if (!supabase || !canManage) return
+    const confirmed = window.confirm(`¿Eliminar el periodo ${period.year}? También se eliminarán sus lineamientos asociados. Esta acción no se puede deshacer.`)
+    if (!confirmed) return
+    setSaving(true)
+    setError('')
+    setNotice('')
+    const { error: deleteError } = await supabase.from('planning_periods').delete().eq('id', period.id)
+    setSaving(false)
+    if (deleteError) {
+      setError('No pudimos eliminar el periodo.')
+      return
+    }
+    setNotice(`Periodo ${period.year} eliminado.`)
+    await loadPeriods()
+    await onPeriodsChanged()
   }
 
   async function createGuideline(event: FormEvent) {
@@ -419,7 +544,6 @@ function PlanningView({ access, units }: { access: DashboardAccess; units: UnitA
     const file = event.target.files?.[0]
     event.target.value = ''
     if (!file || !supabase || !canManage || !selectedPeriod || !selectedPlanningUnit) return
-
     if (guidelines.length > 0 && !window.confirm('Ya existen lineamientos en esta unidad. Los registros del Excel se agregarán a los actuales. ¿Deseas continuar?')) return
 
     setExcelBusy(true)
@@ -429,15 +553,12 @@ function PlanningView({ access, units }: { access: DashboardAccess; units: UnitA
     try {
       const XLSX = await loadSpreadsheetLibrary()
       const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' })
-      const sheetName = workbook.SheetNames[0]
-      const sheet = workbook.Sheets[sheetName]
+      const sheet = workbook.Sheets[workbook.SheetNames[0]]
       const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false }) as unknown[][]
-
       const headerRowIndex = matrix.findIndex(row => row.some(cell => {
         const header = normalizeHeader(cell)
         return header === 'lineamientosestrategicos' || header === 'lineamientoestrategico' || header === 'lineamientos'
       }))
-
       if (headerRowIndex < 0) throw new Error('HEADER_NOT_FOUND')
 
       const headers = matrix[headerRowIndex].map(normalizeHeader)
@@ -446,22 +567,16 @@ function PlanningView({ access, units }: { access: DashboardAccess; units: UnitA
       const gerenciaIndex = findColumn('gerenciaresponsable', 'arearesponsable')
       const gerenteIndex = findColumn('gerenteresponsable', 'responsable')
       const statusIndex = findColumn('estatus', 'estado', 'status')
-
       if (lineamientoIndex < 0) throw new Error('HEADER_NOT_FOUND')
 
-      const parsedRows = matrix
-        .slice(headerRowIndex + 1)
-        .map(row => ({
-          title: String(row[lineamientoIndex] ?? '').trim(),
-          responsible_management: gerenciaIndex >= 0 ? String(row[gerenciaIndex] ?? '').trim() || null : null,
-          responsible_manager: gerenteIndex >= 0 ? String(row[gerenteIndex] ?? '').trim() || null : null,
-          status: statusIndex >= 0 ? String(row[statusIndex] ?? '').trim().toLowerCase() || 'pendiente' : 'pendiente',
-        }))
-        .filter(row => row.title)
-        .slice(0, 500)
+      const parsedRows = matrix.slice(headerRowIndex + 1).map(row => ({
+        title: String(row[lineamientoIndex] ?? '').trim(),
+        responsible_management: gerenciaIndex >= 0 ? String(row[gerenciaIndex] ?? '').trim() || null : null,
+        responsible_manager: gerenteIndex >= 0 ? String(row[gerenteIndex] ?? '').trim() || null : null,
+        status: statusIndex >= 0 ? String(row[statusIndex] ?? '').trim().toLowerCase() || 'pendiente' : 'pendiente',
+      })).filter(row => row.title).slice(0, 500)
 
       if (parsedRows.length === 0) throw new Error('NO_ROWS')
-
       const payload = parsedRows.map((row, index) => ({
         period_id: selectedPeriod.id,
         unit_code: selectedPlanningUnit.code,
@@ -471,21 +586,15 @@ function PlanningView({ access, units }: { access: DashboardAccess; units: UnitA
         status: row.status,
         sort_order: guidelines.length + index,
       }))
-
       const { error: insertError } = await supabase.from('guidelines').insert(payload)
       if (insertError) throw insertError
-
       await loadGuidelines(selectedPeriod.id, selectedPlanningUnit.code)
       setNotice(`${payload.length} lineamiento${payload.length === 1 ? '' : 's'} importado${payload.length === 1 ? '' : 's'} desde Excel.`)
     } catch (importError) {
       const message = importError instanceof Error ? importError.message : ''
-      if (message === 'HEADER_NOT_FOUND') {
-        setError('No encontramos la columna “Lineamientos Estratégicos”. Usa las columnas: N°, Lineamientos Estratégicos, Gerencia Responsable, Gerente Responsable y Estatus.')
-      } else if (message === 'NO_ROWS') {
-        setError('El Excel no contiene lineamientos para importar.')
-      } else {
-        setError('No pudimos importar el Excel. Verifica el formato e inténtalo nuevamente.')
-      }
+      if (message === 'HEADER_NOT_FOUND') setError('No encontramos la columna “Lineamientos Estratégicos”.')
+      else if (message === 'NO_ROWS') setError('El Excel no contiene lineamientos para importar.')
+      else setError('No pudimos importar el Excel. Verifica el formato e inténtalo nuevamente.')
     } finally {
       setExcelBusy(false)
     }
@@ -506,9 +615,7 @@ function PlanningView({ access, units }: { access: DashboardAccess; units: UnitA
         'Estatus': guideline.status || 'pendiente',
       }))
       const headers = ['N°', 'Lineamientos Estratégicos', 'Gerencia Responsable', 'Gerente Responsable', 'Estatus']
-      const worksheet = rows.length > 0
-        ? XLSX.utils.json_to_sheet(rows, { header: headers })
-        : XLSX.utils.aoa_to_sheet([headers])
+      const worksheet = rows.length ? XLSX.utils.json_to_sheet(rows, { header: headers }) : XLSX.utils.aoa_to_sheet([headers])
       worksheet['!cols'] = [{ wch: 6 }, { wch: 70 }, { wch: 28 }, { wch: 28 }, { wch: 16 }]
       const workbook = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Lineamientos')
@@ -584,11 +691,14 @@ function PlanningView({ access, units }: { access: DashboardAccess; units: UnitA
           ) : (
             <div className="planning-period-grid">
               {periods.map(period => (
-                <button className={`planning-period-card ${period.status === 'OPEN' ? 'open' : ''}`} key={period.id} onClick={() => selectPeriod(period)}>
-                  <span className="planning-period-icon"><CalendarDays size={24}/></span>
-                  <div><small>{period.status === 'OPEN' ? 'Periodo actual' : period.status === 'CLOSED' ? 'Cerrado' : 'Borrador'}</small><strong>{period.year}</strong></div>
-                  <ArrowRight size={19}/>
-                </button>
+                <div className={`planning-period-card-shell ${period.status === 'OPEN' ? 'open' : ''}`} key={period.id}>
+                  <button className="planning-period-card planning-period-card--inside" onClick={() => selectPeriod(period)}>
+                    <span className="planning-period-icon"><CalendarDays size={24}/></span>
+                    <div><small>{period.status === 'OPEN' ? 'Periodo actual' : period.status === 'CLOSED' ? 'Cerrado' : 'Borrador'}</small><strong>{period.year}</strong></div>
+                    <ArrowRight size={19}/>
+                  </button>
+                  {canManage && <button className="period-delete" title={`Eliminar ${period.year}`} onClick={() => void deletePeriod(period)} disabled={saving}><Trash2 size={17}/></button>}
+                </div>
               ))}
             </div>
           )}
@@ -597,9 +707,7 @@ function PlanningView({ access, units }: { access: DashboardAccess; units: UnitA
 
       {step === 'units' && selectedPeriod && (
         <section className="planning-panel">
-          <div className="planning-title-row">
-            <div><span>Paso 2 · {selectedPeriod.year}</span><h2>Elige una unidad</h2><p>Entrarás a los lineamientos de la unidad seleccionada.</p></div>
-          </div>
+          <div className="planning-title-row"><div><span>Paso 2 · {selectedPeriod.year}</span><h2>Elige una unidad</h2><p>Selecciona una unidad para revisar sus lineamientos.</p></div></div>
           <div className="planning-unit-grid">
             {units.map(unit => (
               <button key={unit.code} className={`planning-unit-card planning-unit-card--${unit.code.toLowerCase()}`} onClick={() => selectUnit(unit)}>
@@ -615,21 +723,10 @@ function PlanningView({ access, units }: { access: DashboardAccess; units: UnitA
       {step === 'guidelines' && selectedPeriod && selectedPlanningUnit && (
         <section className="planning-panel planning-panel--wide">
           <div className="planning-title-row">
-            <div>
-              <span>Paso 3 · {selectedPeriod.year} · {selectedPlanningUnit.code}</span>
-              <h2>Lineamientos de {selectedPlanningUnit.name}</h2>
-              <p>Formato: lineamiento estratégico, gerencia responsable, gerente responsable y estatus.</p>
-            </div>
+            <div><span>Paso 3 · {selectedPeriod.year} · {selectedPlanningUnit.code}</span><h2>Lineamientos de {selectedPlanningUnit.name}</h2><p>Formato: lineamiento estratégico, gerencia responsable, gerente responsable y estatus.</p></div>
             <div className="guideline-actions">
-              <button className="planning-secondary" type="button" onClick={() => void exportGuidelinesToExcel()} disabled={excelBusy}>
-                {excelBusy ? <LoaderCircle className="spin" size={17}/> : <Download size={17}/>} Exportar Excel
-              </button>
-              {canManage && (
-                <label className={`planning-secondary planning-file-button ${excelBusy ? 'disabled' : ''}`}>
-                  <Upload size={17}/> Subir Excel
-                  <input type="file" accept=".xlsx,.xls" onChange={importGuidelinesFromExcel} disabled={excelBusy} />
-                </label>
-              )}
+              <button className="planning-secondary" type="button" onClick={() => void exportGuidelinesToExcel()} disabled={excelBusy}>{excelBusy ? <LoaderCircle className="spin" size={17}/> : <Download size={17}/>} Exportar Excel</button>
+              {canManage && <label className={`planning-secondary planning-file-button ${excelBusy ? 'disabled' : ''}`}><Upload size={17}/> Subir Excel<input type="file" accept=".xlsx,.xls" onChange={importGuidelinesFromExcel} disabled={excelBusy} /></label>}
               {canManage && <button className="planning-primary" onClick={() => setShowGuidelineForm(value => !value)}><Plus size={17}/> Nuevo lineamiento</button>}
             </div>
           </div>
@@ -648,32 +745,16 @@ function PlanningView({ access, units }: { access: DashboardAccess; units: UnitA
             <div className="planning-loading"><LoaderCircle className="spin" size={24}/> Cargando lineamientos...</div>
           ) : guidelines.length === 0 ? (
             <div className="planning-empty">
-              <span><ClipboardList size={30}/></span>
-              <h3>Aún no hay lineamientos</h3>
-              <p>{canManage ? 'Puedes crear el primero manualmente o subir tu Excel actual.' : 'Gestión Estratégica todavía no ha registrado lineamientos.'}</p>
+              <span><ClipboardList size={30}/></span><h3>Aún no hay lineamientos</h3><p>{canManage ? 'Puedes crear el primero manualmente o subir tu Excel actual.' : 'Gestión Estratégica todavía no ha registrado lineamientos.'}</p>
               {canManage && <div className="planning-empty__actions"><button className="planning-primary" onClick={() => setShowGuidelineForm(true)}><Plus size={17}/> Crear lineamiento</button><label className="planning-secondary planning-file-button"><Upload size={17}/> Subir Excel<input type="file" accept=".xlsx,.xls" onChange={importGuidelinesFromExcel} /></label></div>}
             </div>
           ) : (
             <div className="guideline-table-wrap">
               <table className="guideline-table">
-                <thead>
-                  <tr>
-                    <th>N°</th>
-                    <th>Lineamientos Estratégicos</th>
-                    <th>Gerencia Responsable</th>
-                    <th>Gerente Responsable</th>
-                    <th>Estatus</th>
-                  </tr>
-                </thead>
+                <thead><tr><th>N°</th><th>Lineamientos Estratégicos</th><th>Gerencia Responsable</th><th>Gerente Responsable</th><th>Estatus</th></tr></thead>
                 <tbody>
                   {guidelines.map((guideline, index) => (
-                    <tr key={guideline.id}>
-                      <td className="guideline-table__number">{index + 1}</td>
-                      <td className="guideline-table__title">{guideline.title}</td>
-                      <td>{guideline.responsible_management || '—'}</td>
-                      <td>{guideline.responsible_manager || '—'}</td>
-                      <td><span className={`guideline-status guideline-status--${normalizeHeader(guideline.status)}`}>{guideline.status || 'pendiente'}</span></td>
-                    </tr>
+                    <tr key={guideline.id}><td className="guideline-table__number">{index + 1}</td><td className="guideline-table__title">{guideline.title}</td><td>{guideline.responsible_management || '—'}</td><td>{guideline.responsible_manager || '—'}</td><td><span className={`guideline-status guideline-status--${normalizeHeader(guideline.status)}`}>{guideline.status || 'pendiente'}</span></td></tr>
                   ))}
                 </tbody>
               </table>
