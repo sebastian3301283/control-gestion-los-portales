@@ -39,7 +39,7 @@ const fallbackUnits: Unit[] = [
 
 const huGroups: Array<{ code: DirectoryGroup; label: string; short: string }> = [
   { code: 'HU', label: 'Habilitación Urbana', short: 'HU' },
-  { code: 'MATRICIAL_HU_VS', label: 'Matricial / HU / VS', short: 'MATRICIAL / HU / VS' },
+  { code: 'MATRICIAL_HU_VS', label: 'Matricial', short: 'MATRICIAL' },
 ]
 
 function normalize(value: string) {
@@ -69,13 +69,11 @@ function recordsFromDetectedHeader(XLSX: any, sheet: any, kind: 'directory' | 'a
   const names = kind === 'directory'
     ? new Set(['nombre', 'responsable', 'gerente', 'gerenteresponsable'])
     : new Set(['area', 'areas', 'gerencia', 'gerencias'])
-  const units = new Set(['un', 'unidad', 'unidadnegocio', 'unidaddenegocio'])
   const areas = new Set(['area', 'areas', 'gerencia', 'gerencias'])
   const headerIndex = matrix.findIndex(row => {
     const headers = row.map(normalizeHeader)
     const hasName = headers.some(value => names.has(value))
-    const hasUnit = headers.some(value => units.has(value))
-    return kind === 'areas' ? hasName && hasUnit : hasName && hasUnit && headers.some(value => areas.has(value))
+    return kind === 'areas' ? hasName : hasName && headers.some(value => areas.has(value))
   })
   if (headerIndex < 0) return [] as Record<string, unknown>[]
   const headers = matrix[headerIndex].map(value => String(value ?? '').trim())
@@ -98,6 +96,8 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
   const [importing, setImporting] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget>(null)
+  const [unitDeleteOpen, setUnitDeleteOpen] = useState(false)
+  const [unitDeleting, setUnitDeleting] = useState(false)
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
 
@@ -150,6 +150,11 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
     [managements, managerUnitCode, managerGroup, managerManagementIds],
   )
 
+  const selectedUnitHasData = useMemo(
+    () => managements.some(item => item.unit_code === selectedUnitCode) || managers.some(item => item.unit_code === selectedUnitCode),
+    [managements, managers, selectedUnitCode],
+  )
+
   useEffect(() => { void loadCatalogs() }, [])
 
   async function loadCatalogs() {
@@ -174,7 +179,7 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
   function resolveLocation(unitValue: string, groupValue = ''): { unit_code: string; directory_group: DirectoryGroup } {
     const raw = normalizeHeader(unitValue)
     const groupRaw = normalizeHeader(groupValue)
-    if (raw.includes('matricialhuvs') || groupRaw.includes('matricialhuvs')) return { unit_code: 'HU', directory_group: 'MATRICIAL_HU_VS' }
+    if (raw.includes('matricial') || groupRaw.includes('matricial')) return { unit_code: 'HU', directory_group: 'MATRICIAL_HU_VS' }
     const aliases: Record<string, string> = {
       central: 'CENTRAL', cen: 'CENTRAL', hu: 'HU', habilitacionurbana: 'HU',
       dep: 'DEP', departamentos: 'DEP', departamento: 'DEP', vs: 'VS', viviendasocial: 'VS',
@@ -280,11 +285,23 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
     setDeleteTarget(null); setNotice(`${deletedType === 'manager' ? 'Responsable' : 'Área'} “${deletedName}” eliminado correctamente.`); await loadCatalogs()
   }
 
+  async function deleteSelectedUnit() {
+    if (!supabase || !canManage) return
+    setUnitDeleting(true); setError(''); setNotice('')
+    const { data, error: rpcError } = await supabase.rpc('delete_responsibility_catalog_by_unit', { unit_code_input: selectedUnitCode })
+    setUnitDeleting(false)
+    if (rpcError) { setError('No pudimos borrar el directorio de esta unidad.'); return }
+    const result = data as { managements_deleted?: number; managers_deleted?: number } | null
+    setUnitDeleteOpen(false); setManagementFormOpen(false); setManagerFormOpen(false); clearFilters()
+    setNotice(`Directorio de ${selectedUnit?.name || selectedUnitCode} borrado. Se eliminaron ${result?.managements_deleted ?? 0} áreas y ${result?.managers_deleted ?? 0} responsables.`)
+    await loadCatalogs()
+  }
+
   async function downloadTemplate() {
     try {
       const XLSX = await import(/* @vite-ignore */ XLSX_MODULE_URL)
       const rows = managers.length ? managers.map((manager, index) => ({
-        'Cant.': index + 1, UN: manager.directory_group === 'MATRICIAL_HU_VS' ? 'Matricial/HU/VS' : unitLabel(manager.unit_code),
+        'Cant.': index + 1, UN: manager.directory_group === 'MATRICIAL_HU_VS' ? 'Matricial' : unitLabel(manager.unit_code),
         Grupo: manager.unit_code === 'HU' ? groupLabel(manager.directory_group) : '', Nombre: manager.name, Cargo: manager.cargo || '',
         Área: links.filter(link => link.manager_id === manager.id).map(link => managementById.get(link.management_id)?.name).filter(Boolean).join(' / '),
         Correo: manager.email || '', Estado: manager.active ? 'Activo' : 'Inactivo',
@@ -302,11 +319,17 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
       const XLSX = await import(/* @vite-ignore */ XLSX_MODULE_URL)
       const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' })
       const rows: Record<string, unknown>[] = []
-      workbook.SheetNames.forEach(sheetName => rows.push(...recordsFromDetectedHeader(XLSX, workbook.Sheets[sheetName], 'directory')))
+      workbook.SheetNames.forEach(sheetName => {
+        const detected = recordsFromDetectedHeader(XLSX, workbook.Sheets[sheetName], 'directory')
+        rows.push(...detected.map(row => ({ ...row, __sheetName: sheetName })))
+      })
       if (!rows.length) throw new Error('FORMAT_NOT_FOUND')
 
       const parsed = rows.map((row, index) => {
-        const location = resolveLocation(valueFromRow(row, ['UN','Unidad','Unidad de negocio']), valueFromRow(row, ['Grupo','Subunidad','Segmento']))
+        const unitValue = valueFromRow(row, ['UN','Unidad','Unidad de negocio'])
+        const groupValue = valueFromRow(row, ['Grupo','Subunidad','Segmento'])
+        const sheetName = String(row.__sheetName ?? '')
+        const location = resolveLocation(unitValue || sheetName, groupValue || sheetName)
         return {
           row: index + 2, ...location, name: valueFromRow(row, ['Nombre','Responsable','Gerente']), cargo: valueFromRow(row, ['Cargo','Puesto']),
           email: valueFromRow(row, ['Correo','Email','Correo electrónico']).toLowerCase(), areas: splitValues(valueFromRow(row, ['Área','Area','Áreas','Areas','Gerencia','Gerencias'])),
@@ -333,7 +356,7 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
 
       let processed = 0
       for (const item of parsed) {
-        let manager = managers.find(m => m.unit_code === item.unit_code && m.directory_group === item.directory_group && normalize(m.name) === normalize(item.name))
+        const manager = managers.find(m => m.unit_code === item.unit_code && m.directory_group === item.directory_group && normalize(m.name) === normalize(item.name))
         let managerId = manager?.id || ''
         const payload = { name: item.name, cargo: item.cargo || null, email: item.email || null, unit_code: item.unit_code, directory_group: item.directory_group, active: item.active }
         if (manager) {
@@ -343,14 +366,16 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
         }
         const areaIds = item.areas.map(name => workingManagements.find(a => a.unit_code === item.unit_code && a.directory_group === item.directory_group && normalize(a.name) === normalize(name))?.id).filter((id): id is string => Boolean(id))
         const { error: deleteError } = await supabase.from('manager_managements').delete().eq('manager_id', managerId); if (deleteError) throw deleteError
-        const { error: linkError } = await supabase.from('manager_managements').insert(areaIds.map(managementId => ({ manager_id: managerId, management_id: managementId }))); if (linkError) throw linkError
+        if (areaIds.length) {
+          const { error: linkError } = await supabase.from('manager_managements').insert(areaIds.map(managementId => ({ manager_id: managerId, management_id: managementId }))); if (linkError) throw linkError
+        }
         processed += 1
       }
       await loadCatalogs(); setSelectedUnitCode(parsed[0].unit_code); if (parsed[0].unit_code === 'HU') setSelectedHuGroup(parsed[0].directory_group)
       setNotice(`Excel importado: ${processed} responsable${processed===1?'':'s'} procesado${processed===1?'':'s'} y ${newAreas} área${newAreas===1?'':'s'} nueva${newAreas===1?'':'s'}.`)
     } catch (e) {
       const message = e instanceof Error ? e.message : ''
-      if (message === 'FORMAT_NOT_FOUND') setError('No encontramos una tabla con columnas UN, Nombre, Cargo y Área.')
+      if (message === 'FORMAT_NOT_FOUND') setError('No encontramos una tabla con columnas Nombre, Cargo y Área. Para Matricial puedes usar UN = “Matricial” o una hoja llamada “Matricial”.')
       else if (message === 'NO_ROWS') setError('El Excel no contiene responsables.')
       else setError(`No pudimos importar el Excel${message ? `: ${message}` : '.'}`)
     } finally { setImporting(false) }
@@ -366,6 +391,7 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
         <div className="guideline-actions catalog-hero-actions">
           <button className="catalog-template-button" type="button" onClick={() => void downloadTemplate()}><Download size={16}/> Descargar plantilla</button>
           {canManage && <label className={`catalog-template-button catalog-file-button ${importing ? 'disabled' : ''}`}><Upload size={16}/>{importing ? 'Importando...' : 'Importar Excel'}<input type="file" accept=".xlsx,.xls" onChange={importCatalogFromExcel} disabled={importing}/></label>}
+          {canManage && selectedUnitHasData && <button className="catalog-template-button catalog-unit-delete" type="button" onClick={() => setUnitDeleteOpen(true)}><Trash2 size={16}/> Borrar {selectedUnitCode}</button>}
         </div>
       </section>
 
@@ -411,13 +437,15 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
           <div className="catalog-directory-scroll"><table className="catalog-directory-table"><thead><tr><th>Cant.</th><th>UN</th><th>Nombre</th><th>Cargo</th><th>Área</th><th>Correo</th><th>Estado</th>{canManage&&<th>Acciones</th>}</tr></thead><tbody>
             {filteredManagers.length===0?<tr><td colSpan={canManage?8:7} className="catalog-directory-empty">No hay responsables que coincidan con esta vista o filtros.</td></tr>:filteredManagers.map((item,index)=>{
               const relatedNames=links.filter(link=>link.manager_id===item.id).map(link=>managementById.get(link.management_id)?.name).filter((name):name is string=>Boolean(name))
-              return <tr key={item.id}><td className="catalog-directory-number">{index+1}</td><td><span className="catalog-unit-badge">{item.directory_group==='MATRICIAL_HU_VS'?'M/HU/VS':item.unit_code}</span></td><td className="catalog-directory-name"><strong>{item.name}</strong></td><td>{item.cargo||'Sin registrar'}</td><td>{relatedNames.length?relatedNames.join(' / '):'Sin área'}</td><td>{item.email||'—'}</td><td><span className={`catalog-status ${item.active?'active':'inactive'}`}>{item.active?'Activo':'Inactivo'}</span></td>{canManage&&<td><div className="catalog-row-actions"><button className="catalog-edit" type="button" onClick={()=>editManager(item)} title="Editar"><Pencil size={14}/></button><button className="catalog-delete" type="button" onClick={()=>setDeleteTarget({type:'manager',id:item.id,name:item.name})} title="Eliminar"><Trash2 size={14}/></button></div></td>}</tr>
+              return <tr key={item.id}><td className="catalog-directory-number">{index+1}</td><td><span className="catalog-unit-badge">{item.directory_group==='MATRICIAL_HU_VS'?'MATRICIAL':item.unit_code}</span></td><td className="catalog-directory-name"><strong>{item.name}</strong></td><td>{item.cargo||'Sin registrar'}</td><td>{relatedNames.length?relatedNames.join(' / '):'Sin área'}</td><td>{item.email||'—'}</td><td><span className={`catalog-status ${item.active?'active':'inactive'}`}>{item.active?'Activo':'Inactivo'}</span></td>{canManage&&<td><div className="catalog-row-actions"><button className="catalog-edit" type="button" onClick={()=>editManager(item)} title="Editar"><Pencil size={14}/></button><button className="catalog-delete" type="button" onClick={()=>setDeleteTarget({type:'manager',id:item.id,name:item.name})} title="Eliminar"><Trash2 size={14}/></button></div></td>}</tr>
             })}
           </tbody></table></div>
         </section>
       </>}
 
       {deleteTarget&&<div className="cg-modal-backdrop" role="presentation" onMouseDown={event=>{if(event.currentTarget===event.target&&!deleting)setDeleteTarget(null)}}><div className="cg-confirm-dialog" role="dialog" aria-modal="true"><button className="cg-modal-close" type="button" onClick={()=>setDeleteTarget(null)} disabled={deleting}><X size={18}/></button><div className="cg-confirm-icon"><Trash2 size={23}/></div><h3>¿Eliminar {deleteTarget.type==='manager'?'responsable':'área'}?</h3><p>Se eliminará “{deleteTarget.name}”. Los lineamientos se conservarán y se limpiarán las relaciones que correspondan.</p><div className="cg-modal-actions"><button type="button" className="cg-modal-secondary" onClick={()=>setDeleteTarget(null)} disabled={deleting}>Cancelar</button><button type="button" className="cg-modal-primary cg-modal-danger" onClick={()=>void deleteSelected()} disabled={deleting}>{deleting&&<LoaderCircle className="spin" size={16}/>} Sí, eliminar</button></div></div></div>}
+
+      {unitDeleteOpen&&<div className="cg-modal-backdrop" role="presentation" onMouseDown={event=>{if(event.currentTarget===event.target&&!unitDeleting)setUnitDeleteOpen(false)}}><div className="cg-confirm-dialog" role="dialog" aria-modal="true"><button className="cg-modal-close" type="button" onClick={()=>setUnitDeleteOpen(false)} disabled={unitDeleting}><X size={18}/></button><div className="cg-confirm-icon"><Trash2 size={23}/></div><h3>¿Borrar todo de {selectedUnit?.name || selectedUnitCode}?</h3><p>{selectedUnitCode==='HU'?'Se eliminarán todas las áreas y responsables de HU y Matricial.':'Se eliminarán todas las áreas y responsables de esta unidad.'} Los lineamientos se conservarán, pero quedarán sin Gerencia Responsable ni Gerente Responsable en esta unidad.</p><div className="cg-modal-actions"><button type="button" className="cg-modal-secondary" onClick={()=>setUnitDeleteOpen(false)} disabled={unitDeleting}>Cancelar</button><button type="button" className="cg-modal-primary cg-modal-danger" onClick={()=>void deleteSelectedUnit()} disabled={unitDeleting}>{unitDeleting&&<LoaderCircle className="spin" size={16}/>} Sí, borrar unidad</button></div></div></div>}
     </div>
   )
 }
