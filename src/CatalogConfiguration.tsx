@@ -2,89 +2,43 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react'
 import { Building2, Check, Download, LoaderCircle, Pencil, Plus, Search, Trash2, Upload, UserRound, X } from 'lucide-react'
 import { supabase } from './lib/supabase'
 import './catalog-configuration.css'
+import './catalog-configuration-v2.css'
 
 type Unit = { code: string; name: string }
 type DirectoryGroup = 'GENERAL' | 'HU' | 'MATRICIAL_HU_VS'
-
-type Management = {
-  id: string
-  name: string
-  unit_code: string
-  directory_group: DirectoryGroup
-  active: boolean
-}
-
-type Manager = {
-  id: string
-  name: string
-  cargo: string | null
-  unit_code: string
-  directory_group: DirectoryGroup
-  active: boolean
-}
-
+type Management = { id: string; name: string; unit_code: string; directory_group: DirectoryGroup; active: boolean }
+type Manager = { id: string; name: string; cargo: string | null; unit_code: string; directory_group: DirectoryGroup; active: boolean }
 type ManagerManagement = { manager_id: string; management_id: string }
 type Props = { units?: Unit[]; canManage: boolean }
 type DeleteTarget = { type: 'manager' | 'management'; id: string; name: string } | null
 
 const XLSX_MODULE_URL = 'https://unpkg.com/xlsx@0.18.5/xlsx.mjs'
 const fallbackUnits: Unit[] = [
-  { code: 'CENTRAL', name: 'Central' },
-  { code: 'HU', name: 'Habilitación Urbana' },
-  { code: 'DEP', name: 'Departamentos' },
-  { code: 'VS', name: 'Vivienda Social' },
-  { code: 'HOT', name: 'Hoteles' },
+  { code: 'CENTRAL', name: 'Central' }, { code: 'HU', name: 'Habilitación Urbana' }, { code: 'DEP', name: 'Departamentos' }, { code: 'VS', name: 'Vivienda Social' }, { code: 'HOT', name: 'Hoteles' },
 ]
-
 const huGroups: Array<{ code: DirectoryGroup; label: string; short: string }> = [
-  { code: 'HU', label: 'Habilitación Urbana', short: 'HU' },
-  { code: 'MATRICIAL_HU_VS', label: 'Matricial', short: 'MATRICIAL' },
+  { code: 'HU', label: 'Habilitación Urbana', short: 'HU' }, { code: 'MATRICIAL_HU_VS', label: 'Matricial', short: 'MATRICIAL' },
 ]
 
-function normalize(value: string) {
-  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ').toLowerCase()
-}
-
-function normalizeHeader(value: unknown) {
-  return String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '')
-}
-
-function splitValues(value: string) {
-  return value.split(/\s*(?:\/|;|\||\n)\s*/g).map(item => item.trim()).filter(Boolean)
-}
-
-function parseActive(value: string) {
-  return !['inactivo', 'inactiva', 'no', '0', 'false'].includes(normalize(value))
-}
-
+function normalize(value: string) { return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ').toLowerCase() }
+function normalizeHeader(value: unknown) { return String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '') }
+function splitValues(value: string) { return value.split(/\s*(?:\/|;|\||\n)\s*/g).map(item => item.trim()).filter(Boolean) }
+function parseActive(value: string) { return !['inactivo', 'inactiva', 'no', '0', 'false'].includes(normalize(value)) }
 function valueFromRow(row: Record<string, unknown>, aliases: string[]) {
-  const wanted = new Set(aliases.map(normalizeHeader))
-  const entry = Object.entries(row).find(([key]) => wanted.has(normalizeHeader(key)))
-  return String(entry?.[1] ?? '').trim()
+  const wanted = new Set(aliases.map(normalizeHeader)); const entry = Object.entries(row).find(([key]) => wanted.has(normalizeHeader(key))); return String(entry?.[1] ?? '').trim()
 }
-
-function recordsFromDetectedHeader(XLSX: any, sheet: any, kind: 'directory' | 'areas') {
+function recordsFromDetectedHeader(XLSX: any, sheet: any) {
   const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false }) as unknown[][]
-  const names = kind === 'directory'
-    ? new Set(['nombre', 'responsable', 'gerente', 'gerenteresponsable', 'bonista'])
-    : new Set(['area', 'areas', 'gerencia', 'gerencias'])
-  const areas = new Set(['area', 'areas', 'gerencia', 'gerencias'])
-  const headerIndex = matrix.findIndex(row => {
-    const headers = row.map(normalizeHeader)
-    const hasName = headers.some(value => names.has(value))
-    return kind === 'areas' ? hasName : hasName && headers.some(value => areas.has(value))
-  })
+  const names = new Set(['nombre', 'responsable', 'gerente', 'gerenteresponsable', 'bonista']); const areas = new Set(['area', 'areas', 'gerencia', 'gerencias'])
+  const headerIndex = matrix.findIndex(row => { const headers = row.map(normalizeHeader); return headers.some(value => names.has(value)) && headers.some(value => areas.has(value)) })
   if (headerIndex < 0) return [] as Record<string, unknown>[]
   const headers = matrix[headerIndex].map(value => String(value ?? '').trim())
-  return matrix.slice(headerIndex + 1)
-    .filter(row => row.some(cell => String(cell ?? '').trim()))
-    .map(row => Object.fromEntries(headers.map((header, index) => [header || `col_${index}`, row[index] ?? ''])))
+  return matrix.slice(headerIndex + 1).filter(row => row.some(cell => String(cell ?? '').trim())).map(row => Object.fromEntries(headers.map((header, index) => [header || `col_${index}`, row[index] ?? ''])))
 }
 
 export default function CatalogConfiguration({ units, canManage }: Props) {
   const unitOptions = units?.length ? units : fallbackUnits
   const defaultUnitCode = unitOptions.find(unit => unit.code === 'CENTRAL')?.code || unitOptions[0]?.code || 'CENTRAL'
-
   const [managements, setManagements] = useState<Management[]>([])
   const [managers, setManagers] = useState<Manager[]>([])
   const [links, setLinks] = useState<ManagerManagement[]>([])
@@ -99,18 +53,15 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
   const [unitDeleting, setUnitDeleting] = useState(false)
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
-
   const [filterName, setFilterName] = useState('')
   const [filterCargo, setFilterCargo] = useState('')
   const [filterAreaId, setFilterAreaId] = useState('')
-
   const [managementFormOpen, setManagementFormOpen] = useState(false)
   const [editingManagementId, setEditingManagementId] = useState<string | null>(null)
   const [managementName, setManagementName] = useState('')
   const [managementUnitCode, setManagementUnitCode] = useState(defaultUnitCode)
   const [managementGroup, setManagementGroup] = useState<DirectoryGroup>('GENERAL')
   const [managementActive, setManagementActive] = useState(true)
-
   const [managerFormOpen, setManagerFormOpen] = useState(false)
   const [editingManagerId, setEditingManagerId] = useState<string | null>(null)
   const [managerName, setManagerName] = useState('')
@@ -124,17 +75,8 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
   const unitByCode = useMemo(() => new Map(unitOptions.map(unit => [unit.code, unit.name])), [unitOptions])
   const selectedUnit = unitOptions.find(unit => unit.code === selectedUnitCode) || unitOptions[0]
   const activeGroup: DirectoryGroup = selectedUnitCode === 'HU' ? selectedHuGroup : 'GENERAL'
-
-  const selectedManagements = useMemo(
-    () => managements.filter(item => item.unit_code === selectedUnitCode && item.directory_group === activeGroup),
-    [managements, selectedUnitCode, activeGroup],
-  )
-
-  const selectedManagers = useMemo(
-    () => managers.filter(item => item.unit_code === selectedUnitCode && item.directory_group === activeGroup),
-    [managers, selectedUnitCode, activeGroup],
-  )
-
+  const selectedManagements = useMemo(() => managements.filter(item => item.unit_code === selectedUnitCode && item.directory_group === activeGroup), [managements, selectedUnitCode, activeGroup])
+  const selectedManagers = useMemo(() => managers.filter(item => item.unit_code === selectedUnitCode && item.directory_group === activeGroup), [managers, selectedUnitCode, activeGroup])
   const filteredManagers = useMemo(() => selectedManagers.filter(item => {
     const relatedIds = links.filter(link => link.manager_id === item.id).map(link => link.management_id)
     if (filterName.trim() && !normalize(item.name).includes(normalize(filterName))) return false
@@ -142,16 +84,9 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
     if (filterAreaId && !relatedIds.includes(filterAreaId)) return false
     return true
   }), [selectedManagers, links, filterName, filterCargo, filterAreaId])
-
-  const managerManagementOptions = useMemo(
-    () => managements.filter(item => item.unit_code === managerUnitCode && item.directory_group === managerGroup && (item.active || managerManagementIds.includes(item.id))),
-    [managements, managerUnitCode, managerGroup, managerManagementIds],
-  )
-
-  const selectedUnitHasData = useMemo(
-    () => managements.some(item => item.unit_code === selectedUnitCode) || managers.some(item => item.unit_code === selectedUnitCode),
-    [managements, managers, selectedUnitCode],
-  )
+  const managerManagementOptions = useMemo(() => managements.filter(item => item.unit_code === managerUnitCode && item.directory_group === managerGroup && (item.active || managerManagementIds.includes(item.id))), [managements, managerUnitCode, managerGroup, managerManagementIds])
+  const selectedUnitHasData = useMemo(() => managements.some(item => item.unit_code === selectedUnitCode) || managers.some(item => item.unit_code === selectedUnitCode), [managements, managers, selectedUnitCode])
+  const groupTitle = selectedUnitCode === 'HU' ? (huGroups.find(group => group.code === activeGroup)?.label || 'HU') : (selectedUnit?.name || selectedUnitCode)
 
   useEffect(() => { void loadCatalogs() }, [])
 
@@ -165,65 +100,34 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
     ])
     setLoading(false)
     if (managementResult.error || managerResult.error || linkResult.error) { setError('No pudimos cargar el directorio.'); return }
-    setManagements((managementResult.data || []) as Management[])
-    setManagers((managerResult.data || []) as Manager[])
-    setLinks((linkResult.data || []) as ManagerManagement[])
+    setManagements((managementResult.data || []) as Management[]); setManagers((managerResult.data || []) as Manager[]); setLinks((linkResult.data || []) as ManagerManagement[])
   }
 
   function unitLabel(code: string) { return unitByCode.get(code) || code }
   function groupLabel(group: DirectoryGroup) { return huGroups.find(item => item.code === group)?.label || '' }
   function groupForUnit(unitCode: string, preferred?: DirectoryGroup): DirectoryGroup { return unitCode === 'HU' ? (preferred === 'MATRICIAL_HU_VS' ? preferred : 'HU') : 'GENERAL' }
-
   function resolveLocation(unitValue: string, groupValue = ''): { unit_code: string; directory_group: DirectoryGroup } {
-    const raw = normalizeHeader(unitValue)
-    const groupRaw = normalizeHeader(groupValue)
+    const raw = normalizeHeader(unitValue); const groupRaw = normalizeHeader(groupValue)
     if (raw.includes('matricial') || groupRaw.includes('matricial')) return { unit_code: 'HU', directory_group: 'MATRICIAL_HU_VS' }
-    const aliases: Record<string, string> = {
-      central: 'CENTRAL', cen: 'CENTRAL', hu: 'HU', habilitacionurbana: 'HU',
-      dep: 'DEP', departamentos: 'DEP', departamento: 'DEP', vs: 'VS', viviendasocial: 'VS',
-      hot: 'HOT', hoteles: 'HOT', hotel: 'HOT',
-    }
+    const aliases: Record<string, string> = { central: 'CENTRAL', cen: 'CENTRAL', hu: 'HU', habilitacionurbana: 'HU', dep: 'DEP', departamentos: 'DEP', departamento: 'DEP', vs: 'VS', viviendasocial: 'VS', hot: 'HOT', hoteles: 'HOT', hotel: 'HOT' }
     const direct = unitOptions.find(unit => normalizeHeader(unit.code) === raw || normalizeHeader(unit.name) === raw)?.code
     const unit_code = direct || aliases[raw] || ''
     return { unit_code, directory_group: groupForUnit(unit_code, groupRaw.includes('matricial') ? 'MATRICIAL_HU_VS' : 'HU') }
   }
-
   function clearFilters() { setFilterName(''); setFilterCargo(''); setFilterAreaId('') }
+  function chooseUnit(code: string) { setSelectedUnitCode(code); if (code !== 'HU') setSelectedHuGroup('HU'); resetManagementForm(false); resetManagerForm(false); setError(''); setNotice(''); clearFilters() }
+  function chooseHuGroup(group: DirectoryGroup) { setSelectedHuGroup(group); resetManagementForm(false); resetManagerForm(false); setError(''); setNotice(''); clearFilters() }
 
-  function chooseUnit(code: string) {
-    setSelectedUnitCode(code); if (code !== 'HU') setSelectedHuGroup('HU')
-    setManagementFormOpen(false); setManagerFormOpen(false); setError(''); setNotice(''); clearFilters()
+  function resetManagementForm(close = true) {
+    if (close) setManagementFormOpen(false); setEditingManagementId(null); setManagementName(''); setManagementUnitCode(selectedUnitCode); setManagementGroup(activeGroup); setManagementActive(true)
   }
-
-  function chooseHuGroup(group: DirectoryGroup) {
-    setSelectedHuGroup(group); setManagementFormOpen(false); setManagerFormOpen(false); setError(''); setNotice(''); clearFilters()
+  function resetManagerForm(close = true) {
+    if (close) setManagerFormOpen(false); setEditingManagerId(null); setManagerName(''); setManagerCargo(''); setManagerUnitCode(selectedUnitCode); setManagerGroup(activeGroup); setManagerActive(true); setManagerManagementIds([])
   }
-
-  function resetManagementForm() {
-    setManagementFormOpen(false); setEditingManagementId(null); setManagementName('');
-    setManagementUnitCode(selectedUnitCode); setManagementGroup(activeGroup); setManagementActive(true)
-  }
-
-  function resetManagerForm() {
-    setManagerFormOpen(false); setEditingManagerId(null); setManagerName(''); setManagerCargo('');
-    setManagerUnitCode(selectedUnitCode); setManagerGroup(activeGroup); setManagerActive(true); setManagerManagementIds([])
-  }
-
-  function openNewManagement() { resetManagementForm(); setManagementFormOpen(true); setManagerFormOpen(false); setError(''); setNotice('') }
-  function openNewManager() { resetManagerForm(); setManagerFormOpen(true); setManagementFormOpen(false); setError(''); setNotice('') }
-
-  function editManagement(item: Management) {
-    setEditingManagementId(item.id); setManagementName(item.name); setManagementUnitCode(item.unit_code); setManagementGroup(item.directory_group); setManagementActive(item.active)
-    setManagementFormOpen(true); setManagerFormOpen(false); setError(''); setNotice('')
-  }
-
-  function editManager(item: Manager) {
-    setEditingManagerId(item.id); setManagerName(item.name); setManagerCargo(item.cargo || '')
-    setManagerUnitCode(item.unit_code); setManagerGroup(item.directory_group); setManagerActive(item.active)
-    setManagerManagementIds(links.filter(link => link.manager_id === item.id).map(link => link.management_id))
-    setManagerFormOpen(true); setManagementFormOpen(false); setError(''); setNotice('')
-  }
-
+  function openNewManagement() { resetManagementForm(); setManagementUnitCode(selectedUnitCode); setManagementGroup(activeGroup); setManagementFormOpen(true); setError(''); setNotice('') }
+  function openNewManager() { resetManagerForm(); setManagerUnitCode(selectedUnitCode); setManagerGroup(activeGroup); setManagerFormOpen(true); setError(''); setNotice('') }
+  function editManagement(item: Management) { setEditingManagementId(item.id); setManagementName(item.name); setManagementUnitCode(item.unit_code); setManagementGroup(item.directory_group); setManagementActive(item.active); setManagementFormOpen(true); setError(''); setNotice('') }
+  function editManager(item: Manager) { setEditingManagerId(item.id); setManagerName(item.name); setManagerCargo(item.cargo || ''); setManagerUnitCode(item.unit_code); setManagerGroup(item.directory_group); setManagerActive(item.active); setManagerManagementIds(links.filter(link => link.manager_id === item.id).map(link => link.management_id)); setManagerFormOpen(true); setError(''); setNotice('') }
   function changeManagementUnit(code: string) { setManagementUnitCode(code); setManagementGroup(groupForUnit(code, code === 'HU' ? 'HU' : 'GENERAL')) }
   function changeManagerUnit(code: string) { setManagerUnitCode(code); setManagerGroup(groupForUnit(code, code === 'HU' ? 'HU' : 'GENERAL')); setManagerManagementIds([]) }
   function changeManagerGroup(group: DirectoryGroup) { setManagerGroup(group); setManagerManagementIds([]) }
@@ -231,8 +135,7 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
 
   async function saveManagement(event: FormEvent) {
     event.preventDefault(); if (!supabase || !canManage) return
-    const name = managementName.trim().replace(/\s+/g, ' ')
-    if (!name) { setError('Escribe el nombre del área.'); return }
+    const name = managementName.trim().replace(/\s+/g, ' '); if (!name) { setError('Escribe el nombre del área.'); return }
     const group = groupForUnit(managementUnitCode, managementGroup)
     const duplicate = managements.find(item => item.unit_code === managementUnitCode && item.directory_group === group && normalize(item.name) === normalize(name) && item.id !== editingManagementId)
     if (duplicate) { setError(`El área “${duplicate.name}” ya existe en este grupo.`); return }
@@ -240,9 +143,8 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
     const payload = { name, unit_code: managementUnitCode, directory_group: group, active: managementActive }
     const result = editingManagementId ? await supabase.from('managements_global').update(payload).eq('id', editingManagementId) : await supabase.from('managements_global').insert(payload)
     setSaving(false)
-    if (result.error) { setError('No pudimos guardar el área. Revisa la unidad y el grupo.'); return }
-    setSelectedUnitCode(managementUnitCode); if (managementUnitCode === 'HU') setSelectedHuGroup(group)
-    resetManagementForm(); setNotice('Área guardada correctamente.'); await loadCatalogs()
+    if (result.error) { setError('No pudimos guardar el área.'); return }
+    setSelectedUnitCode(managementUnitCode); if (managementUnitCode === 'HU') setSelectedHuGroup(group); resetManagementForm(); setNotice('Área guardada correctamente.'); await loadCatalogs()
   }
 
   async function saveManager(event: FormEvent) {
@@ -250,25 +152,17 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
     const name = managerName.trim().replace(/\s+/g, ' '); const cargo = managerCargo.trim().replace(/\s+/g, ' ')
     if (!name) { setError('Escribe el nombre del bonista.'); return }
     if (!managerManagementIds.length) { setError('Selecciona al menos un área para este bonista.'); return }
-    const group = groupForUnit(managerUnitCode, managerGroup)
-    setSaving(true); setError(''); setNotice('')
-    let managerId = editingManagerId
-    const payload = { name, cargo: cargo || null, unit_code: managerUnitCode, directory_group: group, active: managerActive }
+    const group = groupForUnit(managerUnitCode, managerGroup); setSaving(true); setError(''); setNotice('')
+    let managerId = editingManagerId; const payload = { name, cargo: cargo || null, unit_code: managerUnitCode, directory_group: group, active: managerActive }
     if (managerId) {
-      const { error: updateError } = await supabase.from('managers').update(payload).eq('id', managerId)
-      if (updateError) { setSaving(false); setError('No pudimos actualizar el bonista.'); return }
+      const { error: updateError } = await supabase.from('managers').update(payload).eq('id', managerId); if (updateError) { setSaving(false); setError('No pudimos actualizar el bonista.'); return }
     } else {
-      const { data, error: insertError } = await supabase.from('managers').insert(payload).select('id').single()
-      if (insertError || !data) { setSaving(false); setError('No pudimos crear el bonista.'); return }
-      managerId = String(data.id)
+      const { data, error: insertError } = await supabase.from('managers').insert(payload).select('id').single(); if (insertError || !data) { setSaving(false); setError('No pudimos crear el bonista.'); return }; managerId = String(data.id)
     }
-    const { error: deleteError } = await supabase.from('manager_managements').delete().eq('manager_id', managerId)
-    if (deleteError) { setSaving(false); setError('No pudimos actualizar las áreas del bonista.'); return }
-    const { error: linkError } = await supabase.from('manager_managements').insert(managerManagementIds.map(managementId => ({ manager_id: managerId, management_id: managementId })))
-    setSaving(false)
+    const { error: deleteError } = await supabase.from('manager_managements').delete().eq('manager_id', managerId); if (deleteError) { setSaving(false); setError('No pudimos actualizar las áreas del bonista.'); return }
+    const { error: linkError } = await supabase.from('manager_managements').insert(managerManagementIds.map(managementId => ({ manager_id: managerId, management_id: managementId }))); setSaving(false)
     if (linkError) { setError('No pudimos relacionar el bonista con las áreas seleccionadas.'); return }
-    setSelectedUnitCode(managerUnitCode); if (managerUnitCode === 'HU') setSelectedHuGroup(group)
-    resetManagerForm(); setNotice('Bonista guardado correctamente.'); await loadCatalogs()
+    setSelectedUnitCode(managerUnitCode); if (managerUnitCode === 'HU') setSelectedHuGroup(group); resetManagerForm(); setNotice('Bonista guardado correctamente.'); await loadCatalogs()
   }
 
   async function deleteSelected() {
@@ -276,161 +170,100 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
     setDeleting(true); setError(''); setNotice('')
     const rpcName = deleteTarget.type === 'manager' ? 'delete_directory_manager' : 'delete_directory_management'
     const args = deleteTarget.type === 'manager' ? { manager_id_input: deleteTarget.id } : { management_id_input: deleteTarget.id }
-    const { error: rpcError } = await supabase.rpc(rpcName, args)
-    setDeleting(false)
+    const { error: rpcError } = await supabase.rpc(rpcName, args); setDeleting(false)
     if (rpcError) { setError('No pudimos eliminar este registro.'); return }
-    const deletedName = deleteTarget.name; const deletedType = deleteTarget.type
-    setDeleteTarget(null); setNotice(`${deletedType === 'manager' ? 'Bonista' : 'Área'} “${deletedName}” eliminado correctamente.`); await loadCatalogs()
+    const deletedName = deleteTarget.name; const deletedType = deleteTarget.type; setDeleteTarget(null); setNotice(`${deletedType === 'manager' ? 'Bonista' : 'Área'} “${deletedName}” eliminado correctamente.`); await loadCatalogs()
   }
 
   async function deleteSelectedUnit() {
     if (!supabase || !canManage) return
     setUnitDeleting(true); setError(''); setNotice('')
-    const { data, error: rpcError } = await supabase.rpc('delete_responsibility_catalog_by_unit', { unit_code_input: selectedUnitCode })
-    setUnitDeleting(false)
+    const { data, error: rpcError } = await supabase.rpc('delete_responsibility_catalog_by_unit', { unit_code_input: selectedUnitCode }); setUnitDeleting(false)
     if (rpcError) { setError('No pudimos borrar el directorio de esta unidad.'); return }
     const result = data as { managements_deleted?: number; managers_deleted?: number } | null
-    setUnitDeleteOpen(false); setManagementFormOpen(false); setManagerFormOpen(false); clearFilters()
-    setNotice(`Directorio de ${selectedUnit?.name || selectedUnitCode} borrado. Se eliminaron ${result?.managements_deleted ?? 0} áreas y ${result?.managers_deleted ?? 0} bonistas.`)
-    await loadCatalogs()
+    setUnitDeleteOpen(false); resetManagementForm(); resetManagerForm(); clearFilters(); setNotice(`Directorio de ${selectedUnit?.name || selectedUnitCode} borrado. Se eliminaron ${result?.managements_deleted ?? 0} áreas y ${result?.managers_deleted ?? 0} bonistas.`); await loadCatalogs()
   }
 
   async function downloadTemplate() {
     try {
       const XLSX = await import(/* @vite-ignore */ XLSX_MODULE_URL)
-      const rows = managers.length ? managers.map((manager, index) => ({
-        'Cant.': index + 1, UN: manager.directory_group === 'MATRICIAL_HU_VS' ? 'Matricial' : unitLabel(manager.unit_code),
-        Grupo: manager.unit_code === 'HU' ? groupLabel(manager.directory_group) : '', Nombre: manager.name, Cargo: manager.cargo || '',
-        Área: links.filter(link => link.manager_id === manager.id).map(link => managementById.get(link.management_id)?.name).filter(Boolean).join(' / '),
-        Estado: manager.active ? 'Activo' : 'Inactivo',
-      })) : [{ 'Cant.': 1, UN: 'Departamentos', Grupo: '', Nombre: 'NOMBRE APELLIDO', Cargo: 'GERENTE DE PROYECTOS', Área: 'Operaciones', Estado: 'Activo' }]
+      const rows = managers.length ? managers.map((manager, index) => ({ 'Cant.': index + 1, UN: manager.directory_group === 'MATRICIAL_HU_VS' ? 'Matricial' : unitLabel(manager.unit_code), Grupo: manager.unit_code === 'HU' ? groupLabel(manager.directory_group) : '', Nombre: manager.name, Cargo: manager.cargo || '', Área: links.filter(link => link.manager_id === manager.id).map(link => managementById.get(link.management_id)?.name).filter(Boolean).join(' / '), Estado: manager.active ? 'Activo' : 'Inactivo' })) : [{ 'Cant.': 1, UN: 'Departamentos', Grupo: '', Nombre: 'NOMBRE APELLIDO', Cargo: 'GERENTE DE PROYECTOS', Área: 'Operaciones', Estado: 'Activo' }]
       const sheet = XLSX.utils.json_to_sheet(rows); sheet['!cols'] = [{wch:8},{wch:22},{wch:24},{wch:36},{wch:38},{wch:34},{wch:14}]
       const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, sheet, 'Bonistas'); XLSX.writeFile(workbook, 'Plantilla_Bonistas.xlsx')
     } catch { setError('No pudimos generar la plantilla Excel.') }
   }
 
   async function importCatalogFromExcel(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]; event.target.value = ''
-    if (!file || !supabase || !canManage) return
+    const file = event.target.files?.[0]; event.target.value = ''; if (!file || !supabase || !canManage) return
     setImporting(true); setError(''); setNotice('')
     try {
-      const XLSX = await import(/* @vite-ignore */ XLSX_MODULE_URL)
-      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' })
-      const rows: Record<string, unknown>[] = []
-      workbook.SheetNames.forEach(sheetName => {
-        const detected = recordsFromDetectedHeader(XLSX, workbook.Sheets[sheetName], 'directory')
-        rows.push(...detected.map(row => ({ ...row, __sheetName: sheetName })))
-      })
+      const XLSX = await import(/* @vite-ignore */ XLSX_MODULE_URL); const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' }); const rows: Record<string, unknown>[] = []
+      workbook.SheetNames.forEach(sheetName => { const detected = recordsFromDetectedHeader(XLSX, workbook.Sheets[sheetName]); rows.push(...detected.map(row => ({ ...row, __sheetName: sheetName }))) })
       if (!rows.length) throw new Error('FORMAT_NOT_FOUND')
-
       const parsed = rows.map((row, index) => {
-        const unitValue = valueFromRow(row, ['UN','Unidad','Unidad de negocio'])
-        const groupValue = valueFromRow(row, ['Grupo','Subunidad','Segmento'])
-        const sheetName = String(row.__sheetName ?? '')
-        const location = resolveLocation(unitValue || sheetName, groupValue || sheetName)
-        return {
-          row: index + 2, ...location, name: valueFromRow(row, ['Nombre','Bonista','Responsable','Gerente']), cargo: valueFromRow(row, ['Cargo','Puesto']),
-          areas: splitValues(valueFromRow(row, ['Área','Area','Áreas','Areas','Gerencia','Gerencias'])),
-          active: parseActive(valueFromRow(row, ['Estado','Estatus','Activo']) || 'Activo'),
-        }
+        const unitValue = valueFromRow(row, ['UN','Unidad','Unidad de negocio']); const groupValue = valueFromRow(row, ['Grupo','Subunidad','Segmento']); const sheetName = String(row.__sheetName ?? ''); const location = resolveLocation(unitValue || sheetName, groupValue || sheetName)
+        return { row: index + 2, ...location, name: valueFromRow(row, ['Nombre','Bonista','Responsable','Gerente']), cargo: valueFromRow(row, ['Cargo','Puesto']), areas: splitValues(valueFromRow(row, ['Área','Area','Áreas','Areas','Gerencia','Gerencias'])), active: parseActive(valueFromRow(row, ['Estado','Estatus','Activo']) || 'Activo') }
       }).filter(item => item.name)
       if (!parsed.length) throw new Error('NO_ROWS')
-      const errors: string[] = []
-      parsed.forEach(item => { if (!item.unit_code) errors.push(`Fila ${item.row}: UN no válida.`); if (!item.areas.length) errors.push(`Fila ${item.row}: falta Área.`) })
-      if (errors.length) { setError(`Excel no importado: ${errors.slice(0,8).join(' · ')}`); return }
-
-      const workingManagements = [...managements]
-      let newAreas = 0
-      for (const item of parsed) {
-        for (const areaName of item.areas) {
-          let area = workingManagements.find(a => a.unit_code === item.unit_code && a.directory_group === item.directory_group && normalize(a.name) === normalize(areaName))
-          if (!area) {
-            const { data, error: insertError } = await supabase.from('managements_global').insert({ name: areaName, unit_code: item.unit_code, directory_group: item.directory_group, active: true }).select('id,name,unit_code,directory_group,active').single()
-            if (insertError || !data) throw insertError || new Error('AREA_INSERT')
-            area = data as Management; workingManagements.push(area); newAreas += 1
-          }
-        }
+      const errors: string[] = []; parsed.forEach(item => { if (!item.unit_code) errors.push(`Fila ${item.row}: UN no válida.`); if (!item.areas.length) errors.push(`Fila ${item.row}: falta Área.`) }); if (errors.length) { setError(`Excel no importado: ${errors.slice(0,8).join(' · ')}`); return }
+      const workingManagements = [...managements]; let newAreas = 0
+      for (const item of parsed) for (const areaName of item.areas) {
+        let area = workingManagements.find(a => a.unit_code === item.unit_code && a.directory_group === item.directory_group && normalize(a.name) === normalize(areaName))
+        if (!area) { const { data, error: insertError } = await supabase.from('managements_global').insert({ name: areaName, unit_code: item.unit_code, directory_group: item.directory_group, active: true }).select('id,name,unit_code,directory_group,active').single(); if (insertError || !data) throw insertError || new Error('AREA_INSERT'); area = data as Management; workingManagements.push(area); newAreas += 1 }
       }
-
       let processed = 0
       for (const item of parsed) {
-        const manager = managers.find(m => m.unit_code === item.unit_code && m.directory_group === item.directory_group && normalize(m.name) === normalize(item.name))
-        let managerId = manager?.id || ''
-        const payload = { name: item.name, cargo: item.cargo || null, unit_code: item.unit_code, directory_group: item.directory_group, active: item.active }
-        if (manager) {
-          const { error: updateError } = await supabase.from('managers').update(payload).eq('id', manager.id); if (updateError) throw updateError
-        } else {
-          const { data, error: insertError } = await supabase.from('managers').insert(payload).select('id').single(); if (insertError || !data) throw insertError || new Error('MANAGER_INSERT'); managerId = String(data.id)
-        }
+        const manager = managers.find(m => m.unit_code === item.unit_code && m.directory_group === item.directory_group && normalize(m.name) === normalize(item.name)); let managerId = manager?.id || ''; const payload = { name: item.name, cargo: item.cargo || null, unit_code: item.unit_code, directory_group: item.directory_group, active: item.active }
+        if (manager) { const { error: updateError } = await supabase.from('managers').update(payload).eq('id', manager.id); if (updateError) throw updateError }
+        else { const { data, error: insertError } = await supabase.from('managers').insert(payload).select('id').single(); if (insertError || !data) throw insertError || new Error('MANAGER_INSERT'); managerId = String(data.id) }
         const areaIds = item.areas.map(name => workingManagements.find(a => a.unit_code === item.unit_code && a.directory_group === item.directory_group && normalize(a.name) === normalize(name))?.id).filter((id): id is string => Boolean(id))
         const { error: deleteError } = await supabase.from('manager_managements').delete().eq('manager_id', managerId); if (deleteError) throw deleteError
-        if (areaIds.length) {
-          const { error: linkError } = await supabase.from('manager_managements').insert(areaIds.map(managementId => ({ manager_id: managerId, management_id: managementId }))); if (linkError) throw linkError
-        }
+        if (areaIds.length) { const { error: linkError } = await supabase.from('manager_managements').insert(areaIds.map(managementId => ({ manager_id: managerId, management_id: managementId }))); if (linkError) throw linkError }
         processed += 1
       }
-      await loadCatalogs(); setSelectedUnitCode(parsed[0].unit_code); if (parsed[0].unit_code === 'HU') setSelectedHuGroup(parsed[0].directory_group)
-      setNotice(`Excel importado: ${processed} bonista${processed===1?'':'s'} procesado${processed===1?'':'s'} y ${newAreas} área${newAreas===1?'':'s'} nueva${newAreas===1?'':'s'}.`)
+      await loadCatalogs(); setSelectedUnitCode(parsed[0].unit_code); if (parsed[0].unit_code === 'HU') setSelectedHuGroup(parsed[0].directory_group); setNotice(`Excel importado: ${processed} bonista${processed===1?'':'s'} y ${newAreas} área${newAreas===1?'':'s'} nueva${newAreas===1?'':'s'}.`)
     } catch (e) {
       const message = e instanceof Error ? e.message : ''
-      if (message === 'FORMAT_NOT_FOUND') setError('No encontramos una tabla con columnas Nombre, Cargo y Área. Para Matricial puedes usar UN = “Matricial” o una hoja llamada “Matricial”.')
+      if (message === 'FORMAT_NOT_FOUND') setError('No encontramos una tabla con columnas Nombre, Cargo y Área.')
       else if (message === 'NO_ROWS') setError('El Excel no contiene bonistas.')
       else setError(`No pudimos importar el Excel${message ? `: ${message}` : '.'}`)
     } finally { setImporting(false) }
   }
 
-  const rootUnitClass = `catalog-config--${selectedUnitCode.toLowerCase()}`
-  const groupTitle = selectedUnitCode === 'HU' ? groupLabel(activeGroup) : (selectedUnit?.name || selectedUnitCode)
-
   return (
-    <div className={`catalog-config ${rootUnitClass}`}>
-      <section className="catalog-hero catalog-hero--directory">
-        <div><span className="catalog-kicker">Directorio maestro</span><h2>Bonistas</h2><p>UN identifica la unidad, Cargo indica el puesto y Área alimenta la Gerencia Responsable de los lineamientos.</p></div>
-        <div className="guideline-actions catalog-hero-actions">
+    <div className={`catalog-config catalog-config--${selectedUnitCode.toLowerCase()}`}>
+      <section className="catalog-hero catalog-hero--directory catalog-hero--compact-v2">
+        <div><span className="catalog-kicker">Directorio maestro</span><h2>Bonistas y áreas</h2><p>Administra el directorio de bonistas y, en una sección separada, las áreas que alimentan la planificación.</p></div>
+        <div className="catalog-hero-actions">
           <button className="catalog-template-button" type="button" onClick={() => void downloadTemplate()}><Download size={16}/> Descargar plantilla</button>
           {canManage && <label className={`catalog-template-button catalog-file-button ${importing ? 'disabled' : ''}`}><Upload size={16}/>{importing ? 'Importando...' : 'Importar Excel'}<input type="file" accept=".xlsx,.xls" onChange={importCatalogFromExcel} disabled={importing}/></label>}
-          {canManage && selectedUnitHasData && <button className="catalog-template-button catalog-unit-delete" type="button" onClick={() => setUnitDeleteOpen(true)}><Trash2 size={16}/> Borrar {selectedUnitCode}</button>}
         </div>
       </section>
-
-      <div className="catalog-unit-selector" role="tablist" aria-label="Unidades de negocio">
-        {unitOptions.map(unit => <button key={unit.code} type="button" className={selectedUnitCode === unit.code ? 'active' : ''} onClick={() => chooseUnit(unit.code)}><span>{unit.code}</span><small>{unit.name}</small></button>)}
-      </div>
-
-      {selectedUnitCode === 'HU' && <div className="catalog-hu-groups" role="tablist" aria-label="División de Habilitación Urbana">
-        {huGroups.map(group => <button key={group.code} type="button" className={selectedHuGroup === group.code ? 'active' : ''} onClick={() => chooseHuGroup(group.code)}><strong>{group.short}</strong><small>{group.label}</small></button>)}
-      </div>}
 
       {error && <div className="catalog-message catalog-message--error">{error}</div>}
       {notice && <div className="catalog-message catalog-message--success"><Check size={15}/>{notice}</div>}
 
-      {loading ? <div className="catalog-loading"><LoaderCircle className="spin" size={24}/> Cargando bonistas...</div> : <>
-        <section className="catalog-area-strip">
-          <div className="catalog-area-strip__title"><div><span><Building2 size={17}/></span><div><strong>Áreas de {groupTitle}</strong><small>{selectedManagements.length} registrada{selectedManagements.length===1?'':'s'}</small></div></div>{canManage && <button className="catalog-add" onClick={openNewManagement}><Plus size={15}/> Nueva área</button>}</div>
-          <div className="catalog-area-chips">
-            {selectedManagements.length === 0 ? <span className="catalog-empty-inline">Aún no hay áreas en esta división.</span> : selectedManagements.map(item => <div className={`catalog-area-chip ${!item.active?'inactive':''}`} key={item.id}><span>{item.name}</span>{canManage && <><button type="button" onClick={() => editManagement(item)} title="Editar"><Pencil size={12}/></button><button type="button" className="danger" onClick={() => setDeleteTarget({type:'management',id:item.id,name:item.name})} title="Eliminar"><Trash2 size={12}/></button></>}</div>)}
+      {loading ? <div className="catalog-loading"><LoaderCircle className="spin" size={24}/> Cargando configuración...</div> : <>
+        <section className="catalog-directory-card catalog-directory-card--v2">
+          <div className="catalog-directory-head catalog-directory-head--v2">
+            <div><span className="catalog-directory-kicker">Bonistas</span><h3>{groupTitle}</h3><p>{filteredManagers.length} de {selectedManagers.length} bonistas</p></div>
+            <div className="catalog-directory-head-actions">
+              <label className="catalog-compact-picker"><Building2 size={16}/><span>Bonistas de</span><select value={selectedUnitCode} onChange={event => chooseUnit(event.target.value)}>{unitOptions.map(unit => <option key={unit.code} value={unit.code}>{unit.name}</option>)}</select></label>
+              {selectedUnitCode === 'HU' && <label className="catalog-compact-picker catalog-compact-picker--small"><select value={selectedHuGroup} onChange={event => chooseHuGroup(event.target.value as DirectoryGroup)}>{huGroups.map(group => <option key={group.code} value={group.code}>{group.label}</option>)}</select></label>}
+              {canManage && <button className="catalog-add" onClick={openNewManager}><Plus size={15}/> Nuevo bonista</button>}
+              {canManage && selectedUnitHasData && <button className="catalog-unit-delete-compact" type="button" onClick={() => setUnitDeleteOpen(true)}><Trash2 size={14}/> Borrar unidad</button>}
+            </div>
           </div>
-        </section>
 
-        {managementFormOpen && <form className="catalog-form catalog-inline-editor" onSubmit={saveManagement}>
-          <div className="catalog-form-heading"><div><Building2 size={18}/><span>{editingManagementId?'Editar área':'Nueva área'}</span></div><button type="button" onClick={resetManagementForm}><X size={16}/></button></div>
-          <div className="catalog-form-grid"><label>Área / Gerencia<input autoFocus value={managementName} onChange={e=>setManagementName(e.target.value)} placeholder="Ej. Operaciones"/></label><label>UN<select value={managementUnitCode} onChange={e=>changeManagementUnit(e.target.value)}>{unitOptions.map(unit=><option key={unit.code} value={unit.code}>{unit.name}</option>)}</select></label></div>
-          {managementUnitCode==='HU' && <label>División HU<select value={managementGroup} onChange={e=>setManagementGroup(e.target.value as DirectoryGroup)}>{huGroups.map(group=><option key={group.code} value={group.code}>{group.label}</option>)}</select></label>}
-          <label className="catalog-toggle"><input type="checkbox" checked={managementActive} onChange={e=>setManagementActive(e.target.checked)}/><span>Activo</span></label>
-          <div><button type="button" className="catalog-cancel" onClick={resetManagementForm}>Cancelar</button><button className="catalog-save" disabled={saving||!managementName.trim()}>{saving?<LoaderCircle className="spin" size={14}/>:<Check size={14}/>} Guardar área</button></div>
-        </form>}
+          {managerFormOpen && <form className="catalog-form catalog-inline-editor catalog-form--manager catalog-form--inside-card" onSubmit={saveManager}>
+            <div className="catalog-form-heading"><div><UserRound size={18}/><span>{editingManagerId?'Editar bonista':'Nuevo bonista'}</span></div><button type="button" onClick={() => resetManagerForm()}><X size={16}/></button></div>
+            <div className="catalog-form-grid catalog-form-grid--three"><label>Nombre<input autoFocus value={managerName} onChange={e=>setManagerName(e.target.value)}/></label><label>Cargo<input value={managerCargo} onChange={e=>setManagerCargo(e.target.value)}/></label><label>UN<select value={managerUnitCode} onChange={e=>changeManagerUnit(e.target.value)}>{unitOptions.map(unit=><option key={unit.code} value={unit.code}>{unit.name}</option>)}</select></label></div>
+            {managerUnitCode==='HU' && <label>División HU<select value={managerGroup} onChange={e=>changeManagerGroup(e.target.value as DirectoryGroup)}>{huGroups.map(group=><option key={group.code} value={group.code}>{group.label}</option>)}</select></label>}
+            <fieldset><legend>Área(s) relacionadas</legend><div className="catalog-check-grid">{managerManagementOptions.length===0?<div className="catalog-check-empty">Primero crea un área para esta unidad.</div>:managerManagementOptions.map(item=><label key={item.id} className={managerManagementIds.includes(item.id)?'selected':''}><input type="checkbox" checked={managerManagementIds.includes(item.id)} onChange={()=>toggleManagerManagement(item.id)}/><span>{item.name}</span></label>)}</div></fieldset>
+            <label className="catalog-toggle"><input type="checkbox" checked={managerActive} onChange={e=>setManagerActive(e.target.checked)}/><span>Activo</span></label>
+            <div><button type="button" className="catalog-cancel" onClick={() => resetManagerForm()}>Cancelar</button><button className="catalog-save" disabled={saving||!managerName.trim()||!managerManagementIds.length}>{saving?<LoaderCircle className="spin" size={14}/>:<Check size={14}/>} Guardar bonista</button></div>
+          </form>}
 
-        {managerFormOpen && <form className="catalog-form catalog-inline-editor catalog-form--manager" onSubmit={saveManager}>
-          <div className="catalog-form-heading"><div><UserRound size={18}/><span>{editingManagerId?'Editar bonista':'Nuevo bonista'}</span></div><button type="button" onClick={resetManagerForm}><X size={16}/></button></div>
-          <div className="catalog-form-grid catalog-form-grid--three"><label>Nombre<input autoFocus value={managerName} onChange={e=>setManagerName(e.target.value)}/></label><label>Cargo<input value={managerCargo} onChange={e=>setManagerCargo(e.target.value)}/></label><label>UN<select value={managerUnitCode} onChange={e=>changeManagerUnit(e.target.value)}>{unitOptions.map(unit=><option key={unit.code} value={unit.code}>{unit.name}</option>)}</select></label></div>
-          {managerUnitCode==='HU' && <label>División HU<select value={managerGroup} onChange={e=>changeManagerGroup(e.target.value as DirectoryGroup)}>{huGroups.map(group=><option key={group.code} value={group.code}>{group.label}</option>)}</select></label>}
-          <fieldset><legend>Área(s) relacionadas · {managerUnitCode==='HU'?groupLabel(managerGroup):unitLabel(managerUnitCode)}</legend><div className="catalog-check-grid">{managerManagementOptions.length===0?<div className="catalog-check-empty">Primero crea un área en esta división.</div>:managerManagementOptions.map(item=><label key={item.id} className={managerManagementIds.includes(item.id)?'selected':''}><input type="checkbox" checked={managerManagementIds.includes(item.id)} onChange={()=>toggleManagerManagement(item.id)}/><span>{item.name}</span></label>)}</div></fieldset>
-          <label className="catalog-toggle"><input type="checkbox" checked={managerActive} onChange={e=>setManagerActive(e.target.checked)}/><span>Activo</span></label>
-          <div><button type="button" className="catalog-cancel" onClick={resetManagerForm}>Cancelar</button><button className="catalog-save" disabled={saving||!managerName.trim()||!managerManagementIds.length}>{saving?<LoaderCircle className="spin" size={14}/>:<Check size={14}/>} Guardar bonista</button></div>
-        </form>}
-
-        <section className="catalog-directory-card">
-          <div className="catalog-directory-head"><div><span className="catalog-directory-kicker">Directorio</span><h3>{groupTitle}</h3><p>{filteredManagers.length} de {selectedManagers.length} bonistas</p></div>{canManage&&<button className="catalog-add" onClick={openNewManager}><Plus size={15}/> Nuevo bonista</button>}</div>
           <div className="catalog-directory-filters"><label><Search size={15}/><input value={filterName} onChange={e=>setFilterName(e.target.value)} placeholder="Filtrar por nombre"/></label><label><Search size={15}/><input value={filterCargo} onChange={e=>setFilterCargo(e.target.value)} placeholder="Filtrar por cargo"/></label><label><Building2 size={15}/><select value={filterAreaId} onChange={e=>setFilterAreaId(e.target.value)}><option value="">Todas las áreas</option>{selectedManagements.map(area=><option key={area.id} value={area.id}>{area.name}</option>)}</select></label>{(filterName||filterCargo||filterAreaId)&&<button type="button" className="catalog-clear-filters" onClick={clearFilters}><X size={14}/> Limpiar</button>}</div>
           <div className="catalog-directory-scroll"><table className="catalog-directory-table"><thead><tr><th>Cant.</th><th>UN</th><th>Nombre</th><th>Cargo</th><th>Área</th><th>Estado</th>{canManage&&<th>Acciones</th>}</tr></thead><tbody>
             {filteredManagers.length===0?<tr><td colSpan={canManage?7:6} className="catalog-directory-empty">No hay bonistas que coincidan con esta vista o filtros.</td></tr>:filteredManagers.map((item,index)=>{
@@ -439,11 +272,24 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
             })}
           </tbody></table></div>
         </section>
+
+        <section className="catalog-area-editor-v2">
+          <div className="catalog-area-editor-head-v2"><div><span className="catalog-area-editor-icon-v2"><Building2 size={18}/></span><div><small>Edición de áreas</small><h3>Áreas de {groupTitle}</h3><p>Añade, edita o elimina áreas desde aquí. En Matrices estas áreas se podrán usar de forma transversal.</p></div></div>{canManage && <button className="catalog-add" onClick={openNewManagement}><Plus size={15}/> Nueva área</button>}</div>
+
+          {managementFormOpen && <form className="catalog-form catalog-inline-editor catalog-area-form-v2" onSubmit={saveManagement}>
+            <div className="catalog-form-heading"><div><Building2 size={18}/><span>{editingManagementId?'Editar área':'Nueva área'}</span></div><button type="button" onClick={() => resetManagementForm()}><X size={16}/></button></div>
+            <div className="catalog-form-grid"><label>Área / Gerencia<input autoFocus value={managementName} onChange={e=>setManagementName(e.target.value)} placeholder="Ej. Operaciones"/></label><label>UN<select value={managementUnitCode} onChange={e=>changeManagementUnit(e.target.value)}>{unitOptions.map(unit=><option key={unit.code} value={unit.code}>{unit.name}</option>)}</select></label></div>
+            {managementUnitCode==='HU' && <label>División HU<select value={managementGroup} onChange={e=>setManagementGroup(e.target.value as DirectoryGroup)}>{huGroups.map(group=><option key={group.code} value={group.code}>{group.label}</option>)}</select></label>}
+            <label className="catalog-toggle"><input type="checkbox" checked={managementActive} onChange={e=>setManagementActive(e.target.checked)}/><span>Activo</span></label>
+            <div><button type="button" className="catalog-cancel" onClick={() => resetManagementForm()}>Cancelar</button><button className="catalog-save" disabled={saving||!managementName.trim()}>{saving?<LoaderCircle className="spin" size={14}/>:<Check size={14}/>} Guardar área</button></div>
+          </form>}
+
+          <div className="catalog-area-list-v2">{selectedManagements.length === 0 ? <div className="catalog-area-empty-v2">Aún no hay áreas en esta unidad.</div> : selectedManagements.map(item => <div className={`catalog-area-row-v2 ${!item.active?'inactive':''}`} key={item.id}><div><span className="catalog-area-dot-v2"/><strong>{item.name}</strong><small>{item.active?'Activa':'Inactiva'}</small></div>{canManage && <div><button type="button" onClick={() => editManagement(item)} title="Editar"><Pencil size={14}/></button><button type="button" className="danger" onClick={() => setDeleteTarget({type:'management',id:item.id,name:item.name})} title="Eliminar"><Trash2 size={14}/></button></div>}</div>)}</div>
+        </section>
       </>}
 
-      {deleteTarget&&<div className="cg-modal-backdrop" role="presentation" onMouseDown={event=>{if(event.currentTarget===event.target&&!deleting)setDeleteTarget(null)}}><div className="cg-confirm-dialog" role="dialog" aria-modal="true"><button className="cg-modal-close" type="button" onClick={()=>setDeleteTarget(null)} disabled={deleting}><X size={18}/></button><div className="cg-confirm-icon"><Trash2 size={23}/></div><h3>¿Eliminar {deleteTarget.type==='manager'?'bonista':'área'}?</h3><p>Se eliminará “{deleteTarget.name}”. Los lineamientos se conservarán y se limpiarán las relaciones que correspondan.</p><div className="cg-modal-actions"><button type="button" className="cg-modal-secondary" onClick={()=>setDeleteTarget(null)} disabled={deleting}>Cancelar</button><button type="button" className="cg-modal-primary cg-modal-danger" onClick={()=>void deleteSelected()} disabled={deleting}>{deleting&&<LoaderCircle className="spin" size={16}/>} Sí, eliminar</button></div></div></div>}
-
-      {unitDeleteOpen&&<div className="cg-modal-backdrop" role="presentation" onMouseDown={event=>{if(event.currentTarget===event.target&&!unitDeleting)setUnitDeleteOpen(false)}}><div className="cg-confirm-dialog" role="dialog" aria-modal="true"><button className="cg-modal-close" type="button" onClick={()=>setUnitDeleteOpen(false)} disabled={unitDeleting}><X size={18}/></button><div className="cg-confirm-icon"><Trash2 size={23}/></div><h3>¿Borrar todo de {selectedUnit?.name || selectedUnitCode}?</h3><p>{selectedUnitCode==='HU'?'Se eliminarán todas las áreas y bonistas de HU y Matricial.':'Se eliminarán todas las áreas y bonistas de esta unidad.'} Los lineamientos se conservarán, pero quedarán sin Gerencia Responsable ni Gerente Responsable en esta unidad.</p><div className="cg-modal-actions"><button type="button" className="cg-modal-secondary" onClick={()=>setUnitDeleteOpen(false)} disabled={unitDeleting}>Cancelar</button><button type="button" className="cg-modal-primary cg-modal-danger" onClick={()=>void deleteSelectedUnit()} disabled={unitDeleting}>{unitDeleting&&<LoaderCircle className="spin" size={16}/>} Sí, borrar unidad</button></div></div></div>}
+      {deleteTarget&&<div className="cg-modal-backdrop" role="presentation" onMouseDown={event=>{if(event.currentTarget===event.target&&!deleting)setDeleteTarget(null)}}><div className="cg-confirm-dialog" role="dialog" aria-modal="true"><button className="cg-modal-close" type="button" onClick={()=>setDeleteTarget(null)} disabled={deleting}><X size={18}/></button><div className="cg-confirm-icon"><Trash2 size={23}/></div><h3>¿Eliminar {deleteTarget.type==='manager'?'bonista':'área'}?</h3><p>Se eliminará “{deleteTarget.name}”. Las matrices y lineamientos existentes se conservarán.</p><div className="cg-modal-actions"><button type="button" className="cg-modal-secondary" onClick={()=>setDeleteTarget(null)} disabled={deleting}>Cancelar</button><button type="button" className="cg-modal-primary cg-modal-danger" onClick={()=>void deleteSelected()} disabled={deleting}>{deleting&&<LoaderCircle className="spin" size={16}/>} Sí, eliminar</button></div></div></div>}
+      {unitDeleteOpen&&<div className="cg-modal-backdrop" role="presentation" onMouseDown={event=>{if(event.currentTarget===event.target&&!unitDeleting)setUnitDeleteOpen(false)}}><div className="cg-confirm-dialog" role="dialog" aria-modal="true"><button className="cg-modal-close" type="button" onClick={()=>setUnitDeleteOpen(false)} disabled={unitDeleting}><X size={18}/></button><div className="cg-confirm-icon"><Trash2 size={23}/></div><h3>¿Borrar todo de {selectedUnit?.name || selectedUnitCode}?</h3><p>{selectedUnitCode==='HU'?'Se eliminarán las áreas y bonistas de HU y Matricial.':'Se eliminarán las áreas y bonistas de esta unidad.'}</p><div className="cg-modal-actions"><button type="button" className="cg-modal-secondary" onClick={()=>setUnitDeleteOpen(false)} disabled={unitDeleting}>Cancelar</button><button type="button" className="cg-modal-primary cg-modal-danger" onClick={()=>void deleteSelectedUnit()} disabled={unitDeleting}>{unitDeleting&&<LoaderCircle className="spin" size={16}/>} Sí, borrar unidad</button></div></div></div>}
     </div>
   )
 }
