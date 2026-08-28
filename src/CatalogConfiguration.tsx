@@ -9,6 +9,7 @@ type DirectoryGroup = 'GENERAL' | 'HU' | 'MATRICIAL_HU_VS'
 type Management = { id: string; name: string; unit_code: string; directory_group: DirectoryGroup; active: boolean }
 type Manager = { id: string; name: string; cargo: string | null; unit_code: string; directory_group: DirectoryGroup; active: boolean }
 type ManagerManagement = { manager_id: string; management_id: string }
+type MatrixUnitArea = { unit_code: string; management_id: string }
 type Props = { units?: Unit[]; canManage: boolean }
 type DeleteTarget = { id: string; name: string } | null
 
@@ -64,9 +65,12 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
   const [managements, setManagements] = useState<Management[]>([])
   const [managers, setManagers] = useState<Manager[]>([])
   const [links, setLinks] = useState<ManagerManagement[]>([])
-  const [matrixCatalogIds, setMatrixCatalogIds] = useState<string[]>([])
+  const [matrixUnitAreas, setMatrixUnitAreas] = useState<MatrixUnitArea[]>([])
+
   const [selectedUnitCode, setSelectedUnitCode] = useState(defaultUnitCode)
   const [selectedHuGroup, setSelectedHuGroup] = useState<DirectoryGroup>('HU')
+  const [matrixTargetUnitCode, setMatrixTargetUnitCode] = useState(defaultUnitCode)
+
   const [bonistasOpen, setBonistasOpen] = useState(true)
   const [areasOpen, setAreasOpen] = useState(true)
   const [loading, setLoading] = useState(true)
@@ -78,10 +82,12 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
   const [unitDeleteOpen, setUnitDeleteOpen] = useState(false)
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
+
   const [filterName, setFilterName] = useState('')
   const [filterCargo, setFilterCargo] = useState('')
   const [filterAreaId, setFilterAreaId] = useState('')
   const [areaSearch, setAreaSearch] = useState('')
+
   const [managerFormOpen, setManagerFormOpen] = useState(false)
   const [editingManagerId, setEditingManagerId] = useState<string | null>(null)
   const [managerName, setManagerName] = useState('')
@@ -92,7 +98,9 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
   const unitByCode = useMemo(() => new Map(unitOptions.map(unit => [unit.code, unit.name])), [unitOptions])
   const managementById = useMemo(() => new Map(managements.map(item => [item.id, item])), [managements])
   const selectedUnit = unitOptions.find(unit => unit.code === selectedUnitCode) || unitOptions[0]
+  const matrixTargetUnit = unitOptions.find(unit => unit.code === matrixTargetUnitCode) || unitOptions[0]
   const activeGroup: DirectoryGroup = selectedUnitCode === 'HU' ? selectedHuGroup : 'GENERAL'
+
   const selectedManagements = useMemo(
     () => managements.filter(item => item.unit_code === selectedUnitCode && item.directory_group === activeGroup),
     [managements, selectedUnitCode, activeGroup],
@@ -109,28 +117,32 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
     return true
   }), [selectedManagers, links, filterName, filterCargo, filterAreaId])
 
-  const matrixCatalogNames = useMemo(() => {
-    const names = new Set<string>()
-    matrixCatalogIds.forEach(id => {
-      const area = managementById.get(id)
-      if (area) names.add(normalize(area.name))
-    })
-    return names
-  }, [matrixCatalogIds, managementById])
-
-  const filteredSourceAreas = useMemo(() => {
+  const allUniqueAreas = useMemo(() => {
     const unique = new Map<string, Management>()
-    selectedManagements.filter(item => item.active).forEach(item => {
+    managements.filter(item => item.active).forEach(item => {
       const key = normalize(item.name)
-      if (!unique.has(key)) unique.set(key, item)
+      const current = unique.get(key)
+      if (!current || item.unit_code === 'CENTRAL') unique.set(key, item)
     })
     const term = normalize(areaSearch)
     return [...unique.values()]
       .filter(item => !term || normalize(item.name).includes(term))
       .sort((a, b) => a.name.localeCompare(b.name, 'es'))
-  }, [selectedManagements, areaSearch])
+  }, [managements, areaSearch])
 
-  const visibleMatrixAreaCount = matrixCatalogNames.size
+  const matrixEnabledIds = useMemo(
+    () => new Set(matrixUnitAreas.filter(item => item.unit_code === matrixTargetUnitCode).map(item => item.management_id)),
+    [matrixUnitAreas, matrixTargetUnitCode],
+  )
+  const matrixEnabledNames = useMemo(() => {
+    const names = new Set<string>()
+    matrixEnabledIds.forEach(id => {
+      const area = managementById.get(id)
+      if (area) names.add(normalize(area.name))
+    })
+    return names
+  }, [matrixEnabledIds, managementById])
+
   const selectedUnitHasData = selectedManagers.length > 0 || selectedManagements.length > 0
 
   useEffect(() => { void loadCatalogs() }, [])
@@ -142,7 +154,7 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
       supabase.from('managements_global').select('id,name,unit_code,directory_group,active').order('unit_code').order('directory_group').order('name'),
       supabase.from('managers').select('id,name,cargo,unit_code,directory_group,active').order('unit_code').order('directory_group').order('name'),
       supabase.from('manager_managements').select('manager_id,management_id'),
-      supabase.from('matrix_area_catalog').select('management_id').order('created_at'),
+      supabase.from('matrix_unit_area_catalog').select('unit_code,management_id').order('unit_code').order('created_at'),
     ])
     setLoading(false)
     if (managementResult.error || managerResult.error || linkResult.error || matrixAreaResult.error) {
@@ -151,7 +163,7 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
     setManagements((managementResult.data || []) as Management[])
     setManagers((managerResult.data || []) as Manager[])
     setLinks((linkResult.data || []) as ManagerManagement[])
-    setMatrixCatalogIds((matrixAreaResult.data || []).map(item => String(item.management_id)))
+    setMatrixUnitAreas((matrixAreaResult.data || []) as MatrixUnitArea[])
   }
 
   function unitLabel(code: string) { return unitByCode.get(code) || code }
@@ -162,7 +174,7 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
   function chooseUnit(code: string) {
     setSelectedUnitCode(code)
     if (code !== 'HU') setSelectedHuGroup('HU')
-    setAreaSearch(''); setFilterName(''); setFilterCargo(''); setFilterAreaId(''); setError(''); setNotice('')
+    setFilterName(''); setFilterCargo(''); setFilterAreaId(''); setError(''); setNotice('')
   }
   function resolveLocation(unitValue: string, groupValue = '') {
     const raw = normalizeHeader(unitValue), groupRaw = normalizeHeader(groupValue)
@@ -211,10 +223,7 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
       management_ids_input: managerManagementIds,
     })
     setSaving(false)
-    if (saveError) {
-      setError(`No pudimos guardar el bonista: ${saveError.message}`)
-      return
-    }
+    if (saveError) { setError(`No pudimos guardar el bonista: ${saveError.message}`); return }
     closeManagerForm(); setNotice(editingManagerId ? 'Bonista actualizado correctamente.' : 'Bonista creado correctamente.')
     await loadCatalogs()
   }
@@ -237,28 +246,28 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
     setUnitDeleteOpen(false); setNotice(`Directorio de ${selectedUnit?.name || selectedUnitCode} borrado.`); await loadCatalogs()
   }
 
-  async function addAreaToMatrices(area: Management) {
+  async function activateAreaForMatrices(area: Management) {
     if (!supabase || !canManage) return
-    if (matrixCatalogNames.has(normalize(area.name))) {
-      setNotice(`El área “${area.name}” ya está visible en Matrices.`); return
+    if (matrixEnabledNames.has(normalize(area.name))) {
+      setNotice(`“${area.name}” ya está activa para ${matrixTargetUnit?.name || matrixTargetUnitCode}.`); return
     }
     setSaving(true); setError(''); setNotice('')
-    const { error: insertError } = await supabase.from('matrix_area_catalog').insert({ management_id: area.id })
+    const { error: insertError } = await supabase.from('matrix_unit_area_catalog').insert({ unit_code: matrixTargetUnitCode, management_id: area.id })
     setSaving(false)
-    if (insertError) { setError('No pudimos añadir el área a Matrices.'); return }
-    setNotice(`“${area.name}” ahora aparecerá en Matrices.`)
+    if (insertError) { setError('No pudimos activar el área para esta unidad.'); return }
+    setNotice(`“${area.name}” quedó activa para Matrices de ${matrixTargetUnit?.name || matrixTargetUnitCode}.`)
     await loadCatalogs()
   }
 
-  async function removeAreaFromMatrices(area: Management) {
+  async function deactivateAreaForMatrices(area: Management) {
     if (!supabase || !canManage) return
-    const matchingId = matrixCatalogIds.find(id => normalize(managementById.get(id)?.name || '') === normalize(area.name))
-    if (!matchingId) return
+    const matching = matrixUnitAreas.find(item => item.unit_code === matrixTargetUnitCode && normalize(managementById.get(item.management_id)?.name || '') === normalize(area.name))
+    if (!matching) return
     setSaving(true); setError(''); setNotice('')
-    const { error: deleteError } = await supabase.from('matrix_area_catalog').delete().eq('management_id', matchingId)
+    const { error: deleteError } = await supabase.from('matrix_unit_area_catalog').delete().eq('unit_code', matrixTargetUnitCode).eq('management_id', matching.management_id)
     setSaving(false)
-    if (deleteError) { setError('No pudimos quitar el área de Matrices.'); return }
-    setNotice(`“${area.name}” ya no aparecerá para crear nuevas matrices. Los Bonistas no fueron modificados.`)
+    if (deleteError) { setError('No pudimos quitar el área de esta unidad.'); return }
+    setNotice(`“${area.name}” ya no aparecerá en Matrices de ${matrixTargetUnit?.name || matrixTargetUnitCode}. Los Bonistas no fueron modificados.`)
     await loadCatalogs()
   }
 
@@ -288,9 +297,7 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
       const XLSX = await import(/* @vite-ignore */ XLSX_MODULE_URL)
       const workbook = XLSX.read(await file.arrayBuffer(), { type:'array' })
       const rows: Record<string, unknown>[] = []
-      workbook.SheetNames.forEach(sheetName => {
-        rows.push(...recordsFromDetectedHeader(XLSX, workbook.Sheets[sheetName]).map(row => ({ ...row, __sheetName: sheetName })))
-      })
+      workbook.SheetNames.forEach(sheetName => rows.push(...recordsFromDetectedHeader(XLSX, workbook.Sheets[sheetName]).map(row => ({ ...row, __sheetName: sheetName }))))
       if (!rows.length) throw new Error('FORMAT_NOT_FOUND')
 
       const parsed = rows.map((row,index) => {
@@ -304,8 +311,8 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
           active:parseActive(valueFromRow(row,['Estado','Estatus','Activo']) || 'Activo'),
         }
       }).filter(item => item.name)
-
       if (!parsed.length) throw new Error('NO_ROWS')
+
       const validationErrors:string[]=[]
       parsed.forEach(item => {
         if(!item.unit_code) validationErrors.push(`Fila ${item.row}: UN no válida.`)
@@ -316,7 +323,6 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
       const working = [...managements]
       let newAreas = 0
       let processed = 0
-
       for(const item of parsed){
         for(const areaName of item.areas){
           let area = working.find(a => a.unit_code===item.unit_code && a.directory_group===item.directory_group && normalize(a.name)===normalize(areaName))
@@ -327,7 +333,6 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
           }
         }
       }
-
       for(const item of parsed){
         const existing = managers.find(m => m.unit_code===item.unit_code && m.directory_group===item.directory_group && normalize(m.name)===normalize(item.name))
         const areaIds = item.areas.map(name => working.find(a => a.unit_code===item.unit_code && a.directory_group===item.directory_group && normalize(a.name)===normalize(name))?.id).filter((id):id is string => Boolean(id))
@@ -347,7 +352,7 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
       await loadCatalogs()
       setSelectedUnitCode(parsed[0].unit_code)
       if(parsed[0].unit_code==='HU') setSelectedHuGroup(parsed[0].directory_group)
-      setNotice(`Excel importado: ${processed} bonista${processed===1?'':'s'} y ${newAreas} área${newAreas===1?'':'s'} nueva${newAreas===1?'':'s'}. Las áreas nuevas no se activan en Matrices hasta que las selecciones abajo.`)
+      setNotice(`Excel importado: ${processed} bonista${processed===1?'':'s'} y ${newAreas} área${newAreas===1?'':'s'} nueva${newAreas===1?'':'s'}. Luego activa abajo qué áreas verá cada unidad en Matrices.`)
     } catch(e){
       const message=e instanceof Error?e.message:''
       setError(message==='FORMAT_NOT_FOUND'?'No encontramos una tabla con columnas Nombre, Cargo y Área.':message==='NO_ROWS'?'El Excel no contiene bonistas.':`No pudimos importar el Excel${message?`: ${message}`:'.'}`)
@@ -356,12 +361,17 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
 
   const groupTitle = selectedUnitCode === 'HU' ? groupLabel(activeGroup) : (selectedUnit?.name || selectedUnitCode)
   const rootUnitClass = `catalog-config--${selectedUnitCode.toLowerCase()}`
-  const unitSelector = <>
+
+  const bonistaUnitSelector = <>
     <div className="catalog-unit-selector compact" role="tablist">
       {unitOptions.map(unit => <button key={unit.code} type="button" className={selectedUnitCode===unit.code?'active':''} onClick={()=>chooseUnit(unit.code)}><span>{unit.code}</span><small>{unit.name}</small></button>)}
     </div>
-    {selectedUnitCode==='HU'&&<div className="catalog-hu-groups compact">{huGroups.map(group=><button key={group.code} type="button" className={selectedHuGroup===group.code?'active':''} onClick={()=>{setSelectedHuGroup(group.code);setAreaSearch('');setFilterAreaId('')}}><strong>{group.short}</strong><small>{group.label}</small></button>)}</div>}
+    {selectedUnitCode==='HU'&&<div className="catalog-hu-groups compact">{huGroups.map(group=><button key={group.code} type="button" className={selectedHuGroup===group.code?'active':''} onClick={()=>{setSelectedHuGroup(group.code);setFilterAreaId('')}}><strong>{group.short}</strong><small>{group.label}</small></button>)}</div>}
   </>
+
+  const matrixUnitSelector = <div className="catalog-unit-selector compact" role="tablist">
+    {unitOptions.map(unit => <button key={unit.code} type="button" className={matrixTargetUnitCode===unit.code?'active':''} onClick={()=>{setMatrixTargetUnitCode(unit.code);setAreaSearch('');setError('');setNotice('')}}><span>{unit.code}</span><small>{unit.name}</small></button>)}
+  </div>
 
   return <div className={`catalog-config ${rootUnitClass}`}>
     {error&&<div className="catalog-message catalog-message--error">{error}</div>}
@@ -371,12 +381,12 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
       <section className={`config-accordion ${bonistasOpen?'open':''}`}>
         <button className="config-accordion-head" type="button" onClick={()=>setBonistasOpen(value=>!value)}>
           <span className="config-accordion-icon"><UserRound size={21}/></span>
-          <div><small>Directorio maestro</small><h2>Bonistas</h2><p>Este directorio conserva las áreas reales de cada bonista.</p></div>
+          <div><small>Directorio maestro</small><h2>Bonistas</h2><p>Este directorio conserva las áreas reales de cada bonista y no depende de Matrices.</p></div>
           <ChevronDown className={bonistasOpen?'rotated':''} size={20}/>
         </button>
 
         {bonistasOpen&&<div className="config-accordion-body">
-          {unitSelector}
+          {bonistaUnitSelector}
           <div className="catalog-toolbar">
             <div><strong>{groupTitle}</strong><small>{selectedManagers.length} bonistas registrados</small></div>
             <div>
@@ -405,29 +415,31 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
       <section className={`config-accordion ${areasOpen?'open':''}`}>
         <button className="config-accordion-head" type="button" onClick={()=>setAreasOpen(value=>!value)}>
           <span className="config-accordion-icon"><Building2 size={21}/></span>
-          <div><small>Configuración de matrices</small><h2>Áreas visibles en Matrices</h2><p>Esta sección es independiente del directorio de Bonistas.</p></div>
+          <div><small>Configuración de matrices</small><h2>Activar áreas por unidad</h2><p>Aquí eliges qué áreas transversales aparecerán en Matrices para cada unidad.</p></div>
           <ChevronDown className={areasOpen?'rotated':''} size={20}/>
         </button>
 
         {areasOpen&&<div className="config-accordion-body matrix-area-config-body">
-          {unitSelector}
+          {matrixUnitSelector}
           <div className="matrix-area-config-info">
-            <div><strong>Áreas de origen: {groupTitle}</strong><small>Se toman de la columna Área de tus Bonistas. Quitar un área aquí NO modifica ningún Bonista.</small></div>
-            <span>{visibleMatrixAreaCount} área{visibleMatrixAreaCount===1?'':'s'} visible{visibleMatrixAreaCount===1?'':'s'} en Matrices</span>
+            <div><strong>Áreas para {matrixTargetUnit?.name || matrixTargetUnitCode}</strong><small>Abajo aparecen TODAS las áreas de la empresa. Activa solo las que quieras ver en Matrices de esta unidad. Esto no modifica Bonistas.</small></div>
+            <span>{matrixEnabledNames.size} activa{matrixEnabledNames.size===1?'':'s'}</span>
           </div>
 
-          <div className="area-editor-toolbar"><label><Search size={16}/><input value={areaSearch} onChange={event=>setAreaSearch(event.target.value)} placeholder="Buscar área..."/></label></div>
+          <div className="area-editor-toolbar"><label><Search size={16}/><input value={areaSearch} onChange={event=>setAreaSearch(event.target.value)} placeholder="Buscar entre todas las áreas..."/></label></div>
 
           <div className="matrix-area-source-grid">
-            {filteredSourceAreas.length===0 ? <div className="catalog-empty">No hay áreas cargadas en los Bonistas de esta unidad/división.</div> : filteredSourceAreas.map(area=>{
-              const visible = matrixCatalogNames.has(normalize(area.name))
-              return <div className={`matrix-area-source-card ${visible?'visible':''}`} key={area.id}>
+            {allUniqueAreas.length===0 ? <div className="catalog-empty">No hay áreas cargadas todavía en el directorio de Bonistas.</div> : allUniqueAreas.map(area=>{
+              const enabled = matrixEnabledNames.has(normalize(area.name))
+              const origins = managements.filter(item => item.active && normalize(item.name)===normalize(area.name)).map(item => item.directory_group==='MATRICIAL_HU_VS'?'Matricial':unitLabel(item.unit_code))
+              const uniqueOrigins = [...new Set(origins)]
+              return <div className={`matrix-area-source-card ${enabled?'visible':''}`} key={area.id}>
                 <span className="matrix-area-source-icon"><Building2 size={18}/></span>
-                <div><strong>{area.name}</strong><small>{groupTitle}</small></div>
-                <span className={`matrix-area-visibility ${visible?'on':'off'}`}>{visible?'Visible en Matrices':'No visible'}</span>
-                {canManage && (visible
-                  ? <button className="matrix-area-toggle remove" type="button" disabled={saving} onClick={()=>void removeAreaFromMatrices(area)}><X size={14}/> Quitar de Matrices</button>
-                  : <button className="matrix-area-toggle add" type="button" disabled={saving} onClick={()=>void addAreaToMatrices(area)}><Plus size={14}/> Añadir a Matrices</button>)}
+                <div><strong>{area.name}</strong><small>Origen: {uniqueOrigins.join(' · ')}</small></div>
+                <span className={`matrix-area-visibility ${enabled?'on':'off'}`}>{enabled?'Activa':'No activa'}</span>
+                {canManage && (enabled
+                  ? <button className="matrix-area-toggle remove" type="button" disabled={saving} onClick={()=>void deactivateAreaForMatrices(area)}><X size={14}/> Quitar</button>
+                  : <button className="matrix-area-toggle add" type="button" disabled={saving} onClick={()=>void activateAreaForMatrices(area)}><Plus size={14}/> Activar área</button>)}
               </div>
             })}
           </div>
@@ -446,8 +458,8 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
       <div><button type="button" className="catalog-cancel" onClick={closeManagerForm}>Cancelar</button><button className="catalog-save" disabled={saving||!managerName.trim()||!managerManagementIds.length}>{saving?<LoaderCircle className="spin" size={14}/>:<Check size={14}/>} Guardar bonista</button></div>
     </form></div>}
 
-    {deleteTarget&&<div className="cg-modal-backdrop"><div className="cg-confirm-dialog"><button className="cg-modal-close" onClick={()=>setDeleteTarget(null)} disabled={deleting}><X size={18}/></button><div className="cg-confirm-icon"><Trash2 size={23}/></div><h3>¿Eliminar bonista?</h3><p>Se eliminará “{deleteTarget.name}”. Sus áreas del catálogo no se eliminarán.</p><div className="cg-modal-actions"><button className="cg-modal-secondary" onClick={()=>setDeleteTarget(null)} disabled={deleting}>Cancelar</button><button className="cg-modal-primary cg-modal-danger" onClick={()=>void deleteSelectedManager()} disabled={deleting}>{deleting&&<LoaderCircle className="spin" size={16}/>} Sí, eliminar</button></div></div></div>}
+    {deleteTarget&&<div className="cg-modal-backdrop"><div className="cg-confirm-dialog"><button className="cg-modal-close" onClick={()=>setDeleteTarget(null)} disabled={deleting}><X size={18}/></button><div className="cg-confirm-icon"><Trash2 size={23}/></div><h3>¿Eliminar bonista?</h3><p>Se eliminará “{deleteTarget.name}”. Sus áreas base no se eliminan.</p><div className="cg-modal-actions"><button className="cg-modal-secondary" onClick={()=>setDeleteTarget(null)} disabled={deleting}>Cancelar</button><button className="cg-modal-primary cg-modal-danger" onClick={()=>void deleteSelectedManager()} disabled={deleting}>{deleting&&<LoaderCircle className="spin" size={16}/>} Sí, eliminar</button></div></div></div>}
 
-    {unitDeleteOpen&&<div className="cg-modal-backdrop"><div className="cg-confirm-dialog"><button className="cg-modal-close" onClick={()=>setUnitDeleteOpen(false)}><X size={18}/></button><div className="cg-confirm-icon"><Trash2 size={23}/></div><h3>¿Borrar {selectedUnit?.name}?</h3><p>Este botón pertenece al directorio de Bonistas: elimina los Bonistas y sus áreas base de esa unidad. No uses este botón para ocultar áreas de Matrices.</p><div className="cg-modal-actions"><button className="cg-modal-secondary" onClick={()=>setUnitDeleteOpen(false)}>Cancelar</button><button className="cg-modal-primary cg-modal-danger" onClick={()=>void deleteSelectedUnit()} disabled={unitDeleting}>{unitDeleting&&<LoaderCircle className="spin" size={16}/>} Sí, borrar</button></div></div></div>}
+    {unitDeleteOpen&&<div className="cg-modal-backdrop"><div className="cg-confirm-dialog"><button className="cg-modal-close" onClick={()=>setUnitDeleteOpen(false)}><X size={18}/></button><div className="cg-confirm-icon"><Trash2 size={23}/></div><h3>¿Borrar {selectedUnit?.name}?</h3><p>Este botón pertenece únicamente al directorio de Bonistas y sus áreas base de esa unidad. La configuración de Matrices es independiente.</p><div className="cg-modal-actions"><button className="cg-modal-secondary" onClick={()=>setUnitDeleteOpen(false)}>Cancelar</button><button className="cg-modal-primary cg-modal-danger" onClick={()=>void deleteSelectedUnit()} disabled={unitDeleting}>{unitDeleting&&<LoaderCircle className="spin" size={16}/>} Sí, borrar</button></div></div></div>}
   </div>
 }
