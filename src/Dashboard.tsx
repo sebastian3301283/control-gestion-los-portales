@@ -21,12 +21,13 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  Trash2,
   Upload,
-  Users,
   X,
 } from 'lucide-react'
 import { supabase } from './lib/supabase'
 import GuidelineGrid from './GuidelineGrid'
+import CatalogConfiguration from './CatalogConfiguration'
 import './dashboard.css'
 import './planning.css'
 import './interaction-fixes.css'
@@ -64,6 +65,11 @@ type Guideline = {
   active: boolean
 }
 
+type Management = { id: string; name: string; active: boolean }
+type Manager = { id: string; name: string; email: string | null; active: boolean }
+type ManagerManagement = { manager_id: string; management_id: string }
+type UnitCatalog = { managements: Management[]; managers: Manager[]; links: ManagerManagement[] }
+
 type Section = 'inicio' | 'planificacion' | 'configuracion' | 'reportes'
 type PlanningStep = 'periods' | 'units' | 'guidelines'
 
@@ -80,6 +86,7 @@ type ConfirmDialogProps = {
   confirmText: string
   cancelText?: string
   busy?: boolean
+  danger?: boolean
   onCancel: () => void
   onConfirm: () => void | Promise<void>
 }
@@ -94,6 +101,7 @@ const sectionLabels: Record<Section, string> = {
 const unitOrder: UnitAccess['code'][] = ['CENTRAL', 'HU', 'DEP', 'VS', 'HOT']
 const XLSX_MODULE_URL = 'https://unpkg.com/xlsx@0.18.5/xlsx.mjs'
 const richFonts = ['Arial', 'Calibri', 'Verdana', 'Georgia', 'Times New Roman']
+const validStatuses = new Set(['pendiente', 'enviado', 'observado', 'aprobado'])
 
 async function loadSpreadsheetLibrary() {
   return import(/* @vite-ignore */ XLSX_MODULE_URL)
@@ -107,11 +115,39 @@ function normalizeHeader(value: unknown) {
     .replace(/[^a-z0-9]/g, '')
 }
 
+function normalizeCatalogName(value: string) {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
 function splitChoiceValues(value: string | null | undefined) {
   return String(value || '')
     .split(/\s*(?:\/|;|\||\n)\s*/g)
     .map(item => item.trim())
     .filter(Boolean)
+}
+
+function levenshtein(a: string, b: string) {
+  const rows = b.length + 1
+  const cols = a.length + 1
+  const matrix = Array.from({ length: rows }, () => Array(cols).fill(0))
+  for (let i = 0; i < rows; i += 1) matrix[i][0] = i
+  for (let j = 0; j < cols; j += 1) matrix[0][j] = j
+  for (let i = 1; i < rows; i += 1) {
+    for (let j = 1; j < cols; j += 1) {
+      matrix[i][j] = b[i - 1] === a[j - 1]
+        ? matrix[i - 1][j - 1]
+        : Math.min(matrix[i - 1][j - 1], matrix[i][j - 1], matrix[i - 1][j]) + 1
+    }
+  }
+  return matrix[rows - 1][cols - 1]
+}
+
+function closestOption(value: string, options: string[]) {
+  if (!options.length) return ''
+  const target = normalizeCatalogName(value)
+  const ranked = options.map(option => ({ option, distance: levenshtein(target, normalizeCatalogName(option)) })).sort((a, b) => a.distance - b.distance)
+  const best = ranked[0]
+  return best && best.distance <= Math.max(2, Math.floor(target.length * .3)) ? best.option : ''
 }
 
 function safeImportedSpanStyle(element: HTMLElement) {
@@ -147,18 +183,18 @@ function cleanImportedRichHtml(html: string | null | undefined) {
   return formatted ? doc.body.innerHTML : null
 }
 
-function ConfirmDialog({ open, title, message, confirmText, cancelText = 'Cancelar', busy = false, onCancel, onConfirm }: ConfirmDialogProps) {
+function ConfirmDialog({ open, title, message, confirmText, cancelText = 'Cancelar', busy = false, danger = false, onCancel, onConfirm }: ConfirmDialogProps) {
   if (!open) return null
   return (
     <div className="cg-modal-backdrop" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target && !busy) onCancel() }}>
       <div className="cg-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="cg-confirm-title">
         <button className="cg-modal-close" type="button" onClick={onCancel} disabled={busy} aria-label="Cerrar"><X size={18}/></button>
-        <div className="cg-confirm-icon"><LogOut size={23}/></div>
+        <div className="cg-confirm-icon">{danger ? <Trash2 size={23}/> : <LogOut size={23}/>}</div>
         <h3 id="cg-confirm-title">{title}</h3>
         <p>{message}</p>
         <div className="cg-modal-actions">
           <button type="button" className="cg-modal-secondary" onClick={onCancel} disabled={busy}>{cancelText}</button>
-          <button type="button" className="cg-modal-primary" onClick={() => void onConfirm()} disabled={busy}>{busy && <LoaderCircle className="spin" size={16}/>} {confirmText}</button>
+          <button type="button" className={`cg-modal-primary ${danger ? 'cg-modal-danger' : ''}`} onClick={() => void onConfirm()} disabled={busy}>{busy && <LoaderCircle className="spin" size={16}/>} {confirmText}</button>
         </div>
       </div>
     </div>
@@ -294,7 +330,7 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
             <>
               <div className="page-heading compact-heading"><div><span className="page-kicker">{sectionLabels[section]}</span><h1>{sectionLabels[section]}</h1><p>{sectionDescription(section)}</p></div></div>
               {section === 'planificacion' && <PlanningView key={planningEntry ? `${planningEntry.year}-${planningEntry.unitCode}-${planningEntry.token}` : 'planning-default'} access={access} units={units} initialYear={planningEntry?.year} initialUnitCode={planningEntry?.unitCode} onPeriodsChanged={loadDashboardPeriods} />}
-              {section === 'configuracion' && <ConfigurationView />}
+              {section === 'configuracion' && <ConfigurationView access={access} units={units} />}
               {section === 'reportes' && <ReportsView />}
             </>
           )}
@@ -331,7 +367,7 @@ function HomeView({ access, displayName, today, units, selectedUnit, selectedHom
         <div className="section-title-row"><div><span>Accesos rápidos</span><h2>¿Qué quieres hacer?</h2></div></div>
         <div className="friendly-actions">
           <button className="friendly-action friendly-action--planning" onClick={() => navigate('planificacion')}><span className="friendly-action__icon"><ClipboardList size={25}/></span><span className="friendly-action__copy"><strong>Planificar</strong><small>Periodos y lineamientos</small></span><ArrowRight size={19}/></button>
-          <button className="friendly-action friendly-action--settings" onClick={() => navigate('configuracion')}><span className="friendly-action__icon"><SlidersHorizontal size={25}/></span><span className="friendly-action__copy"><strong>Configurar</strong><small>Usuarios y accesos</small></span><ArrowRight size={19}/></button>
+          <button className="friendly-action friendly-action--settings" onClick={() => navigate('configuracion')}><span className="friendly-action__icon"><SlidersHorizontal size={25}/></span><span className="friendly-action__copy"><strong>Configurar</strong><small>Gerencias y responsables</small></span><ArrowRight size={19}/></button>
           <button className="friendly-action friendly-action--reports" onClick={() => navigate('reportes')}><span className="friendly-action__icon"><FileBarChart size={25}/></span><span className="friendly-action__copy"><strong>Ver reportes</strong><small>Avance y resultados</small></span><ArrowRight size={19}/></button>
         </div>
       </section>
@@ -350,7 +386,7 @@ function HomeView({ access, displayName, today, units, selectedUnit, selectedHom
 
 function sectionDescription(section: Section) {
   if (section === 'planificacion') return 'Periodo → unidad → lineamientos.'
-  if (section === 'configuracion') return 'Configura usuarios, permisos y parámetros.'
+  if (section === 'configuracion') return 'Administra los catálogos que alimentan la planificación.'
   return 'Consulta el avance y los resultados de gestión.'
 }
 
@@ -366,6 +402,7 @@ function PlanningView({ access, units, initialYear, initialUnitCode, onPeriodsCh
   const [selectedPeriod, setSelectedPeriod] = useState<PlanningPeriod | null>(null)
   const [selectedPlanningUnit, setSelectedPlanningUnit] = useState<UnitAccess | null>(null)
   const [guidelines, setGuidelines] = useState<Guideline[]>([])
+  const [catalog, setCatalog] = useState<UnitCatalog>({ managements: [], managers: [], links: [] })
   const [loading, setLoading] = useState(true)
   const [guidelinesLoading, setGuidelinesLoading] = useState(false)
   const [error, setError] = useState('')
@@ -382,10 +419,16 @@ function PlanningView({ access, units, initialYear, initialUnitCode, onPeriodsCh
   const [editPeriodStatus, setEditPeriodStatus] = useState<PlanningPeriod['status']>('DRAFT')
   const [saving, setSaving] = useState(false)
   const [excelBusy, setExcelBusy] = useState(false)
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false)
+  const [clearBusy, setClearBusy] = useState(false)
 
   const canManage = access.global_role === 'GESTION_ESTRATEGICA'
-  const managementSuggestions = useMemo(() => Array.from(new Set(guidelines.flatMap(item => splitChoiceValues(item.responsible_management)))).sort((a, b) => a.localeCompare(b, 'es')), [guidelines])
-  const managerSuggestions = useMemo(() => Array.from(new Set(guidelines.flatMap(item => splitChoiceValues(item.responsible_manager)))).sort((a, b) => a.localeCompare(b, 'es')), [guidelines])
+  const selectedManagement = catalog.managements.find(item => item.name === responsibleManagement)
+  const managerOptions = useMemo(() => {
+    if (!selectedManagement) return []
+    const ids = new Set(catalog.links.filter(link => link.management_id === selectedManagement.id).map(link => link.manager_id))
+    return catalog.managers.filter(manager => manager.active && ids.has(manager.id))
+  }, [catalog, selectedManagement])
 
   useEffect(() => { void loadPeriods() }, [])
 
@@ -400,7 +443,10 @@ function PlanningView({ access, units, initialYear, initialUnitCode, onPeriodsCh
   }, [periods, initialYear, initialUnitCode, units])
 
   useEffect(() => {
-    if (step === 'guidelines' && selectedPeriod && selectedPlanningUnit) void loadGuidelines(selectedPeriod.id, selectedPlanningUnit.code)
+    if (step === 'guidelines' && selectedPeriod && selectedPlanningUnit) {
+      void loadGuidelines(selectedPeriod.id, selectedPlanningUnit.code)
+      void loadUnitCatalog(selectedPlanningUnit.code).then(setCatalog)
+    }
   }, [step, selectedPeriod, selectedPlanningUnit])
 
   async function loadPeriods() {
@@ -421,6 +467,21 @@ function PlanningView({ access, units, initialYear, initialUnitCode, onPeriodsCh
     setGuidelinesLoading(false)
     if (queryError) { setError('No pudimos cargar los lineamientos.'); return }
     setGuidelines((data || []) as Guideline[])
+  }
+
+  async function loadUnitCatalog(unitCode: UnitAccess['code']): Promise<UnitCatalog> {
+    if (!supabase) return { managements: [], managers: [], links: [] }
+    const [managementResult, managerResult, linkResult] = await Promise.all([
+      supabase.from('managements').select('id, name, active').eq('unit_code', unitCode).eq('active', true).order('name'),
+      supabase.from('managers').select('id, name, email, active').eq('active', true).order('name'),
+      supabase.from('manager_managements').select('manager_id, management_id'),
+    ])
+    if (managementResult.error || managerResult.error || linkResult.error) throw new Error('CATALOG_LOAD')
+    return {
+      managements: (managementResult.data || []) as Management[],
+      managers: (managerResult.data || []) as Manager[],
+      links: (linkResult.data || []) as ManagerManagement[],
+    }
   }
 
   async function createPeriod(event: FormEvent) {
@@ -464,18 +525,58 @@ function PlanningView({ access, units, initialYear, initialUnitCode, onPeriodsCh
     if (!supabase || !canManage || !selectedPeriod || !selectedPlanningUnit) return
     const title = guidelineTitle.trim()
     if (!title) { setError('Escribe el lineamiento estratégico.'); return }
+    if (responsibleManager && !responsibleManagement) { setError('Selecciona primero una gerencia responsable.'); return }
     setSaving(true); setError(''); setNotice('')
-    const { error: insertError } = await supabase.from('guidelines').insert({ period_id: selectedPeriod.id, unit_code: selectedPlanningUnit.code, title, responsible_management: responsibleManagement.trim() || null, responsible_manager: responsibleManager.trim() || null, status: guidelineStatus.trim() || 'pendiente', sort_order: guidelines.length })
+    const { error: insertError } = await supabase.from('guidelines').insert({ period_id: selectedPeriod.id, unit_code: selectedPlanningUnit.code, title, responsible_management: responsibleManagement || null, responsible_manager: responsibleManager || null, status: guidelineStatus, sort_order: guidelines.length })
     setSaving(false)
-    if (insertError) { setError('No pudimos guardar el lineamiento.'); return }
+    if (insertError) {
+      setError(insertError.message.includes('CONFIGURATION_VALIDATION') ? insertError.message : 'No pudimos guardar el lineamiento. Revisa la configuración de gerencias y responsables.')
+      return
+    }
     setGuidelineTitle(''); setResponsibleManagement(''); setResponsibleManager(''); setGuidelineStatus('pendiente'); setShowGuidelineForm(false); setNotice('Lineamiento guardado correctamente.'); await loadGuidelines(selectedPeriod.id, selectedPlanningUnit.code)
+  }
+
+  function validateImportedRows(rows: Array<{ rowNumber: number; responsible_management: string | null; responsible_manager: string | null; status: string }>, unitCatalog: UnitCatalog) {
+    const errors: string[] = []
+    const managementMap = new Map(unitCatalog.managements.map(item => [normalizeCatalogName(item.name), item]))
+    const managerMap = new Map(unitCatalog.managers.map(item => [normalizeCatalogName(item.name), item]))
+    const managementNames = unitCatalog.managements.map(item => item.name)
+    const managerNames = unitCatalog.managers.map(item => item.name)
+
+    rows.forEach(row => {
+      const selectedManagementIds: string[] = []
+      splitChoiceValues(row.responsible_management).forEach(name => {
+        const match = managementMap.get(normalizeCatalogName(name))
+        if (!match) {
+          const suggestion = closestOption(name, managementNames)
+          errors.push(`Fila ${row.rowNumber}: gerencia “${name}” no registrada${suggestion ? ` (¿quisiste decir “${suggestion}”?)` : ''}.`)
+        } else selectedManagementIds.push(match.id)
+      })
+
+      splitChoiceValues(row.responsible_manager).forEach(name => {
+        const match = managerMap.get(normalizeCatalogName(name))
+        if (!match) {
+          const suggestion = closestOption(name, managerNames)
+          errors.push(`Fila ${row.rowNumber}: responsable “${name}” no registrado${suggestion ? ` (¿quisiste decir “${suggestion}”?)` : ''}.`)
+          return
+        }
+        if (!selectedManagementIds.length) {
+          errors.push(`Fila ${row.rowNumber}: “${name}” necesita una gerencia responsable.`)
+          return
+        }
+        const related = unitCatalog.links.some(link => link.manager_id === match.id && selectedManagementIds.includes(link.management_id))
+        if (!related) errors.push(`Fila ${row.rowNumber}: “${name}” no pertenece a la gerencia indicada.`)
+      })
+
+      if (!validStatuses.has(row.status)) errors.push(`Fila ${row.rowNumber}: estatus “${row.status}” no válido.`)
+    })
+    return errors
   }
 
   async function importGuidelinesFromExcel(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     event.target.value = ''
     if (!file || !supabase || !canManage || !selectedPeriod || !selectedPlanningUnit) return
-    if (guidelines.length > 0 && !window.confirm('Ya existen lineamientos en esta unidad. Los registros del Excel se agregarán a los actuales. ¿Deseas continuar?')) return
     setExcelBusy(true); setError(''); setNotice('')
     try {
       const XLSX = await loadSpreadsheetLibrary()
@@ -497,6 +598,7 @@ function PlanningView({ access, units, initialYear, initialUnitCode, onPeriodsCh
         const cellAddress = XLSX.utils.encode_cell({ r: headerRowIndex + 1 + rowOffset, c: lineamientoIndex })
         const sourceCell = sheet[cellAddress] as { h?: string } | undefined
         return {
+          rowNumber: headerRowIndex + 2 + rowOffset,
           title,
           title_html: cleanImportedRichHtml(sourceCell?.h),
           responsible_management: gerenciaIndex >= 0 ? String(row[gerenciaIndex] ?? '').trim() || null : null,
@@ -506,17 +608,27 @@ function PlanningView({ access, units, initialYear, initialUnitCode, onPeriodsCh
       }).filter(row => row.title).slice(0, 500)
 
       if (parsedRows.length === 0) throw new Error('NO_ROWS')
+      const freshCatalog = await loadUnitCatalog(selectedPlanningUnit.code)
+      const validationErrors = validateImportedRows(parsedRows, freshCatalog)
+      if (validationErrors.length) {
+        setError(`Excel no importado. Corrige primero: ${validationErrors.slice(0, 6).join(' · ')}${validationErrors.length > 6 ? ` · y ${validationErrors.length - 6} error(es) más.` : ''}`)
+        return
+      }
+
+      if (guidelines.length > 0 && !window.confirm('Ya existen lineamientos en esta unidad. Los registros validados del Excel se agregarán a los actuales. ¿Deseas continuar?')) return
+
       const payload = parsedRows.map((row, index) => ({ period_id: selectedPeriod.id, unit_code: selectedPlanningUnit.code, title: row.title, title_html: row.title_html, responsible_management: row.responsible_management, responsible_manager: row.responsible_manager, status: row.status, sort_order: guidelines.length + index }))
       const { error: insertError } = await supabase.from('guidelines').insert(payload)
       if (insertError) throw insertError
       await loadGuidelines(selectedPeriod.id, selectedPlanningUnit.code)
       const formattedCount = payload.filter(row => row.title_html).length
-      setNotice(`${payload.length} lineamiento${payload.length === 1 ? '' : 's'} importado${payload.length === 1 ? '' : 's'} desde Excel${formattedCount ? `, conservando formato en ${formattedCount}` : ''}.`)
+      setNotice(`${payload.length} lineamiento${payload.length === 1 ? '' : 's'} importado${payload.length === 1 ? '' : 's'} y validado${payload.length === 1 ? '' : 's'} correctamente${formattedCount ? `; formato conservado en ${formattedCount}` : ''}.`)
     } catch (importError) {
       const message = importError instanceof Error ? importError.message : ''
       if (message === 'HEADER_NOT_FOUND') setError('No encontramos la columna “Lineamientos Estratégicos”.')
       else if (message === 'NO_ROWS') setError('El Excel no contiene lineamientos para importar.')
-      else setError('No pudimos importar el Excel. Verifica el formato e inténtalo nuevamente.')
+      else if (message === 'CATALOG_LOAD') setError('No pudimos cargar el catálogo para validar el Excel.')
+      else setError(`No pudimos importar el Excel${message ? `: ${message}` : '.'}`)
     } finally { setExcelBusy(false) }
   }
 
@@ -532,6 +644,18 @@ function PlanningView({ access, units, initialYear, initialUnitCode, onPeriodsCh
       const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, worksheet, 'Lineamientos'); XLSX.writeFile(workbook, `Lineamientos_${selectedPlanningUnit.code}_${selectedPeriod.year}.xlsx`); setNotice('Excel generado correctamente.')
     } catch { setError('No pudimos generar el Excel.') }
     finally { setExcelBusy(false) }
+  }
+
+  async function clearGuidelines() {
+    if (!supabase || !selectedPeriod || !selectedPlanningUnit || !canManage) return
+    setClearBusy(true)
+    setError('')
+    const { error: deleteError } = await supabase.from('guidelines').delete().eq('period_id', selectedPeriod.id).eq('unit_code', selectedPlanningUnit.code)
+    setClearBusy(false)
+    setClearConfirmOpen(false)
+    if (deleteError) { setError('No pudimos eliminar los lineamientos.'); return }
+    setNotice('Todos los lineamientos de esta unidad y periodo fueron eliminados.')
+    await loadGuidelines(selectedPeriod.id, selectedPlanningUnit.code)
   }
 
   function selectPeriod(period: PlanningPeriod) { setSelectedPeriod(period); setSelectedPlanningUnit(null); setStep('units'); setError(''); setNotice('') }
@@ -555,33 +679,38 @@ function PlanningView({ access, units, initialYear, initialUnitCode, onPeriodsCh
         {step === 'units' && selectedPeriod && <section className="planning-panel"><div className="planning-title-row"><div><span>Paso 2 · {selectedPeriod.year}</span><h2>Elige una unidad</h2><p>Selecciona una unidad para revisar sus lineamientos.</p></div></div><div className="planning-unit-grid">{units.map(unit => <button key={unit.code} className={`planning-unit-card planning-unit-card--${unit.code.toLowerCase()}`} onClick={() => selectUnit(unit)}><span className="planning-unit-icon"><Building2 size={27}/></span><div><small>{unit.code}</small><strong>{unit.name}</strong></div><ArrowRight size={19}/></button>)}</div></section>}
 
         {step === 'guidelines' && selectedPeriod && selectedPlanningUnit && <section className="planning-panel planning-panel--wide">
-          <div className="planning-title-row"><div><span>Paso 3 · {selectedPeriod.year} · {selectedPlanningUnit.code}</span><h2>Lineamientos de {selectedPlanningUnit.name}</h2><p>Selecciona texto para aplicar negrita, cursiva, subrayado o tipo de letra. Gerencia y gerente se eligen desde una lista.</p></div><div className="guideline-actions"><button className="planning-secondary" type="button" onClick={() => void exportGuidelinesToExcel()} disabled={excelBusy}>{excelBusy ? <LoaderCircle className="spin" size={17}/> : <Download size={17}/>} Exportar Excel</button>{canManage && <label className={`planning-secondary planning-file-button ${excelBusy ? 'disabled' : ''}`}><Upload size={17}/> Subir Excel<input type="file" accept=".xlsx,.xls" onChange={importGuidelinesFromExcel} disabled={excelBusy} /></label>}{canManage && <button className="planning-primary" onClick={() => setShowGuidelineForm(value => !value)}><Plus size={17}/> Nuevo lineamiento</button>}</div></div>
+          <div className="planning-title-row">
+            <div><span>Paso 3 · {selectedPeriod.year} · {selectedPlanningUnit.code}</span><h2>Lineamientos de {selectedPlanningUnit.name}</h2><p>Gerencias y responsables se seleccionan desde Configuración. Los Excel se validan antes de importarse.</p></div>
+            <div className="guideline-actions">
+              <button className="planning-secondary" type="button" onClick={() => void exportGuidelinesToExcel()} disabled={excelBusy}>{excelBusy ? <LoaderCircle className="spin" size={17}/> : <Download size={17}/>} Exportar Excel</button>
+              {canManage && <label className={`planning-secondary planning-file-button ${excelBusy ? 'disabled' : ''}`}><Upload size={17}/> Subir Excel<input type="file" accept=".xlsx,.xls" onChange={importGuidelinesFromExcel} disabled={excelBusy} /></label>}
+              {canManage && guidelines.length > 0 && <button className="planning-danger" type="button" onClick={() => setClearConfirmOpen(true)}><Trash2 size={16}/> Eliminar todos</button>}
+              {canManage && <button className="planning-primary" onClick={() => setShowGuidelineForm(value => !value)}><Plus size={17}/> Nuevo lineamiento</button>}
+            </div>
+          </div>
 
           {showGuidelineForm && <form className="guideline-form guideline-form--table" onSubmit={createGuideline}>
             <label className="guideline-form__wide">Lineamiento estratégico<textarea rows={3} value={guidelineTitle} onChange={event => setGuidelineTitle(event.target.value)} placeholder="Escribe el lineamiento estratégico" /></label>
-            <label>Gerencia Responsable<input list="management-suggestions" value={responsibleManagement} onChange={event => setResponsibleManagement(event.target.value)} placeholder="Selecciona o escribe" /><datalist id="management-suggestions">{managementSuggestions.map(value => <option key={value} value={value} />)}</datalist></label>
-            <label>Gerente Responsable<input list="manager-suggestions" value={responsibleManager} onChange={event => setResponsibleManager(event.target.value)} placeholder="Selecciona o escribe" /><datalist id="manager-suggestions">{managerSuggestions.map(value => <option key={value} value={value} />)}</datalist></label>
+            <label>Gerencia Responsable<select value={responsibleManagement} onChange={event => { setResponsibleManagement(event.target.value); setResponsibleManager('') }}><option value="">Seleccionar gerencia</option>{catalog.managements.map(item => <option key={item.id} value={item.name}>{item.name}</option>)}</select></label>
+            <label>Gerente Responsable<select value={responsibleManager} disabled={!responsibleManagement} onChange={event => setResponsibleManager(event.target.value)}><option value="">Seleccionar responsable</option>{managerOptions.map(item => <option key={item.id} value={item.name}>{item.name}</option>)}</select></label>
             <label>Estatus<select value={guidelineStatus} onChange={event => setGuidelineStatus(event.target.value)}><option value="pendiente">Pendiente</option><option value="enviado">Enviado</option><option value="observado">Observado</option><option value="aprobado">Aprobado</option></select></label>
-            <div className="guideline-form__actions"><button className="planning-primary" disabled={saving}>{saving ? <LoaderCircle className="spin" size={17}/> : <Plus size={17}/>} Guardar lineamiento</button><button type="button" className="planning-secondary" onClick={() => setShowGuidelineForm(false)}>Cancelar</button></div>
+            {catalog.managements.length === 0 && <div className="guideline-catalog-warning">Primero registra las gerencias y responsables en Configuración.</div>}
+            <div className="guideline-form__actions"><button className="planning-primary" disabled={saving || !guidelineTitle.trim()}>{saving ? <LoaderCircle className="spin" size={17}/> : <Plus size={17}/>} Guardar lineamiento</button><button type="button" className="planning-secondary" onClick={() => setShowGuidelineForm(false)}>Cancelar</button></div>
           </form>}
 
-          {guidelinesLoading ? <div className="planning-loading"><LoaderCircle className="spin" size={24}/> Cargando lineamientos...</div> : guidelines.length === 0 ? <div className="planning-empty"><span><ClipboardList size={30}/></span><h3>Aún no hay lineamientos</h3><p>{canManage ? 'Puedes crear el primero manualmente o subir tu Excel actual.' : 'Gestión Estratégica todavía no ha registrado lineamientos.'}</p>{canManage && <div className="planning-empty__actions"><button className="planning-primary" onClick={() => setShowGuidelineForm(true)}><Plus size={17}/> Crear lineamiento</button><label className="planning-secondary planning-file-button"><Upload size={17}/> Subir Excel<input type="file" accept=".xlsx,.xls" onChange={importGuidelinesFromExcel} /></label></div>}</div> : <GuidelineGrid guidelines={guidelines} unitCode={selectedPlanningUnit.code} canManage={canManage} onChanged={() => loadGuidelines(selectedPeriod.id, selectedPlanningUnit.code)} onError={setError} onNotice={setNotice} />}
+          {guidelinesLoading ? <div className="planning-loading"><LoaderCircle className="spin" size={24}/> Cargando lineamientos...</div> : guidelines.length === 0 ? <div className="planning-empty"><span><ClipboardList size={30}/></span><h3>Aún no hay lineamientos</h3><p>{canManage ? 'Puedes crear el primero manualmente o subir un Excel validado contra Configuración.' : 'Gestión Estratégica todavía no ha registrado lineamientos.'}</p>{canManage && <div className="planning-empty__actions"><button className="planning-primary" onClick={() => setShowGuidelineForm(true)}><Plus size={17}/> Crear lineamiento</button><label className="planning-secondary planning-file-button"><Upload size={17}/> Subir Excel<input type="file" accept=".xlsx,.xls" onChange={importGuidelinesFromExcel} /></label></div>}</div> : <GuidelineGrid guidelines={guidelines} unitCode={selectedPlanningUnit.code} canManage={canManage} onChanged={() => loadGuidelines(selectedPeriod.id, selectedPlanningUnit.code)} onError={setError} onNotice={setNotice} />}
         </section>}
       </div>
 
       {editingPeriod && <div className="cg-modal-backdrop" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target && !saving) setEditingPeriod(null) }}><div className="cg-edit-dialog cg-period-dialog" role="dialog" aria-modal="true" aria-labelledby="edit-period-title"><button className="cg-modal-close" type="button" onClick={() => setEditingPeriod(null)} disabled={saving} aria-label="Cerrar"><X size={18}/></button><div className="cg-edit-heading"><span><Pencil size={18}/></span><div><small>Editar periodo</small><h3 id="edit-period-title">Periodo {editingPeriod.year}</h3></div></div><form className="cg-edit-form" onSubmit={updatePeriod}><label>Año<input inputMode="numeric" maxLength={4} value={editPeriodYear} onChange={event => setEditPeriodYear(event.target.value.replace(/\D/g, '').slice(0, 4))} /></label><label>Estado<select value={editPeriodStatus} onChange={event => setEditPeriodStatus(event.target.value as PlanningPeriod['status'])}><option value="DRAFT">Borrador</option><option value="OPEN">Periodo actual</option><option value="CLOSED">Cerrado</option></select></label><div className="cg-modal-actions"><button type="button" className="cg-modal-secondary" onClick={() => setEditingPeriod(null)} disabled={saving}>Cancelar</button><button type="submit" className="cg-modal-primary" disabled={saving || editPeriodYear.length !== 4}>{saving && <LoaderCircle className="spin" size={16}/>} Guardar cambios</button></div></form></div></div>}
+
+      <ConfirmDialog open={clearConfirmOpen} title="¿Eliminar todos los lineamientos?" message={`Se eliminarán los ${guidelines.length} lineamientos de ${selectedPlanningUnit?.name || 'esta unidad'} del periodo ${selectedPeriod?.year || ''}. Las demás unidades y periodos no se modificarán.`} confirmText="Sí, eliminar todos" danger busy={clearBusy} onCancel={() => setClearConfirmOpen(false)} onConfirm={clearGuidelines} />
     </>
   )
 }
 
-function ConfigurationView() {
-  const items = [
-    { icon: <Users/>, title: 'Usuarios y permisos', text: 'Autoriza usuarios y asigna accesos.' },
-    { icon: <Building2/>, title: 'Unidades de negocio', text: 'Administra las unidades disponibles.' },
-    { icon: <CalendarDays/>, title: 'Periodos', text: 'Crea y administra periodos.' },
-    { icon: <ClipboardList/>, title: 'Lineamientos', text: 'Define la estructura de las matrices.' },
-  ]
-  return <div className="config-grid">{items.map(item => <button className="config-card" key={item.title}><span className="config-icon">{item.icon}</span><div><h3>{item.title}</h3><p>{item.text}</p></div><ArrowRight size={18}/></button>)}</div>
+function ConfigurationView({ access, units }: { access: DashboardAccess; units: UnitAccess[] }) {
+  return <CatalogConfiguration units={units.map(unit => ({ code: unit.code, name: unit.name }))} canManage={access.global_role === 'GESTION_ESTRATEGICA'} />
 }
 
 function ReportsView() {
