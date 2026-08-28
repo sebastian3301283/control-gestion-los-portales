@@ -5,7 +5,6 @@ import {
   Bell,
   Building2,
   CalendarDays,
-  CheckCircle2,
   ChevronDown,
   ClipboardList,
   FileBarChart,
@@ -108,7 +107,7 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
         </div>
 
         <nav className="dashboard-nav" aria-label="Navegación principal">
-          <span className="dashboard-nav__label">MENÚ PRINCIPAL</span>
+          <span className="dashboard-nav__label">Menú</span>
           <button className={section === 'inicio' ? 'active' : ''} onClick={() => navigate('inicio')}><LayoutDashboard size={19}/><span>Inicio</span></button>
           <button className={section === 'planificacion' ? 'active' : ''} onClick={() => navigate('planificacion')}><ClipboardList size={19}/><span>Planificación</span></button>
           <button className={section === 'configuracion' ? 'active' : ''} onClick={() => navigate('configuracion')}><Settings size={19}/><span>Configuración</span></button>
@@ -127,7 +126,7 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
         <header className="dashboard-topbar">
           <div className="topbar-left">
             <button className="mobile-menu" onClick={() => setMenuOpen(true)} aria-label="Abrir menú"><Menu size={22}/></button>
-            <div className="dashboard-search"><Search size={18}/><input aria-label="Buscar" placeholder="¿Qué necesitas gestionar?" /></div>
+            <div className="dashboard-search"><Search size={18}/><input aria-label="Buscar" placeholder="Buscar" /></div>
           </div>
           <div className="topbar-actions">
             <button className="icon-button" aria-label="Notificaciones"><Bell size={19}/><span className="notification-dot" /></button>
@@ -150,7 +149,7 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
             <>
               <div className="page-heading compact-heading">
                 <div>
-                  <span className="page-kicker">{sectionLabels[section].toUpperCase()}</span>
+                  <span className="page-kicker">{sectionLabels[section]}</span>
                   <h1>{sectionLabels[section]}</h1>
                   <p>{sectionDescription(section)}</p>
                 </div>
@@ -179,39 +178,39 @@ function HomeView({ access, displayName, today, units, selectedUnit, setSelected
     <>
       <section className="welcome-card">
         <div className="welcome-copy">
-          <span className="welcome-kicker"><Sparkles size={15}/> TODO LISTO PARA EMPEZAR</span>
+          <span className="welcome-kicker"><Sparkles size={15}/> Todo listo</span>
           <h1>Hola, {displayName} 👋</h1>
-          <p>Desde aquí puedes organizar la planificación, revisar tus unidades y consultar el avance de la gestión.</p>
+          <p>Elige una opción y empieza a trabajar.</p>
           <div className="welcome-meta">
             <span><CalendarDays size={16}/> {today}</span>
             <span><ShieldCheck size={16}/> {roleLabel(access)}</span>
           </div>
         </div>
         <div className="welcome-period">
-          <span>Periodo de trabajo</span>
+          <span>Periodo</span>
           <strong>2026</strong>
-          <button><CalendarDays size={16}/> Cambiar periodo <ChevronDown size={15}/></button>
+          <button><CalendarDays size={16}/> Cambiar <ChevronDown size={15}/></button>
         </div>
       </section>
 
       <section className="dashboard-section action-section">
         <div className="section-title-row">
-          <div><span>ACCESOS RÁPIDOS</span><h2>¿Qué quieres hacer hoy?</h2></div>
+          <div><span>Accesos rápidos</span><h2>¿Qué quieres hacer?</h2></div>
         </div>
         <div className="friendly-actions">
-          <button className="friendly-action friendly-action--primary" onClick={() => navigate('planificacion')}>
-            <span className="friendly-action__icon"><ClipboardList size={24}/></span>
-            <span className="friendly-action__copy"><strong>Trabajar la planificación</strong><small>Periodos, lineamientos y matrices</small></span>
+          <button className="friendly-action friendly-action--planning" onClick={() => navigate('planificacion')}>
+            <span className="friendly-action__icon"><ClipboardList size={25}/></span>
+            <span className="friendly-action__copy"><strong>Planificar</strong><small>Periodos y matrices</small></span>
             <ArrowRight size={19}/>
           </button>
-          <button className="friendly-action" onClick={() => navigate('configuracion')}>
-            <span className="friendly-action__icon"><SlidersHorizontal size={24}/></span>
-            <span className="friendly-action__copy"><strong>Configurar accesos</strong><small>Usuarios, roles y unidades</small></span>
+          <button className="friendly-action friendly-action--settings" onClick={() => navigate('configuracion')}>
+            <span className="friendly-action__icon"><SlidersHorizontal size={25}/></span>
+            <span className="friendly-action__copy"><strong>Configurar</strong><small>Usuarios y accesos</small></span>
             <ArrowRight size={19}/>
           </button>
-          <button className="friendly-action" onClick={() => navigate('reportes')}>
-            <span className="friendly-action__icon"><FileBarChart size={24}/></span>
-            <span className="friendly-action__copy"><strong>Revisar reportes</strong><small>Seguimiento y vista consolidada</small></span>
+          <button className="friendly-action friendly-action--reports" onClick={() => navigate('reportes')}>
+            <span className="friendly-action__icon"><FileBarChart size={25}/></span>
+            <span className="friendly-action__copy"><strong>Ver reportes</strong><small>Avance y resultados</small></span>
             <ArrowRight size={19}/>
           </button>
         </div>
@@ -219,40 +218,19 @@ function HomeView({ access, displayName, today, units, selectedUnit, setSelected
 
       <section className="dashboard-section">
         <div className="section-title-row">
-          <div><span>TUS UNIDADES</span><h2>Elige dónde quieres trabajar</h2></div>
+          <div><span>Unidades</span><h2>¿Dónde quieres entrar?</h2></div>
           {selectedUnit !== 'TODAS' && <button className="text-action" onClick={() => setSelectedUnit('TODAS')}>Ver todas <ArrowRight size={16}/></button>}
         </div>
         <div className="unit-grid friendly-unit-grid">
-          {units.map((unit, index) => (
+          {units.map(unit => (
             <button key={unit.code} className={`unit-card unit-card--${unit.code.toLowerCase()} ${selectedUnit === unit.code ? 'selected' : ''}`} onClick={() => setSelectedUnit(unit.code)}>
-              <div className="unit-card__top"><span className="unit-number">0{index + 1}</span><span className="unit-code">{unit.code}</span></div>
-              <div className="unit-icon"><Building2 size={24}/></div>
+              <div className="unit-card__top"><span className="unit-code">{unit.code}</span></div>
+              <div className="unit-icon"><Building2 size={26}/></div>
               <h3>{unit.name}</h3>
-              <p>{unit.unit_role === 'GLOBAL' ? 'Tienes acceso completo a esta unidad.' : unit.unit_role === 'GERENTE_UNIDAD' ? 'Acceso como Gerente de Unidad.' : 'Acceso como equipo encargado.'}</p>
-              <span className="unit-link">Entrar a la unidad <ArrowRight size={16}/></span>
+              <p>{unit.unit_role === 'GLOBAL' ? 'Acceso completo' : unit.unit_role === 'GERENTE_UNIDAD' ? 'Gerente de Unidad' : 'Equipo encargado'}</p>
+              <span className="unit-link">Entrar <ArrowRight size={16}/></span>
             </button>
           ))}
-        </div>
-      </section>
-
-      <section className="dashboard-lower-grid friendly-lower-grid">
-        <div className="panel-card overview-panel">
-          <div className="panel-heading"><div><span>RESUMEN</span><h2>Tu espacio de trabajo</h2></div></div>
-          <div className="mini-summary-grid">
-            <SummaryCard icon={<Building2/>} label="Unidades" value={String(units.length)} detail="habilitadas" />
-            <SummaryCard icon={<CalendarDays/>} label="Periodo" value="2026" detail="seleccionado" />
-            <SummaryCard icon={<ShieldCheck/>} label="Acceso" value="Global" detail="Gestión Estratégica" compact />
-          </div>
-        </div>
-
-        <div className="panel-card next-step-card">
-          <div className="next-step-icon"><CheckCircle2 size={25}/></div>
-          <div>
-            <span>SIGUIENTE PASO</span>
-            <h2>Empecemos por Planificación</h2>
-            <p>Ya tienes acceso y permisos listos. El siguiente paso es configurar los periodos y la estructura de trabajo.</p>
-            <button onClick={() => navigate('planificacion')}>Ir a Planificación <ArrowRight size={16}/></button>
-          </div>
         </div>
       </section>
     </>
@@ -260,18 +238,9 @@ function HomeView({ access, displayName, today, units, selectedUnit, setSelected
 }
 
 function sectionDescription(section: Section) {
-  if (section === 'planificacion') return 'Administra periodos, unidades, lineamientos y matrices de gestión.'
-  if (section === 'configuracion') return 'Configura usuarios, permisos y parámetros generales de la plataforma.'
-  return 'Consulta información consolidada y prepara los reportes de gestión.'
-}
-
-function SummaryCard({ icon, label, value, detail, compact = false }: { icon: React.ReactNode; label: string; value: string; detail: string; compact?: boolean }) {
-  return (
-    <div className="summary-card">
-      <div className="summary-icon">{icon}</div>
-      <div className="summary-copy"><span>{label}</span><strong className={compact ? 'summary-value--compact' : ''}>{value}</strong><small>{detail}</small></div>
-    </div>
-  )
+  if (section === 'planificacion') return 'Administra periodos, unidades, lineamientos y matrices.'
+  if (section === 'configuracion') return 'Configura usuarios, permisos y parámetros.'
+  return 'Consulta el avance y los resultados de gestión.'
 }
 
 function PlanningView({ units }: { units: UnitAccess[] }) {
@@ -279,13 +248,13 @@ function PlanningView({ units }: { units: UnitAccess[] }) {
   return (
     <div className="module-stack">
       <div className="panel-card module-card">
-        <div className="panel-heading"><div><span>PERIODOS</span><h2>Planificación estratégica</h2></div><button className="primary-small">+ Nuevo periodo</button></div>
+        <div className="panel-heading"><div><span>Periodos</span><h2>Planificación estratégica</h2></div><button className="primary-small">+ Nuevo periodo</button></div>
         <div className="period-grid">
           {periods.map((period, index) => <button className={`period-card ${index === 0 ? 'active' : ''}`} key={period}><CalendarDays size={22}/><strong>{period}</strong><small>{index === 0 ? 'Periodo actual' : 'Próximo periodo'}</small><ArrowRight size={17}/></button>)}
         </div>
       </div>
       <div className="panel-card module-card">
-        <div className="panel-heading"><div><span>ESTRUCTURA</span><h2>Unidades disponibles</h2></div></div>
+        <div className="panel-heading"><div><span>Unidades</span><h2>Unidades disponibles</h2></div></div>
         <div className="simple-table">
           <div className="simple-table__head"><span>Unidad</span><span>Código</span><span>Estado</span><span></span></div>
           {units.map(unit => <div className="simple-table__row" key={unit.code}><span><Building2 size={17}/>{unit.name}</span><span>{unit.code}</span><span><i className="active-dot"/>Activa</span><button>Gestionar <ArrowRight size={15}/></button></div>)}
@@ -297,10 +266,10 @@ function PlanningView({ units }: { units: UnitAccess[] }) {
 
 function ConfigurationView() {
   const items = [
-    { icon: <Users/>, title: 'Usuarios y permisos', text: 'Autoriza usuarios, asigna roles y accesos por unidad.' },
-    { icon: <Building2/>, title: 'Unidades de negocio', text: 'Administra las cinco unidades disponibles en la plataforma.' },
-    { icon: <CalendarDays/>, title: 'Periodos', text: 'Crea y administra los periodos de planificación.' },
-    { icon: <ClipboardList/>, title: 'Lineamientos', text: 'Define la estructura que utilizarán las matrices de gestión.' },
+    { icon: <Users/>, title: 'Usuarios y permisos', text: 'Autoriza usuarios y asigna accesos.' },
+    { icon: <Building2/>, title: 'Unidades de negocio', text: 'Administra las unidades disponibles.' },
+    { icon: <CalendarDays/>, title: 'Periodos', text: 'Crea y administra periodos.' },
+    { icon: <ClipboardList/>, title: 'Lineamientos', text: 'Define la estructura de las matrices.' },
   ]
   return <div className="config-grid">{items.map(item => <button className="config-card" key={item.title}><span className="config-icon">{item.icon}</span><div><h3>{item.title}</h3><p>{item.text}</p></div><ArrowRight size={18}/></button>)}</div>
 }
@@ -308,11 +277,11 @@ function ConfigurationView() {
 function ReportsView() {
   return (
     <div className="module-stack">
-      <div className="reports-hero panel-card"><div><span>REPORTES</span><h2>Vista consolidada</h2><p>Esta sección quedará conectada a la información real de planificación cuando construyamos las matrices.</p></div><FileBarChart size={56}/></div>
+      <div className="reports-hero panel-card"><div><span>Reportes</span><h2>Vista consolidada</h2><p>Aquí podrás revisar el avance de todas las unidades.</p></div><FileBarChart size={56}/></div>
       <div className="report-grid">
-        <button className="report-card"><BarChart3 size={24}/><h3>Avance por unidad</h3><p>Seguimiento comparativo entre unidades de negocio.</p><span>Preparar reporte <ArrowRight size={16}/></span></button>
-        <button className="report-card"><ClipboardList size={24}/><h3>Estado de matrices</h3><p>Resumen de matrices pendientes, remitidas y aprobadas.</p><span>Preparar reporte <ArrowRight size={16}/></span></button>
-        <button className="report-card"><FileBarChart size={24}/><h3>Resumen ejecutivo</h3><p>Información consolidada para la revisión de Gerencia General.</p><span>Preparar reporte <ArrowRight size={16}/></span></button>
+        <button className="report-card"><BarChart3 size={24}/><h3>Avance por unidad</h3><p>Compara el avance entre unidades.</p><span>Ver reporte <ArrowRight size={16}/></span></button>
+        <button className="report-card"><ClipboardList size={24}/><h3>Estado de matrices</h3><p>Revisa matrices pendientes y aprobadas.</p><span>Ver reporte <ArrowRight size={16}/></span></button>
+        <button className="report-card"><FileBarChart size={24}/><h3>Resumen ejecutivo</h3><p>Consulta la información consolidada.</p><span>Ver reporte <ArrowRight size={16}/></span></button>
       </div>
     </div>
   )
