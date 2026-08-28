@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { Bold, Check, ChevronDown, Italic, Pencil, Type, Underline as UnderlineIcon } from 'lucide-react'
 import { supabase } from './lib/supabase'
 import './guideline-grid.css'
@@ -234,15 +234,21 @@ export default function GuidelineGrid({ guidelines, unitCode, canManage, onChang
             {guidelines.map((row, index) => {
               const isEditing = editingId === row.id
               return (
-                <tr key={row.id} className={isEditing ? 'guideline-row--editing' : ''}>
-                  <td className="guideline-table__number">{index + 1}</td>
-                  <td className="guideline-table__title">{isEditing ? <RichTextCell initialHtml={richById[row.id] || null} initialText={row.title} onChange={(html, text) => { setEditHtml(html); setEditText(text) }} /> : richById[row.id] ? <div className="guideline-rich-display" dangerouslySetInnerHTML={{ __html: richById[row.id] || '' }} /> : row.title}</td>
-                  <td>{isEditing ? <MultiSelectCell value={editManagement} options={managementOptions} placeholder="Seleccionar gerencia" onChange={setEditManagement} /> : (row.responsible_management || '—')}</td>
-                  <td>{isEditing ? <MultiSelectCell value={editManager} options={managerOptions} placeholder="Seleccionar gerente" onChange={setEditManager} /> : (row.responsible_manager || '—')}</td>
-                  <td>{isEditing ? <select className="guideline-cell-input guideline-cell-select" value={editStatus} onChange={event => setEditStatus(event.target.value)}><option value="pendiente">Pendiente</option><option value="enviado">Enviado</option><option value="observado">Observado</option><option value="aprobado">Aprobado</option></select> : <span className={`guideline-status guideline-status--${row.status.toLowerCase().replace(/[^a-z0-9]/g, '')}`}>{row.status || 'pendiente'}</span>}</td>
-                  {canManage && <td className="guideline-table__actions">{!isEditing && <button type="button" onClick={() => startEdit(row)} disabled={Boolean(editingId)}><Pencil size={14}/> Editar</button>}</td>}
-                  {isEditing && canManage && <td className="inline-edit-bar" colSpan={6}><span>Estás editando este lineamiento</span><div><button className="inline-cancel" type="button" onClick={cancelEdit} disabled={saving}>Cancelar</button><button className="inline-save" type="button" onClick={() => void saveEdit()} disabled={saving || !editText.trim()}>{saving ? 'Guardando…' : 'Guardar cambios'}</button></div></td>}
-                </tr>
+                <Fragment key={row.id}>
+                  <tr className={isEditing ? 'guideline-row--editing' : ''}>
+                    <td className="guideline-table__number">{index + 1}</td>
+                    <td className="guideline-table__title">{isEditing ? <RichTextCell initialHtml={richById[row.id] || null} initialText={row.title} onChange={(html, text) => { setEditHtml(html); setEditText(text) }} /> : richById[row.id] ? <div className="guideline-rich-display" dangerouslySetInnerHTML={{ __html: richById[row.id] || '' }} /> : row.title}</td>
+                    <td>{isEditing ? <MultiSelectCell value={editManagement} options={managementOptions} placeholder="Seleccionar gerencia" onChange={setEditManagement} /> : (row.responsible_management || '—')}</td>
+                    <td>{isEditing ? <MultiSelectCell value={editManager} options={managerOptions} placeholder="Seleccionar gerente" onChange={setEditManager} /> : (row.responsible_manager || '—')}</td>
+                    <td>{isEditing ? <select className="guideline-cell-input guideline-cell-select" value={editStatus} onChange={event => setEditStatus(event.target.value)}><option value="pendiente">Pendiente</option><option value="enviado">Enviado</option><option value="observado">Observado</option><option value="aprobado">Aprobado</option></select> : <span className={`guideline-status guideline-status--${row.status.toLowerCase().replace(/[^a-z0-9]/g, '')}`}>{row.status || 'pendiente'}</span>}</td>
+                    {canManage && <td className="guideline-table__actions">{!isEditing && <button type="button" onClick={() => startEdit(row)} disabled={Boolean(editingId)}><Pencil size={14}/> Editar</button>}</td>}
+                  </tr>
+                  {isEditing && canManage && (
+                    <tr className="inline-edit-action-row">
+                      <td className="inline-edit-bar" colSpan={6}><span>Estás editando este lineamiento</span><div><button className="inline-cancel" type="button" onClick={cancelEdit} disabled={saving}>Cancelar</button><button className="inline-save" type="button" onClick={() => void saveEdit()} disabled={saving || !editText.trim()}>{saving ? 'Guardando…' : 'Guardar cambios'}</button></div></td>
+                    </tr>
+                  )}
+                </Fragment>
               )
             })}
           </tbody>
