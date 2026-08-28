@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
-import { Building2, Check, Download, LoaderCircle, Mail, Pencil, Plus, UserRound, Users, X } from 'lucide-react'
+import { Building2, Check, Download, LoaderCircle, Mail, Pencil, Plus, Trash2, UserRound, Users, X } from 'lucide-react'
 import { supabase } from './lib/supabase'
 import './catalog-configuration.css'
 
@@ -40,6 +40,8 @@ export default function CatalogConfiguration({ canManage }: Props) {
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
+  const [resetOpen, setResetOpen] = useState(false)
+  const [resetting, setResetting] = useState(false)
 
   const [managementFormOpen, setManagementFormOpen] = useState(false)
   const [editingManagementId, setEditingManagementId] = useState<string | null>(null)
@@ -240,6 +242,27 @@ export default function CatalogConfiguration({ canManage }: Props) {
     await loadCatalogs()
   }
 
+  async function resetAllCatalog() {
+    if (!supabase || !canManage) return
+    setResetting(true)
+    setError('')
+    setNotice('')
+
+    const { data, error: resetError } = await supabase.rpc('reset_responsibility_catalog')
+    setResetting(false)
+    if (resetError) {
+      setError('No pudimos borrar el catálogo maestro.')
+      return
+    }
+
+    setResetOpen(false)
+    resetManagementForm()
+    resetManagerForm()
+    const result = data as { managements_deleted?: number; managers_deleted?: number } | null
+    setNotice(`Catálogo reiniciado. Se eliminaron ${result?.managements_deleted ?? 0} gerencias y ${result?.managers_deleted ?? 0} responsables.`)
+    await loadCatalogs()
+  }
+
   async function downloadTemplate() {
     try {
       const XLSX = await import(/* @vite-ignore */ XLSX_MODULE_URL)
@@ -280,6 +303,8 @@ export default function CatalogConfiguration({ canManage }: Props) {
     }
   }
 
+  const catalogHasData = managements.length > 0 || managers.length > 0
+
   return (
     <div className="catalog-config catalog-config--central">
       <section className="catalog-hero">
@@ -288,7 +313,10 @@ export default function CatalogConfiguration({ canManage }: Props) {
           <h2>Gerencias y responsables</h2>
           <p>Este catálogo es único para toda la empresa. Una gerencia como TI, Comercial o Control de Gestión se registra una sola vez y queda disponible para Central, HU, Departamentos, Vivienda Social y Hoteles.</p>
         </div>
-        <button className="catalog-template-button" type="button" onClick={() => void downloadTemplate()}><Download size={16}/> Descargar plantilla Excel</button>
+        <div className="guideline-actions">
+          <button className="catalog-template-button" type="button" onClick={() => void downloadTemplate()}><Download size={16}/> Descargar plantilla Excel</button>
+          {canManage && catalogHasData && <button className="catalog-template-button" type="button" onClick={() => setResetOpen(true)}><Trash2 size={16}/> Borrar todo</button>}
+        </div>
       </section>
 
       <div className="catalog-message catalog-message--success"><Check size={15}/> Las mismas gerencias y responsables se utilizan en las 5 unidades de negocio.</div>
@@ -371,6 +399,21 @@ export default function CatalogConfiguration({ canManage }: Props) {
               })}
             </div>
           </section>
+        </div>
+      )}
+
+      {resetOpen && (
+        <div className="cg-modal-backdrop" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target && !resetting) setResetOpen(false) }}>
+          <div className="cg-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="reset-catalog-title">
+            <button className="cg-modal-close" type="button" onClick={() => setResetOpen(false)} disabled={resetting} aria-label="Cerrar"><X size={18}/></button>
+            <div className="cg-confirm-icon"><Trash2 size={23}/></div>
+            <h3 id="reset-catalog-title">¿Borrar todo el catálogo?</h3>
+            <p>Se eliminarán todas las gerencias, responsables y sus relaciones. Los lineamientos no se borrarán, pero sus campos de Gerencia Responsable y Gerente Responsable quedarán vacíos. Esta acción no se puede deshacer.</p>
+            <div className="cg-modal-actions">
+              <button type="button" className="cg-modal-secondary" onClick={() => setResetOpen(false)} disabled={resetting}>Cancelar</button>
+              <button type="button" className="cg-modal-primary" onClick={() => void resetAllCatalog()} disabled={resetting}>{resetting && <LoaderCircle className="spin" size={16}/>} Sí, borrar todo</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
