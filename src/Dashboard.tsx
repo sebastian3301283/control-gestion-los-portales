@@ -93,6 +93,7 @@ const sectionLabels: Record<Section, string> = {
 
 const unitOrder: UnitAccess['code'][] = ['CENTRAL', 'HU', 'DEP', 'VS', 'HOT']
 const XLSX_MODULE_URL = 'https://unpkg.com/xlsx@0.18.5/xlsx.mjs'
+const richFonts = ['Arial', 'Calibri', 'Verdana', 'Georgia', 'Times New Roman']
 
 async function loadSpreadsheetLibrary() {
   return import(/* @vite-ignore */ XLSX_MODULE_URL)
@@ -104,6 +105,46 @@ function normalizeHeader(value: unknown) {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]/g, '')
+}
+
+function splitChoiceValues(value: string | null | undefined) {
+  return String(value || '')
+    .split(/\s*(?:\/|;|\||\n)\s*/g)
+    .map(item => item.trim())
+    .filter(Boolean)
+}
+
+function safeImportedSpanStyle(element: HTMLElement) {
+  const styles: string[] = []
+  const weight = element.style.fontWeight.toLowerCase()
+  if (weight === 'bold' || Number(weight) >= 600) styles.push('font-weight:700')
+  if (element.style.fontStyle.toLowerCase() === 'italic') styles.push('font-style:italic')
+  if (element.style.textDecoration.toLowerCase().includes('underline')) styles.push('text-decoration:underline')
+  const family = element.style.fontFamily.replace(/["']/g, '').trim()
+  if (richFonts.includes(family)) styles.push(`font-family:${family}`)
+  return styles.join(';')
+}
+
+function cleanImportedRichHtml(html: string | null | undefined) {
+  if (!html) return null
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  const allowed = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'FONT', 'SPAN', 'BR', 'DIV', 'P'])
+
+  Array.from(doc.body.querySelectorAll('*')).forEach(element => {
+    if (!allowed.has(element.tagName)) {
+      element.replaceWith(...Array.from(element.childNodes))
+      return
+    }
+
+    const spanStyle = element.tagName === 'SPAN' ? safeImportedSpanStyle(element as HTMLElement) : ''
+    const fontFace = element.tagName === 'FONT' ? (element.getAttribute('face') || '').replace(/["']/g, '').trim() : ''
+    Array.from(element.attributes).forEach(attribute => element.removeAttribute(attribute.name))
+    if (element.tagName === 'SPAN' && spanStyle) element.setAttribute('style', spanStyle)
+    if (element.tagName === 'FONT' && richFonts.includes(fontFace)) element.setAttribute('face', fontFace)
+  })
+
+  const formatted = doc.body.querySelector('b,strong,i,em,u,font,span[style]')
+  return formatted ? doc.body.innerHTML : null
 }
 
 function ConfirmDialog({ open, title, message, confirmText, cancelText = 'Cancelar', busy = false, onCancel, onConfirm }: ConfirmDialogProps) {
@@ -343,8 +384,8 @@ function PlanningView({ access, units, initialYear, initialUnitCode, onPeriodsCh
   const [excelBusy, setExcelBusy] = useState(false)
 
   const canManage = access.global_role === 'GESTION_ESTRATEGICA'
-  const managementSuggestions = useMemo(() => Array.from(new Set(guidelines.map(item => item.responsible_management?.trim()).filter((value): value is string => Boolean(value)))).sort(), [guidelines])
-  const managerSuggestions = useMemo(() => Array.from(new Set(guidelines.map(item => item.responsible_manager?.trim()).filter((value): value is string => Boolean(value)))).sort(), [guidelines])
+  const managementSuggestions = useMemo(() => Array.from(new Set(guidelines.flatMap(item => splitChoiceValues(item.responsible_management)))).sort((a, b) => a.localeCompare(b, 'es')), [guidelines])
+  const managerSuggestions = useMemo(() => Array.from(new Set(guidelines.flatMap(item => splitChoiceValues(item.responsible_manager)))).sort((a, b) => a.localeCompare(b, 'es')), [guidelines])
 
   useEffect(() => { void loadPeriods() }, [])
 
@@ -438,7 +479,7 @@ function PlanningView({ access, units, initialYear, initialUnitCode, onPeriodsCh
     setExcelBusy(true); setError(''); setNotice('')
     try {
       const XLSX = await loadSpreadsheetLibrary()
-      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' })
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellHTML: true, cellStyles: true })
       const sheet = workbook.Sheets[workbook.SheetNames[0]]
       const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false }) as unknown[][]
       const headerRowIndex = matrix.findIndex(row => row.some(cell => ['lineamientosestrategicos', 'lineamientoestrategico', 'lineamientos'].includes(normalizeHeader(cell))))
@@ -450,13 +491,27 @@ function PlanningView({ access, units, initialYear, initialUnitCode, onPeriodsCh
       const gerenteIndex = findColumn('gerenteresponsable', 'responsable')
       const statusIndex = findColumn('estatus', 'estado', 'status')
       if (lineamientoIndex < 0) throw new Error('HEADER_NOT_FOUND')
-      const parsedRows = matrix.slice(headerRowIndex + 1).map(row => ({ title: String(row[lineamientoIndex] ?? '').trim(), responsible_management: gerenciaIndex >= 0 ? String(row[gerenciaIndex] ?? '').trim() || null : null, responsible_manager: gerenteIndex >= 0 ? String(row[gerenteIndex] ?? '').trim() || null : null, status: statusIndex >= 0 ? String(row[statusIndex] ?? '').trim().toLowerCase() || 'pendiente' : 'pendiente' })).filter(row => row.title).slice(0, 500)
+
+      const parsedRows = matrix.slice(headerRowIndex + 1).map((row, rowOffset) => {
+        const title = String(row[lineamientoIndex] ?? '').trim()
+        const cellAddress = XLSX.utils.encode_cell({ r: headerRowIndex + 1 + rowOffset, c: lineamientoIndex })
+        const sourceCell = sheet[cellAddress] as { h?: string } | undefined
+        return {
+          title,
+          title_html: cleanImportedRichHtml(sourceCell?.h),
+          responsible_management: gerenciaIndex >= 0 ? String(row[gerenciaIndex] ?? '').trim() || null : null,
+          responsible_manager: gerenteIndex >= 0 ? String(row[gerenteIndex] ?? '').trim() || null : null,
+          status: statusIndex >= 0 ? String(row[statusIndex] ?? '').trim().toLowerCase() || 'pendiente' : 'pendiente',
+        }
+      }).filter(row => row.title).slice(0, 500)
+
       if (parsedRows.length === 0) throw new Error('NO_ROWS')
-      const payload = parsedRows.map((row, index) => ({ period_id: selectedPeriod.id, unit_code: selectedPlanningUnit.code, title: row.title, responsible_management: row.responsible_management, responsible_manager: row.responsible_manager, status: row.status, sort_order: guidelines.length + index }))
+      const payload = parsedRows.map((row, index) => ({ period_id: selectedPeriod.id, unit_code: selectedPlanningUnit.code, title: row.title, title_html: row.title_html, responsible_management: row.responsible_management, responsible_manager: row.responsible_manager, status: row.status, sort_order: guidelines.length + index }))
       const { error: insertError } = await supabase.from('guidelines').insert(payload)
       if (insertError) throw insertError
       await loadGuidelines(selectedPeriod.id, selectedPlanningUnit.code)
-      setNotice(`${payload.length} lineamiento${payload.length === 1 ? '' : 's'} importado${payload.length === 1 ? '' : 's'} desde Excel.`)
+      const formattedCount = payload.filter(row => row.title_html).length
+      setNotice(`${payload.length} lineamiento${payload.length === 1 ? '' : 's'} importado${payload.length === 1 ? '' : 's'} desde Excel${formattedCount ? `, conservando formato en ${formattedCount}` : ''}.`)
     } catch (importError) {
       const message = importError instanceof Error ? importError.message : ''
       if (message === 'HEADER_NOT_FOUND') setError('No encontramos la columna “Lineamientos Estratégicos”.')
