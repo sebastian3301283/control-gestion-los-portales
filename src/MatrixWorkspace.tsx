@@ -61,6 +61,10 @@ function statusLabel(status: Matrix['status']) {
   return 'Borrador'
 }
 
+function normalizeAreaName(value: string) {
+  return value.trim().toLocaleLowerCase('es').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+}
+
 export default function MatrixWorkspace({ periodId, year, unitCode, unitName, canManage, onError, onNotice }: Props) {
   const directoryGroup: DirectoryGroup = unitCode === 'HU' ? 'HU' : 'GENERAL'
   const [page, setPage] = useState<WorkspacePage>('areas')
@@ -134,15 +138,27 @@ export default function MatrixWorkspace({ periodId, year, unitCode, unitName, ca
     onError('')
     try {
       const [areaResult, selectionResult, processResult, matrixResult, managerList] = await Promise.all([
-        supabase.from('managements_global').select('id,name,unit_code,directory_group').eq('unit_code', unitCode).eq('directory_group', directoryGroup).eq('active', true).order('name'),
+        supabase.from('managements_global').select('id,name,unit_code,directory_group').eq('active', true).order('name'),
         supabase.from('matrix_area_selections').select('id,management_id,sort_order').eq('period_id', periodId).eq('unit_code', unitCode).eq('directory_group', directoryGroup).order('sort_order'),
         supabase.from('processes').select('id,name,description,management_id,unit_code,directory_group,sort_order').eq('unit_code', unitCode).eq('directory_group', directoryGroup).eq('active', true).order('sort_order').order('name'),
         supabase.from('matrices').select('id,name,description,process_id,status,sort_order').eq('period_id', periodId).eq('unit_code', unitCode).eq('directory_group', directoryGroup).eq('active', true).order('sort_order').order('name'),
         loadManagers(),
       ])
       if (areaResult.error || selectionResult.error || processResult.error || matrixResult.error) throw new Error('WORKSPACE_LOAD')
-      setCatalogAreas((areaResult.data || []) as Area[])
-      setAreaSelections((selectionResult.data || []) as AreaSelection[])
+
+      const allAreas = (areaResult.data || []) as Area[]
+      const selections = (selectionResult.data || []) as AreaSelection[]
+      const selectedIds = new Set(selections.map(item => item.management_id))
+      const uniqueAreas = new Map<string, Area>()
+
+      allAreas.filter(area => selectedIds.has(area.id)).forEach(area => uniqueAreas.set(normalizeAreaName(area.name), area))
+      allAreas.forEach(area => {
+        const key = normalizeAreaName(area.name)
+        if (!uniqueAreas.has(key)) uniqueAreas.set(key, area)
+      })
+
+      setCatalogAreas([...uniqueAreas.values()].sort((a, b) => a.name.localeCompare(b.name, 'es')))
+      setAreaSelections(selections)
       setProcesses((processResult.data || []) as Process[])
       setMatrices((matrixResult.data || []) as Matrix[])
       setManagers(managerList)
@@ -181,16 +197,14 @@ export default function MatrixWorkspace({ periodId, year, unitCode, unitName, ca
 
   async function removeArea(area: Area) {
     if (!supabase || !canManage) return
-    const linkedProcesses = processes.filter(process => process.management_id === area.id)
-    if (linkedProcesses.length > 0) {
-      onError(`No puedes quitar ${area.name} porque ya tiene ${linkedProcesses.length} proceso${linkedProcesses.length === 1 ? '' : 's'}.`)
-      return
-    }
     const selection = areaSelections.find(item => item.management_id === area.id)
     if (!selection) return
     const { error } = await supabase.from('matrix_area_selections').delete().eq('id', selection.id)
     if (error) { onError('No pudimos quitar el área.'); return }
-    onNotice('Área retirada de esta estructura de matrices.')
+    onNotice('Área retirada de la vista de matrices. Sus procesos y matrices se conservan y volverán a aparecer si añades el área nuevamente.')
+    if (selectedAreaId === area.id) {
+      setSelectedAreaId(''); setSelectedProcessId(''); setSelectedMatrixId(''); setPage('areas')
+    }
     await loadWorkspace()
   }
 
@@ -331,7 +345,7 @@ export default function MatrixWorkspace({ periodId, year, unitCode, unitName, ca
   return (
     <div className={`matrix-workspace matrix-workspace--${unitAccent[unitCode]}`}>
       <section className="matrix-intro">
-        <div><span className="matrix-kicker">Periodo {year} · {unitCode}</span><h3>Matrices de {unitName}</h3><p>Trabaja por <strong>Área / Procesos</strong>. Cada selección abre su propia vista para no acumular información hacia abajo.</p></div>
+        <div><span className="matrix-kicker">Periodo {year} · {unitCode}</span><h3>Matrices de {unitName}</h3><p>Las áreas son <strong>transversales</strong>: puedes usar cualquier área del catálogo de la empresa en esta unidad y decidir cuáles mostrar.</p></div>
         <div className="matrix-route">
           <button className={page === 'areas' ? 'active' : 'done'} onClick={() => { setPage('areas'); setSelectedAreaId(''); setSelectedProcessId(''); setSelectedMatrixId('') }}>1. Área / Procesos</button>
           <ChevronRight size={15}/>
@@ -345,10 +359,10 @@ export default function MatrixWorkspace({ periodId, year, unitCode, unitName, ca
 
       {loading ? <div className="matrix-loading"><LoaderCircle className="spin" size={22}/> Cargando estructura...</div> : <>
         {page === 'areas' && <section className="matrix-stage">
-          <div className="matrix-stage-head"><div><small>Área / Procesos</small><h4>Áreas habilitadas para matrices</h4><p>No se muestran todas las áreas del directorio. Gestión Estratégica decide cuáles usar en este periodo.</p></div>{canManage && <button className="matrix-primary" onClick={() => setAreaPickerOpen(true)}><Plus size={15}/> Añadir área</button>}</div>
-          {visibleAreas.length === 0 ? <div className="matrix-empty"><Building2 size={24}/><strong>Aún no hay áreas añadidas</strong><span>Usa “Añadir área” para comenzar la estructura de matrices.</span></div> : <div className="matrix-area-grid">{visibleAreas.map(area => {
+          <div className="matrix-stage-head"><div><small>Área / Procesos</small><h4>Áreas transversales habilitadas</h4><p>Las áreas no están separadas por unidad. Gestión Estratégica puede añadir o quitar cualquier área del catálogo para trabajar las matrices de {unitName}.</p></div>{canManage && <button className="matrix-primary" onClick={() => setAreaPickerOpen(true)}><Plus size={15}/> Añadir área</button>}</div>
+          {visibleAreas.length === 0 ? <div className="matrix-empty"><Building2 size={24}/><strong>Aún no hay áreas añadidas</strong><span>Usa “Añadir área” y elige entre todas las áreas de la empresa.</span></div> : <div className="matrix-area-grid">{visibleAreas.map(area => {
             const count = processes.filter(process => process.management_id === area.id).length
-            return <div className="matrix-area-card" key={area.id}><button onClick={() => chooseArea(area.id)}><span><Building2 size={20}/></span><div><strong>{area.name}</strong><small>{count} proceso{count === 1 ? '' : 's'}</small></div><ArrowRight size={17}/></button>{canManage && count === 0 && <button className="matrix-area-remove" title="Quitar área" onClick={() => void removeArea(area)}><Trash2 size={13}/></button>}</div>
+            return <div className="matrix-area-card" key={area.id}><button onClick={() => chooseArea(area.id)}><span><Building2 size={20}/></span><div><strong>{area.name}</strong><small>{count} proceso{count === 1 ? '' : 's'}</small></div><ArrowRight size={17}/></button>{canManage && <button className="matrix-area-remove" title="Quitar área de esta vista" onClick={() => void removeArea(area)}><Trash2 size={13}/></button>}</div>
           })}</div>}
         </section>}
 
@@ -371,7 +385,7 @@ export default function MatrixWorkspace({ periodId, year, unitCode, unitName, ca
         </section>}
       </>}
 
-      {areaPickerOpen && <div className="matrix-modal-backdrop" onMouseDown={event => { if (event.currentTarget === event.target && !saving) setAreaPickerOpen(false) }}><div className="matrix-modal"><button className="matrix-modal-close" onClick={() => setAreaPickerOpen(false)}><X size={17}/></button><small>Gestión Estratégica</small><h4>Añadir área</h4><p>Elige qué área del catálogo quieres habilitar para las matrices de {unitName}.</p><div className="matrix-area-picker">{availableAreas.length === 0 ? <div className="matrix-empty compact"><strong>No quedan áreas por añadir</strong><span>Todas las áreas disponibles ya están habilitadas.</span></div> : availableAreas.map(area => <button key={area.id} disabled={saving} onClick={() => void addArea(area.id)}><Building2 size={18}/><span>{area.name}</span><Plus size={15}/></button>)}</div></div></div>}
+      {areaPickerOpen && <div className="matrix-modal-backdrop" onMouseDown={event => { if (event.currentTarget === event.target && !saving) setAreaPickerOpen(false) }}><div className="matrix-modal"><button className="matrix-modal-close" onClick={() => setAreaPickerOpen(false)}><X size={17}/></button><small>Gestión Estratégica</small><h4>Añadir área transversal</h4><p>Elige entre todas las áreas configuradas en la empresa. No se separan por unidad.</p><div className="matrix-area-picker">{availableAreas.length === 0 ? <div className="matrix-empty compact"><strong>No quedan áreas por añadir</strong><span>Todas las áreas del catálogo ya están habilitadas.</span></div> : availableAreas.map(area => <button key={area.id} disabled={saving} onClick={() => void addArea(area.id)}><Building2 size={18}/><span>{area.name}</span><Plus size={15}/></button>)}</div></div></div>}
 
       {processFormOpen && <div className="matrix-modal-backdrop" onMouseDown={event => { if (event.currentTarget === event.target && !saving) setProcessFormOpen(false) }}><div className="matrix-modal"><button className="matrix-modal-close" onClick={() => setProcessFormOpen(false)}><X size={17}/></button><small>{selectedArea?.name}</small><h4>Nuevo proceso</h4><form className="matrix-modal-form" onSubmit={createProcess}><label>Nombre del proceso<input autoFocus value={processName} onChange={event => setProcessName(event.target.value)} placeholder="Ej. Gestión comercial"/></label><label>Descripción<input value={processDescription} onChange={event => setProcessDescription(event.target.value)} placeholder="Opcional"/></label><div><button type="button" onClick={() => setProcessFormOpen(false)}>Cancelar</button><button className="matrix-primary" disabled={saving || !processName.trim()}>{saving ? <LoaderCircle className="spin" size={15}/> : <Save size={15}/>} Guardar proceso</button></div></form></div></div>}
 
