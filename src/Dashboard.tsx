@@ -14,6 +14,7 @@ import {
   LoaderCircle,
   LogOut,
   Menu,
+  Pencil,
   Plus,
   Search,
   Settings,
@@ -72,6 +73,18 @@ type PlanningEntry = {
   token: number
 } | null
 
+type ConfirmDialogProps = {
+  open: boolean
+  title: string
+  message: string
+  confirmText: string
+  cancelText?: string
+  danger?: boolean
+  busy?: boolean
+  onCancel: () => void
+  onConfirm: () => void | Promise<void>
+}
+
 const sectionLabels: Record<Section, string> = {
   inicio: 'Inicio',
   planificacion: 'Planificación',
@@ -92,6 +105,29 @@ function normalizeHeader(value: unknown) {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]/g, '')
+}
+
+function ConfirmDialog({ open, title, message, confirmText, cancelText = 'Cancelar', danger = false, busy = false, onCancel, onConfirm }: ConfirmDialogProps) {
+  if (!open) return null
+
+  return (
+    <div className="cg-modal-backdrop" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target && !busy) onCancel() }}>
+      <div className="cg-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="cg-confirm-title">
+        <button className="cg-modal-close" type="button" onClick={onCancel} disabled={busy} aria-label="Cerrar"><X size={18}/></button>
+        <div className={`cg-confirm-icon ${danger ? 'danger' : ''}`}>
+          {danger ? <Trash2 size={23}/> : <LogOut size={23}/>} 
+        </div>
+        <h3 id="cg-confirm-title">{title}</h3>
+        <p>{message}</p>
+        <div className="cg-modal-actions">
+          <button type="button" className="cg-modal-secondary" onClick={onCancel} disabled={busy}>{cancelText}</button>
+          <button type="button" className={`cg-modal-primary ${danger ? 'danger' : ''}`} onClick={() => void onConfirm()} disabled={busy}>
+            {busy && <LoaderCircle className="spin" size={16}/>} {confirmText}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function BrandMark() {
@@ -134,6 +170,8 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
   const [section, setSection] = useState<Section>('inicio')
   const [menuOpen, setMenuOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
+  const [logoutBusy, setLogoutBusy] = useState(false)
   const [selectedUnit, setSelectedUnit] = useState<string>('TODAS')
   const [periods, setPeriods] = useState<PlanningPeriod[]>([])
   const [selectedHomeYear, setSelectedHomeYear] = useState(2026)
@@ -181,6 +219,21 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
     setSelectedUnit(unitCode)
   }
 
+  function requestSignOut() {
+    setProfileOpen(false)
+    setLogoutConfirmOpen(true)
+  }
+
+  async function confirmSignOut() {
+    setLogoutBusy(true)
+    try {
+      await onSignOut()
+    } finally {
+      setLogoutBusy(false)
+      setLogoutConfirmOpen(false)
+    }
+  }
+
   const selectedHomeUnit = units.find(unit => unit.code === selectedUnit) || null
 
   return (
@@ -201,7 +254,7 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
 
         <div className="dashboard-sidebar__bottom">
           <div className="sidebar-access"><ShieldCheck size={18}/><div><strong>{roleLabel(access)}</strong><small>{access.global_access ? 'Acceso a todas las unidades' : 'Acceso por unidad'}</small></div></div>
-          <button className="sidebar-logout" onClick={onSignOut}><LogOut size={18}/> Cerrar sesión</button>
+          <button className="sidebar-logout" onClick={requestSignOut}><LogOut size={18}/> Cerrar sesión</button>
         </div>
       </aside>
 
@@ -224,7 +277,7 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
               <div className="profile-dropdown">
                 <div><strong>{displayName}</strong><small>{access.email}</small></div>
                 <span>{roleLabel(access)}</span>
-                <button onClick={onSignOut}><LogOut size={16}/> Cerrar sesión</button>
+                <button onClick={requestSignOut}><LogOut size={16}/> Cerrar sesión</button>
               </div>
             )}
           </div>
@@ -271,6 +324,16 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
           )}
         </main>
       </div>
+
+      <ConfirmDialog
+        open={logoutConfirmOpen}
+        title="¿Cerrar sesión?"
+        message="Tu sesión actual se cerrará y tendrás que volver a ingresar para continuar."
+        confirmText="Sí, cerrar sesión"
+        busy={logoutBusy}
+        onCancel={() => setLogoutConfirmOpen(false)}
+        onConfirm={confirmSignOut}
+      />
     </div>
   )
 }
@@ -407,6 +470,12 @@ function PlanningView({
   const [responsibleManagement, setResponsibleManagement] = useState('')
   const [responsibleManager, setResponsibleManager] = useState('')
   const [guidelineStatus, setGuidelineStatus] = useState('pendiente')
+  const [periodToDelete, setPeriodToDelete] = useState<PlanningPeriod | null>(null)
+  const [editingGuideline, setEditingGuideline] = useState<Guideline | null>(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editManagement, setEditManagement] = useState('')
+  const [editManager, setEditManager] = useState('')
+  const [editStatus, setEditStatus] = useState('pendiente')
   const [saving, setSaving] = useState(false)
   const [excelBusy, setExcelBusy] = useState(false)
 
@@ -488,10 +557,9 @@ function PlanningView({
     await onPeriodsChanged()
   }
 
-  async function deletePeriod(period: PlanningPeriod) {
-    if (!supabase || !canManage) return
-    const confirmed = window.confirm(`¿Eliminar el periodo ${period.year}? También se eliminarán sus lineamientos asociados. Esta acción no se puede deshacer.`)
-    if (!confirmed) return
+  async function confirmDeletePeriod() {
+    if (!supabase || !canManage || !periodToDelete) return
+    const period = periodToDelete
     setSaving(true)
     setError('')
     setNotice('')
@@ -501,6 +569,7 @@ function PlanningView({
       setError('No pudimos eliminar el periodo.')
       return
     }
+    setPeriodToDelete(null)
     setNotice(`Periodo ${period.year} eliminado.`)
     await loadPeriods()
     await onPeriodsChanged()
@@ -537,6 +606,45 @@ function PlanningView({
     setGuidelineStatus('pendiente')
     setShowGuidelineForm(false)
     setNotice('Lineamiento guardado correctamente.')
+    await loadGuidelines(selectedPeriod.id, selectedPlanningUnit.code)
+  }
+
+  function startEditGuideline(guideline: Guideline) {
+    setEditingGuideline(guideline)
+    setEditTitle(guideline.title)
+    setEditManagement(guideline.responsible_management || '')
+    setEditManager(guideline.responsible_manager || '')
+    setEditStatus(guideline.status || 'pendiente')
+    setError('')
+    setNotice('')
+  }
+
+  async function updateGuideline(event: FormEvent) {
+    event.preventDefault()
+    if (!supabase || !canManage || !editingGuideline || !selectedPeriod || !selectedPlanningUnit) return
+    const title = editTitle.trim()
+    if (!title) return
+
+    setSaving(true)
+    setError('')
+    const { error: updateError } = await supabase
+      .from('guidelines')
+      .update({
+        title,
+        responsible_management: editManagement.trim() || null,
+        responsible_manager: editManager.trim() || null,
+        status: editStatus.trim() || 'pendiente',
+      })
+      .eq('id', editingGuideline.id)
+    setSaving(false)
+
+    if (updateError) {
+      setError('No pudimos actualizar el lineamiento.')
+      return
+    }
+
+    setEditingGuideline(null)
+    setNotice('Lineamiento actualizado correctamente.')
     await loadGuidelines(selectedPeriod.id, selectedPlanningUnit.code)
   }
 
@@ -658,111 +766,152 @@ function PlanningView({
   }
 
   return (
-    <div className="planning-flow">
-      <div className="planning-breadcrumbs">
-        <button className={step === 'periods' ? 'current' : ''} onClick={() => { setStep('periods'); setSelectedPeriod(null); setSelectedPlanningUnit(null) }}>1. Periodo</button>
-        <span>→</span>
-        <button className={step === 'units' ? 'current' : ''} disabled={!selectedPeriod} onClick={() => selectedPeriod && setStep('units')}>2. Unidad</button>
-        <span>→</span>
-        <button className={step === 'guidelines' ? 'current' : ''} disabled={!selectedPeriod || !selectedPlanningUnit}>3. Lineamientos</button>
-      </div>
+    <>
+      <div className="planning-flow">
+        <div className="planning-breadcrumbs">
+          <button className={step === 'periods' ? 'current' : ''} onClick={() => { setStep('periods'); setSelectedPeriod(null); setSelectedPlanningUnit(null) }}>1. Periodo</button>
+          <span>→</span>
+          <button className={step === 'units' ? 'current' : ''} disabled={!selectedPeriod} onClick={() => selectedPeriod && setStep('units')}>2. Unidad</button>
+          <span>→</span>
+          <button className={step === 'guidelines' ? 'current' : ''} disabled={!selectedPeriod || !selectedPlanningUnit}>3. Lineamientos</button>
+        </div>
 
-      {step !== 'periods' && <button className="planning-back" onClick={goBack}><ArrowLeft size={17}/> Volver</button>}
-      {error && <div className="planning-message">{error}</div>}
-      {notice && <div className="planning-message planning-message--success">{notice}</div>}
+        {step !== 'periods' && <button className="planning-back" onClick={goBack}><ArrowLeft size={17}/> Volver</button>}
+        {error && <div className="planning-message">{error}</div>}
+        {notice && <div className="planning-message planning-message--success">{notice}</div>}
 
-      {step === 'periods' && (
-        <section className="planning-panel">
-          <div className="planning-title-row">
-            <div><span>Paso 1</span><h2>Elige el periodo</h2><p>Selecciona el año que quieres gestionar.</p></div>
-            {canManage && <button className="planning-primary" onClick={() => setShowPeriodForm(value => !value)}><Plus size={17}/> Nuevo periodo</button>}
-          </div>
+        {step === 'periods' && (
+          <section className="planning-panel">
+            <div className="planning-title-row">
+              <div><span>Paso 1</span><h2>Elige el periodo</h2><p>Selecciona el año que quieres gestionar.</p></div>
+              {canManage && <button className="planning-primary" onClick={() => setShowPeriodForm(value => !value)}><Plus size={17}/> Nuevo periodo</button>}
+            </div>
 
-          {showPeriodForm && (
-            <form className="planning-inline-form" onSubmit={createPeriod}>
-              <label>Año<input inputMode="numeric" maxLength={4} value={newYear} onChange={event => setNewYear(event.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="2030" /></label>
-              <button className="planning-primary" disabled={saving}>{saving ? <LoaderCircle className="spin" size={17}/> : <Plus size={17}/>} Crear</button>
-              <button type="button" className="planning-secondary" onClick={() => setShowPeriodForm(false)}>Cancelar</button>
-            </form>
-          )}
+            {showPeriodForm && (
+              <form className="planning-inline-form" onSubmit={createPeriod}>
+                <label>Año<input inputMode="numeric" maxLength={4} value={newYear} onChange={event => setNewYear(event.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="2030" /></label>
+                <button className="planning-primary" disabled={saving}>{saving ? <LoaderCircle className="spin" size={17}/> : <Plus size={17}/>} Crear</button>
+                <button type="button" className="planning-secondary" onClick={() => setShowPeriodForm(false)}>Cancelar</button>
+              </form>
+            )}
 
-          {loading ? (
-            <div className="planning-loading"><LoaderCircle className="spin" size={24}/> Cargando periodos...</div>
-          ) : (
-            <div className="planning-period-grid">
-              {periods.map(period => (
-                <div className={`planning-period-card-shell ${period.status === 'OPEN' ? 'open' : ''}`} key={period.id}>
-                  <button className="planning-period-card planning-period-card--inside" onClick={() => selectPeriod(period)}>
-                    <span className="planning-period-icon"><CalendarDays size={24}/></span>
-                    <div><small>{period.status === 'OPEN' ? 'Periodo actual' : period.status === 'CLOSED' ? 'Cerrado' : 'Borrador'}</small><strong>{period.year}</strong></div>
-                    <ArrowRight size={19}/>
-                  </button>
-                  {canManage && <button className="period-delete" title={`Eliminar ${period.year}`} onClick={() => void deletePeriod(period)} disabled={saving}><Trash2 size={17}/></button>}
-                </div>
+            {loading ? (
+              <div className="planning-loading"><LoaderCircle className="spin" size={24}/> Cargando periodos...</div>
+            ) : (
+              <div className="planning-period-grid">
+                {periods.map(period => (
+                  <div className={`planning-period-card-shell ${period.status === 'OPEN' ? 'open' : ''}`} key={period.id}>
+                    <button className="planning-period-card planning-period-card--inside" onClick={() => selectPeriod(period)}>
+                      <span className="planning-period-icon"><CalendarDays size={24}/></span>
+                      <div><small>{period.status === 'OPEN' ? 'Periodo actual' : period.status === 'CLOSED' ? 'Cerrado' : 'Borrador'}</small><strong>{period.year}</strong></div>
+                      <ArrowRight size={19}/>
+                    </button>
+                    {canManage && <button className="period-delete" title={`Eliminar ${period.year}`} onClick={() => setPeriodToDelete(period)} disabled={saving}><Trash2 size={15}/><span>Eliminar</span></button>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {step === 'units' && selectedPeriod && (
+          <section className="planning-panel">
+            <div className="planning-title-row"><div><span>Paso 2 · {selectedPeriod.year}</span><h2>Elige una unidad</h2><p>Selecciona una unidad para revisar sus lineamientos.</p></div></div>
+            <div className="planning-unit-grid">
+              {units.map(unit => (
+                <button key={unit.code} className={`planning-unit-card planning-unit-card--${unit.code.toLowerCase()}`} onClick={() => selectUnit(unit)}>
+                  <span className="planning-unit-icon"><Building2 size={27}/></span>
+                  <div><small>{unit.code}</small><strong>{unit.name}</strong></div>
+                  <ArrowRight size={19}/>
+                </button>
               ))}
             </div>
-          )}
-        </section>
-      )}
+          </section>
+        )}
 
-      {step === 'units' && selectedPeriod && (
-        <section className="planning-panel">
-          <div className="planning-title-row"><div><span>Paso 2 · {selectedPeriod.year}</span><h2>Elige una unidad</h2><p>Selecciona una unidad para revisar sus lineamientos.</p></div></div>
-          <div className="planning-unit-grid">
-            {units.map(unit => (
-              <button key={unit.code} className={`planning-unit-card planning-unit-card--${unit.code.toLowerCase()}`} onClick={() => selectUnit(unit)}>
-                <span className="planning-unit-icon"><Building2 size={27}/></span>
-                <div><small>{unit.code}</small><strong>{unit.name}</strong></div>
-                <ArrowRight size={19}/>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {step === 'guidelines' && selectedPeriod && selectedPlanningUnit && (
-        <section className="planning-panel planning-panel--wide">
-          <div className="planning-title-row">
-            <div><span>Paso 3 · {selectedPeriod.year} · {selectedPlanningUnit.code}</span><h2>Lineamientos de {selectedPlanningUnit.name}</h2><p>Formato: lineamiento estratégico, gerencia responsable, gerente responsable y estatus.</p></div>
-            <div className="guideline-actions">
-              <button className="planning-secondary" type="button" onClick={() => void exportGuidelinesToExcel()} disabled={excelBusy}>{excelBusy ? <LoaderCircle className="spin" size={17}/> : <Download size={17}/>} Exportar Excel</button>
-              {canManage && <label className={`planning-secondary planning-file-button ${excelBusy ? 'disabled' : ''}`}><Upload size={17}/> Subir Excel<input type="file" accept=".xlsx,.xls" onChange={importGuidelinesFromExcel} disabled={excelBusy} /></label>}
-              {canManage && <button className="planning-primary" onClick={() => setShowGuidelineForm(value => !value)}><Plus size={17}/> Nuevo lineamiento</button>}
+        {step === 'guidelines' && selectedPeriod && selectedPlanningUnit && (
+          <section className="planning-panel planning-panel--wide">
+            <div className="planning-title-row">
+              <div><span>Paso 3 · {selectedPeriod.year} · {selectedPlanningUnit.code}</span><h2>Lineamientos de {selectedPlanningUnit.name}</h2><p>Formato: lineamiento estratégico, gerencia responsable, gerente responsable y estatus.</p></div>
+              <div className="guideline-actions">
+                <button className="planning-secondary" type="button" onClick={() => void exportGuidelinesToExcel()} disabled={excelBusy}>{excelBusy ? <LoaderCircle className="spin" size={17}/> : <Download size={17}/>} Exportar Excel</button>
+                {canManage && <label className={`planning-secondary planning-file-button ${excelBusy ? 'disabled' : ''}`}><Upload size={17}/> Subir Excel<input type="file" accept=".xlsx,.xls" onChange={importGuidelinesFromExcel} disabled={excelBusy} /></label>}
+                {canManage && <button className="planning-primary" onClick={() => setShowGuidelineForm(value => !value)}><Plus size={17}/> Nuevo lineamiento</button>}
+              </div>
             </div>
-          </div>
 
-          {showGuidelineForm && (
-            <form className="guideline-form guideline-form--table" onSubmit={createGuideline}>
-              <label className="guideline-form__wide">Lineamiento estratégico<textarea rows={3} value={guidelineTitle} onChange={event => setGuidelineTitle(event.target.value)} placeholder="Escribe el lineamiento estratégico" /></label>
-              <label>Gerencia Responsable<input value={responsibleManagement} onChange={event => setResponsibleManagement(event.target.value)} placeholder="Ej. Comercial / MKT" /></label>
-              <label>Gerente Responsable<input value={responsibleManager} onChange={event => setResponsibleManager(event.target.value)} placeholder="Ej. Jorge M. / Lorena A." /></label>
-              <label>Estatus<select value={guidelineStatus} onChange={event => setGuidelineStatus(event.target.value)}><option value="pendiente">Pendiente</option><option value="enviado">Enviado</option><option value="observado">Observado</option><option value="aprobado">Aprobado</option></select></label>
-              <div className="guideline-form__actions"><button className="planning-primary" disabled={saving}>{saving ? <LoaderCircle className="spin" size={17}/> : <Plus size={17}/>} Guardar lineamiento</button><button type="button" className="planning-secondary" onClick={() => setShowGuidelineForm(false)}>Cancelar</button></div>
+            {showGuidelineForm && (
+              <form className="guideline-form guideline-form--table" onSubmit={createGuideline}>
+                <label className="guideline-form__wide">Lineamiento estratégico<textarea rows={3} value={guidelineTitle} onChange={event => setGuidelineTitle(event.target.value)} placeholder="Escribe el lineamiento estratégico" /></label>
+                <label>Gerencia Responsable<input value={responsibleManagement} onChange={event => setResponsibleManagement(event.target.value)} placeholder="Ej. Comercial / MKT" /></label>
+                <label>Gerente Responsable<input value={responsibleManager} onChange={event => setResponsibleManager(event.target.value)} placeholder="Ej. Jorge M. / Lorena A." /></label>
+                <label>Estatus<select value={guidelineStatus} onChange={event => setGuidelineStatus(event.target.value)}><option value="pendiente">Pendiente</option><option value="enviado">Enviado</option><option value="observado">Observado</option><option value="aprobado">Aprobado</option></select></label>
+                <div className="guideline-form__actions"><button className="planning-primary" disabled={saving}>{saving ? <LoaderCircle className="spin" size={17}/> : <Plus size={17}/>} Guardar lineamiento</button><button type="button" className="planning-secondary" onClick={() => setShowGuidelineForm(false)}>Cancelar</button></div>
+              </form>
+            )}
+
+            {guidelinesLoading ? (
+              <div className="planning-loading"><LoaderCircle className="spin" size={24}/> Cargando lineamientos...</div>
+            ) : guidelines.length === 0 ? (
+              <div className="planning-empty">
+                <span><ClipboardList size={30}/></span><h3>Aún no hay lineamientos</h3><p>{canManage ? 'Puedes crear el primero manualmente o subir tu Excel actual.' : 'Gestión Estratégica todavía no ha registrado lineamientos.'}</p>
+                {canManage && <div className="planning-empty__actions"><button className="planning-primary" onClick={() => setShowGuidelineForm(true)}><Plus size={17}/> Crear lineamiento</button><label className="planning-secondary planning-file-button"><Upload size={17}/> Subir Excel<input type="file" accept=".xlsx,.xls" onChange={importGuidelinesFromExcel} /></label></div>}
+              </div>
+            ) : (
+              <div className="guideline-table-wrap">
+                <table className="guideline-table">
+                  <thead><tr><th>N°</th><th>Lineamientos Estratégicos</th><th>Gerencia Responsable</th><th>Gerente Responsable</th><th>Estatus</th>{canManage && <th>Acciones</th>}</tr></thead>
+                  <tbody>
+                    {guidelines.map((guideline, index) => (
+                      <tr key={guideline.id}>
+                        <td className="guideline-table__number">{index + 1}</td>
+                        <td className="guideline-table__title">{guideline.title}</td>
+                        <td>{guideline.responsible_management || '—'}</td>
+                        <td>{guideline.responsible_manager || '—'}</td>
+                        <td><span className={`guideline-status guideline-status--${normalizeHeader(guideline.status)}`}>{guideline.status || 'pendiente'}</span></td>
+                        {canManage && <td className="guideline-table__actions"><button type="button" onClick={() => startEditGuideline(guideline)}><Pencil size={14}/> Editar</button></td>}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
+      </div>
+
+      <ConfirmDialog
+        open={Boolean(periodToDelete)}
+        title={`¿Eliminar el periodo ${periodToDelete?.year ?? ''}?`}
+        message="También se eliminarán los lineamientos asociados a este periodo. Esta acción no se puede deshacer."
+        confirmText="Sí, eliminar"
+        danger
+        busy={saving}
+        onCancel={() => setPeriodToDelete(null)}
+        onConfirm={confirmDeletePeriod}
+      />
+
+      {editingGuideline && (
+        <div className="cg-modal-backdrop" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target && !saving) setEditingGuideline(null) }}>
+          <div className="cg-edit-dialog" role="dialog" aria-modal="true" aria-labelledby="edit-guideline-title">
+            <button className="cg-modal-close" type="button" onClick={() => setEditingGuideline(null)} disabled={saving} aria-label="Cerrar"><X size={18}/></button>
+            <div className="cg-edit-heading"><span><Pencil size={18}/></span><div><small>Editar registro</small><h3 id="edit-guideline-title">Lineamiento estratégico</h3></div></div>
+            <form className="cg-edit-form" onSubmit={updateGuideline}>
+              <label>Lineamiento estratégico<textarea rows={4} value={editTitle} onChange={event => setEditTitle(event.target.value)} /></label>
+              <div className="cg-edit-grid">
+                <label>Gerencia Responsable<input value={editManagement} onChange={event => setEditManagement(event.target.value)} /></label>
+                <label>Gerente Responsable<input value={editManager} onChange={event => setEditManager(event.target.value)} /></label>
+              </div>
+              <label>Estatus<select value={editStatus} onChange={event => setEditStatus(event.target.value)}><option value="pendiente">Pendiente</option><option value="enviado">Enviado</option><option value="observado">Observado</option><option value="aprobado">Aprobado</option></select></label>
+              <div className="cg-modal-actions">
+                <button type="button" className="cg-modal-secondary" onClick={() => setEditingGuideline(null)} disabled={saving}>Cancelar</button>
+                <button type="submit" className="cg-modal-primary" disabled={saving || !editTitle.trim()}>{saving && <LoaderCircle className="spin" size={16}/>} Guardar cambios</button>
+              </div>
             </form>
-          )}
-
-          {guidelinesLoading ? (
-            <div className="planning-loading"><LoaderCircle className="spin" size={24}/> Cargando lineamientos...</div>
-          ) : guidelines.length === 0 ? (
-            <div className="planning-empty">
-              <span><ClipboardList size={30}/></span><h3>Aún no hay lineamientos</h3><p>{canManage ? 'Puedes crear el primero manualmente o subir tu Excel actual.' : 'Gestión Estratégica todavía no ha registrado lineamientos.'}</p>
-              {canManage && <div className="planning-empty__actions"><button className="planning-primary" onClick={() => setShowGuidelineForm(true)}><Plus size={17}/> Crear lineamiento</button><label className="planning-secondary planning-file-button"><Upload size={17}/> Subir Excel<input type="file" accept=".xlsx,.xls" onChange={importGuidelinesFromExcel} /></label></div>}
-            </div>
-          ) : (
-            <div className="guideline-table-wrap">
-              <table className="guideline-table">
-                <thead><tr><th>N°</th><th>Lineamientos Estratégicos</th><th>Gerencia Responsable</th><th>Gerente Responsable</th><th>Estatus</th></tr></thead>
-                <tbody>
-                  {guidelines.map((guideline, index) => (
-                    <tr key={guideline.id}><td className="guideline-table__number">{index + 1}</td><td className="guideline-table__title">{guideline.title}</td><td>{guideline.responsible_management || '—'}</td><td>{guideline.responsible_manager || '—'}</td><td><span className={`guideline-status guideline-status--${normalizeHeader(guideline.status)}`}>{guideline.status || 'pendiente'}</span></td></tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+          </div>
+        </div>
       )}
-    </div>
+    </>
   )
 }
 
