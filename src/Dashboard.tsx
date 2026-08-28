@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
 import {
+  ArrowLeft,
   ArrowRight,
   BarChart3,
   Bell,
@@ -9,8 +10,10 @@ import {
   ClipboardList,
   FileBarChart,
   LayoutDashboard,
+  LoaderCircle,
   LogOut,
   Menu,
+  Plus,
   Search,
   Settings,
   ShieldCheck,
@@ -19,7 +22,9 @@ import {
   Users,
   X,
 } from 'lucide-react'
+import { supabase } from './lib/supabase'
 import './dashboard.css'
+import './planning.css'
 
 type UnitAccess = {
   code: 'HU' | 'DEP' | 'VS' | 'HOT' | 'CENTRAL'
@@ -37,7 +42,24 @@ type DashboardAccess = {
   units: UnitAccess[]
 }
 
+type PlanningPeriod = {
+  id: string
+  year: number
+  name: string
+  status: 'DRAFT' | 'OPEN' | 'CLOSED'
+}
+
+type Guideline = {
+  id: string
+  title: string
+  description: string | null
+  sort_order: number
+  active: boolean
+}
+
 type Section = 'inicio' | 'planificacion' | 'configuracion' | 'reportes'
+
+type PlanningStep = 'periods' | 'units' | 'guidelines'
 
 const sectionLabels: Record<Section, string> = {
   inicio: 'Inicio',
@@ -45,6 +67,8 @@ const sectionLabels: Record<Section, string> = {
   configuracion: 'Configuración',
   reportes: 'Reportes',
 }
+
+const unitOrder: UnitAccess['code'][] = ['CENTRAL', 'HU', 'DEP', 'VS', 'HOT']
 
 function BrandMark() {
   return (
@@ -78,6 +102,10 @@ function initials(access: DashboardAccess) {
   return parts.slice(0, 2).map(part => part[0]?.toUpperCase()).join('') || 'CG'
 }
 
+function sortUnits(units: UnitAccess[]) {
+  return [...units].sort((a, b) => unitOrder.indexOf(a.code) - unitOrder.indexOf(b.code))
+}
+
 export default function Dashboard({ access, onSignOut }: { access: DashboardAccess; onSignOut: () => void | Promise<void> }) {
   const [section, setSection] = useState<Section>('inicio')
   const [menuOpen, setMenuOpen] = useState(false)
@@ -91,7 +119,7 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
   }).format(new Date()), [])
 
   const displayName = friendlyName(access)
-  const units = access.units || []
+  const units = sortUnits(access.units || [])
 
   const navigate = (next: Section) => {
     setSection(next)
@@ -154,7 +182,7 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
                   <p>{sectionDescription(section)}</p>
                 </div>
               </div>
-              {section === 'planificacion' && <PlanningView units={units} />}
+              {section === 'planificacion' && <PlanningView access={access} units={units} />}
               {section === 'configuracion' && <ConfigurationView />}
               {section === 'reportes' && <ReportsView />}
             </>
@@ -238,28 +266,270 @@ function HomeView({ access, displayName, today, units, selectedUnit, setSelected
 }
 
 function sectionDescription(section: Section) {
-  if (section === 'planificacion') return 'Administra periodos, unidades, lineamientos y matrices.'
+  if (section === 'planificacion') return 'Periodo → unidad → lineamientos.'
   if (section === 'configuracion') return 'Configura usuarios, permisos y parámetros.'
   return 'Consulta el avance y los resultados de gestión.'
 }
 
-function PlanningView({ units }: { units: UnitAccess[] }) {
-  const periods = ['2026', '2027', '2028', '2029']
+function PlanningView({ access, units }: { access: DashboardAccess; units: UnitAccess[] }) {
+  const [step, setStep] = useState<PlanningStep>('periods')
+  const [periods, setPeriods] = useState<PlanningPeriod[]>([])
+  const [selectedPeriod, setSelectedPeriod] = useState<PlanningPeriod | null>(null)
+  const [selectedPlanningUnit, setSelectedPlanningUnit] = useState<UnitAccess | null>(null)
+  const [guidelines, setGuidelines] = useState<Guideline[]>([])
+  const [loading, setLoading] = useState(true)
+  const [guidelinesLoading, setGuidelinesLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [showPeriodForm, setShowPeriodForm] = useState(false)
+  const [newYear, setNewYear] = useState('')
+  const [showGuidelineForm, setShowGuidelineForm] = useState(false)
+  const [guidelineTitle, setGuidelineTitle] = useState('')
+  const [guidelineDescription, setGuidelineDescription] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const canManage = access.global_role === 'GESTION_ESTRATEGICA'
+
+  useEffect(() => {
+    void loadPeriods()
+  }, [])
+
+  useEffect(() => {
+    if (step === 'guidelines' && selectedPeriod && selectedPlanningUnit) {
+      void loadGuidelines(selectedPeriod.id, selectedPlanningUnit.code)
+    }
+  }, [step, selectedPeriod, selectedPlanningUnit])
+
+  async function loadPeriods() {
+    if (!supabase) return
+    setLoading(true)
+    setError('')
+    const { data, error: queryError } = await supabase
+      .from('planning_periods')
+      .select('id, year, name, status')
+      .order('year', { ascending: true })
+    setLoading(false)
+    if (queryError) {
+      setError('No pudimos cargar los periodos.')
+      return
+    }
+    setPeriods((data || []) as PlanningPeriod[])
+  }
+
+  async function loadGuidelines(periodId: string, unitCode: UnitAccess['code']) {
+    if (!supabase) return
+    setGuidelinesLoading(true)
+    setError('')
+    const { data, error: queryError } = await supabase
+      .from('guidelines')
+      .select('id, title, description, sort_order, active')
+      .eq('period_id', periodId)
+      .eq('unit_code', unitCode)
+      .eq('active', true)
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true })
+    setGuidelinesLoading(false)
+    if (queryError) {
+      setError('No pudimos cargar los lineamientos.')
+      return
+    }
+    setGuidelines((data || []) as Guideline[])
+  }
+
+  async function createPeriod(event: FormEvent) {
+    event.preventDefault()
+    if (!supabase || !canManage) return
+    const year = Number(newYear)
+    if (!Number.isInteger(year) || year < 2020 || year > 2100) {
+      setError('Ingresa un año válido.')
+      return
+    }
+    setSaving(true)
+    setError('')
+    const { error: insertError } = await supabase.from('planning_periods').insert({
+      year,
+      name: `Periodo ${year}`,
+      status: 'DRAFT',
+    })
+    setSaving(false)
+    if (insertError) {
+      setError(insertError.code === '23505' ? 'Ese periodo ya existe.' : 'No pudimos crear el periodo.')
+      return
+    }
+    setNewYear('')
+    setShowPeriodForm(false)
+    await loadPeriods()
+  }
+
+  async function createGuideline(event: FormEvent) {
+    event.preventDefault()
+    if (!supabase || !canManage || !selectedPeriod || !selectedPlanningUnit) return
+    const title = guidelineTitle.trim()
+    if (!title) {
+      setError('Escribe el nombre del lineamiento.')
+      return
+    }
+    setSaving(true)
+    setError('')
+    const { error: insertError } = await supabase.from('guidelines').insert({
+      period_id: selectedPeriod.id,
+      unit_code: selectedPlanningUnit.code,
+      title,
+      description: guidelineDescription.trim() || null,
+      sort_order: guidelines.length,
+    })
+    setSaving(false)
+    if (insertError) {
+      setError('No pudimos guardar el lineamiento.')
+      return
+    }
+    setGuidelineTitle('')
+    setGuidelineDescription('')
+    setShowGuidelineForm(false)
+    await loadGuidelines(selectedPeriod.id, selectedPlanningUnit.code)
+  }
+
+  function selectPeriod(period: PlanningPeriod) {
+    setSelectedPeriod(period)
+    setSelectedPlanningUnit(null)
+    setStep('units')
+    setError('')
+  }
+
+  function selectUnit(unit: UnitAccess) {
+    setSelectedPlanningUnit(unit)
+    setStep('guidelines')
+    setError('')
+  }
+
+  function goBack() {
+    setError('')
+    if (step === 'guidelines') {
+      setStep('units')
+      setSelectedPlanningUnit(null)
+      return
+    }
+    if (step === 'units') {
+      setStep('periods')
+      setSelectedPeriod(null)
+    }
+  }
+
   return (
-    <div className="module-stack">
-      <div className="panel-card module-card">
-        <div className="panel-heading"><div><span>Periodos</span><h2>Planificación estratégica</h2></div><button className="primary-small">+ Nuevo periodo</button></div>
-        <div className="period-grid">
-          {periods.map((period, index) => <button className={`period-card ${index === 0 ? 'active' : ''}`} key={period}><CalendarDays size={22}/><strong>{period}</strong><small>{index === 0 ? 'Periodo actual' : 'Próximo periodo'}</small><ArrowRight size={17}/></button>)}
-        </div>
+    <div className="planning-flow">
+      <div className="planning-breadcrumbs">
+        <button className={step === 'periods' ? 'current' : ''} onClick={() => { setStep('periods'); setSelectedPeriod(null); setSelectedPlanningUnit(null) }}>1. Periodo</button>
+        <span>→</span>
+        <button className={step === 'units' ? 'current' : ''} disabled={!selectedPeriod} onClick={() => selectedPeriod && setStep('units')}>2. Unidad</button>
+        <span>→</span>
+        <button className={step === 'guidelines' ? 'current' : ''} disabled={!selectedPeriod || !selectedPlanningUnit}>3. Lineamientos</button>
       </div>
-      <div className="panel-card module-card">
-        <div className="panel-heading"><div><span>Unidades</span><h2>Unidades disponibles</h2></div></div>
-        <div className="simple-table">
-          <div className="simple-table__head"><span>Unidad</span><span>Código</span><span>Estado</span><span></span></div>
-          {units.map(unit => <div className="simple-table__row" key={unit.code}><span><Building2 size={17}/>{unit.name}</span><span>{unit.code}</span><span><i className="active-dot"/>Activa</span><button>Gestionar <ArrowRight size={15}/></button></div>)}
-        </div>
-      </div>
+
+      {step !== 'periods' && (
+        <button className="planning-back" onClick={goBack}><ArrowLeft size={17}/> Volver</button>
+      )}
+
+      {error && <div className="planning-message">{error}</div>}
+
+      {step === 'periods' && (
+        <section className="planning-panel">
+          <div className="planning-title-row">
+            <div>
+              <span>Paso 1</span>
+              <h2>Elige el periodo</h2>
+              <p>Selecciona el año que quieres gestionar.</p>
+            </div>
+            {canManage && <button className="planning-primary" onClick={() => setShowPeriodForm(value => !value)}><Plus size={17}/> Nuevo periodo</button>}
+          </div>
+
+          {showPeriodForm && (
+            <form className="planning-inline-form" onSubmit={createPeriod}>
+              <label>Año<input inputMode="numeric" maxLength={4} value={newYear} onChange={event => setNewYear(event.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="2030" /></label>
+              <button className="planning-primary" disabled={saving}>{saving ? <LoaderCircle className="spin" size={17}/> : <Plus size={17}/>} Crear</button>
+              <button type="button" className="planning-secondary" onClick={() => setShowPeriodForm(false)}>Cancelar</button>
+            </form>
+          )}
+
+          {loading ? (
+            <div className="planning-loading"><LoaderCircle className="spin" size={24}/> Cargando periodos...</div>
+          ) : (
+            <div className="planning-period-grid">
+              {periods.map(period => (
+                <button className={`planning-period-card ${period.status === 'OPEN' ? 'open' : ''}`} key={period.id} onClick={() => selectPeriod(period)}>
+                  <span className="planning-period-icon"><CalendarDays size={24}/></span>
+                  <div><small>{period.status === 'OPEN' ? 'Periodo actual' : period.status === 'CLOSED' ? 'Cerrado' : 'Borrador'}</small><strong>{period.year}</strong></div>
+                  <ArrowRight size={19}/>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {step === 'units' && selectedPeriod && (
+        <section className="planning-panel">
+          <div className="planning-title-row">
+            <div>
+              <span>Paso 2 · {selectedPeriod.year}</span>
+              <h2>Elige una unidad</h2>
+              <p>Entrarás a los lineamientos de la unidad seleccionada.</p>
+            </div>
+          </div>
+          <div className="planning-unit-grid">
+            {units.map(unit => (
+              <button key={unit.code} className={`planning-unit-card planning-unit-card--${unit.code.toLowerCase()}`} onClick={() => selectUnit(unit)}>
+                <span className="planning-unit-icon"><Building2 size={27}/></span>
+                <div><small>{unit.code}</small><strong>{unit.name}</strong></div>
+                <ArrowRight size={19}/>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {step === 'guidelines' && selectedPeriod && selectedPlanningUnit && (
+        <section className="planning-panel">
+          <div className="planning-title-row">
+            <div>
+              <span>Paso 3 · {selectedPeriod.year} · {selectedPlanningUnit.code}</span>
+              <h2>Lineamientos de {selectedPlanningUnit.name}</h2>
+              <p>Aquí se guardarán los lineamientos reales de esta unidad y periodo.</p>
+            </div>
+            {canManage && <button className="planning-primary" onClick={() => setShowGuidelineForm(value => !value)}><Plus size={17}/> Nuevo lineamiento</button>}
+          </div>
+
+          {showGuidelineForm && (
+            <form className="guideline-form" onSubmit={createGuideline}>
+              <label>Nombre del lineamiento<input value={guidelineTitle} onChange={event => setGuidelineTitle(event.target.value)} placeholder="Ej. Crecimiento y rentabilidad" /></label>
+              <label>Descripción <span>(opcional)</span><textarea rows={3} value={guidelineDescription} onChange={event => setGuidelineDescription(event.target.value)} placeholder="Escribe una breve descripción" /></label>
+              <div><button className="planning-primary" disabled={saving}>{saving ? <LoaderCircle className="spin" size={17}/> : <Plus size={17}/>} Guardar lineamiento</button><button type="button" className="planning-secondary" onClick={() => setShowGuidelineForm(false)}>Cancelar</button></div>
+            </form>
+          )}
+
+          {guidelinesLoading ? (
+            <div className="planning-loading"><LoaderCircle className="spin" size={24}/> Cargando lineamientos...</div>
+          ) : guidelines.length === 0 ? (
+            <div className="planning-empty">
+              <span><ClipboardList size={30}/></span>
+              <h3>Aún no hay lineamientos</h3>
+              <p>{canManage ? 'Crea el primer lineamiento para comenzar.' : 'Gestión Estratégica todavía no ha registrado lineamientos.'}</p>
+              {canManage && <button className="planning-primary" onClick={() => setShowGuidelineForm(true)}><Plus size={17}/> Crear lineamiento</button>}
+            </div>
+          ) : (
+            <div className="guideline-list">
+              {guidelines.map((guideline, index) => (
+                <article className="guideline-card" key={guideline.id}>
+                  <span className="guideline-number">{String(index + 1).padStart(2, '0')}</span>
+                  <div>
+                    <h3>{guideline.title}</h3>
+                    <p>{guideline.description || 'Sin descripción'}</p>
+                  </div>
+                  <button disabled title="Disponible en el siguiente paso">Matrices <ArrowRight size={16}/></button>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
     </div>
   )
 }
