@@ -5,6 +5,7 @@ import {
   Bell,
   Building2,
   CalendarDays,
+  CheckCircle2,
   ChevronDown,
   ClipboardList,
   FileBarChart,
@@ -15,6 +16,7 @@ import {
   Settings,
   ShieldCheck,
   SlidersHorizontal,
+  Sparkles,
   Users,
   X,
 } from 'lucide-react'
@@ -64,6 +66,13 @@ function roleLabel(access: DashboardAccess) {
   return 'Equipo de Unidad'
 }
 
+function friendlyName(access: DashboardAccess) {
+  if (access.full_name?.trim()) return access.full_name.trim().split(' ')[0]
+  const local = access.email.split('@')[0]
+  const clean = local.replace(/[._-]+/g, ' ').replace(/\d+$/g, '').trim() || local
+  return clean.charAt(0).toUpperCase() + clean.slice(1)
+}
+
 function initials(access: DashboardAccess) {
   const source = access.full_name?.trim() || access.email.split('@')[0]
   const parts = source.split(/[\s._-]+/).filter(Boolean)
@@ -82,7 +91,7 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
     year: 'numeric',
   }).format(new Date()), [])
 
-  const displayName = access.full_name || access.email.split('@')[0]
+  const displayName = friendlyName(access)
   const units = access.units || []
 
   const navigate = (next: Section) => {
@@ -107,7 +116,7 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
         </nav>
 
         <div className="dashboard-sidebar__bottom">
-          <div className="sidebar-access"><ShieldCheck size={18}/><div><strong>{roleLabel(access)}</strong><small>{access.global_access ? 'Acceso global' : 'Acceso por unidad'}</small></div></div>
+          <div className="sidebar-access"><ShieldCheck size={18}/><div><strong>{roleLabel(access)}</strong><small>{access.global_access ? 'Acceso a todas las unidades' : 'Acceso por unidad'}</small></div></div>
           <button className="sidebar-logout" onClick={onSignOut}><LogOut size={18}/> Cerrar sesión</button>
         </div>
       </aside>
@@ -118,7 +127,7 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
         <header className="dashboard-topbar">
           <div className="topbar-left">
             <button className="mobile-menu" onClick={() => setMenuOpen(true)} aria-label="Abrir menú"><Menu size={22}/></button>
-            <div className="dashboard-search"><Search size={18}/><input aria-label="Buscar" placeholder="Buscar en Control de Gestión" /></div>
+            <div className="dashboard-search"><Search size={18}/><input aria-label="Buscar" placeholder="¿Qué necesitas gestionar?" /></div>
           </div>
           <div className="topbar-actions">
             <button className="icon-button" aria-label="Notificaciones"><Bell size={19}/><span className="notification-dot" /></button>
@@ -127,70 +136,126 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
         </header>
 
         <main className="dashboard-content">
-          <div className="page-heading">
-            <div>
-              <span className="page-kicker">{sectionLabels[section].toUpperCase()}</span>
-              <h1>{section === 'inicio' ? `Hola, ${displayName}` : sectionLabels[section]}</h1>
-              <p>{section === 'inicio' ? `Vista general de Control de Gestión · ${today}` : sectionDescription(section)}</p>
-            </div>
-            {section === 'inicio' && <button className="period-button"><CalendarDays size={17}/> Periodo 2026 <ChevronDown size={16}/></button>}
-          </div>
-
-          {section === 'inicio' && (
+          {section === 'inicio' ? (
+            <HomeView
+              access={access}
+              displayName={displayName}
+              today={today}
+              units={units}
+              selectedUnit={selectedUnit}
+              setSelectedUnit={setSelectedUnit}
+              navigate={navigate}
+            />
+          ) : (
             <>
-              <section className="summary-grid" aria-label="Resumen de acceso">
-                <SummaryCard icon={<Building2/>} label="Unidades habilitadas" value={String(units.length)} detail={access.global_access ? 'Acceso a todas las unidades' : 'Según tus permisos'} />
-                <SummaryCard icon={<ShieldCheck/>} label="Perfil actual" value={roleLabel(access)} detail="Permisos validados" compact />
-                <SummaryCard icon={<CalendarDays/>} label="Periodo de trabajo" value="2026" detail="Periodo seleccionado" />
-                <SummaryCard icon={<ClipboardList/>} label="Módulo principal" value="Planificación" detail="Listo para configurar" compact />
-              </section>
-
-              <section className="dashboard-section">
-                <div className="section-title-row">
-                  <div><span>UNIDADES DE NEGOCIO</span><h2>Selecciona una unidad</h2></div>
-                  <button className="text-action" onClick={() => setSelectedUnit('TODAS')}>Ver todas <ArrowRight size={16}/></button>
+              <div className="page-heading compact-heading">
+                <div>
+                  <span className="page-kicker">{sectionLabels[section].toUpperCase()}</span>
+                  <h1>{sectionLabels[section]}</h1>
+                  <p>{sectionDescription(section)}</p>
                 </div>
-                <div className="unit-grid">
-                  {units.map((unit, index) => (
-                    <button key={unit.code} className={`unit-card ${selectedUnit === unit.code ? 'selected' : ''}`} onClick={() => setSelectedUnit(unit.code)}>
-                      <div className="unit-card__top"><span className="unit-number">0{index + 1}</span><span className="unit-code">{unit.code}</span></div>
-                      <div className="unit-icon"><Building2 size={24}/></div>
-                      <h3>{unit.name}</h3>
-                      <p>{unit.unit_role === 'GLOBAL' ? 'Acceso global de Gestión Estratégica' : unit.unit_role === 'GERENTE_UNIDAD' ? 'Gerente de Unidad' : 'Equipo encargado'}</p>
-                      <span className="unit-link">Abrir unidad <ArrowRight size={16}/></span>
-                    </button>
-                  ))}
-                </div>
-              </section>
-
-              <section className="dashboard-lower-grid">
-                <div className="panel-card quick-panel">
-                  <div className="panel-heading"><div><span>ACCESOS RÁPIDOS</span><h2>Gestión del periodo</h2></div></div>
-                  <div className="quick-actions">
-                    <button onClick={() => navigate('planificacion')}><span className="quick-icon"><ClipboardList size={20}/></span><span><strong>Planificación</strong><small>Periodos, lineamientos y matrices</small></span><ArrowRight size={17}/></button>
-                    <button onClick={() => navigate('configuracion')}><span className="quick-icon"><SlidersHorizontal size={20}/></span><span><strong>Configuración</strong><small>Usuarios, unidades y parámetros</small></span><ArrowRight size={17}/></button>
-                    <button onClick={() => navigate('reportes')}><span className="quick-icon"><FileBarChart size={20}/></span><span><strong>Reportes</strong><small>Seguimiento y vista consolidada</small></span><ArrowRight size={17}/></button>
-                  </div>
-                </div>
-
-                <div className="panel-card status-panel">
-                  <div className="panel-heading"><div><span>ESTADO DEL SISTEMA</span><h2>Configuración inicial</h2></div></div>
-                  <div className="status-list">
-                    <div><span className="status-check">✓</span><p><strong>Autenticación OTP</strong><small>Configurada y operativa</small></p></div>
-                    <div><span className="status-check">✓</span><p><strong>Roles y permisos</strong><small>Acceso multiunidad habilitado</small></p></div>
-                    <div><span className="status-pending">3</span><p><strong>Estructura de planificación</strong><small>Siguiente etapa de configuración</small></p></div>
-                  </div>
-                </div>
-              </section>
+              </div>
+              {section === 'planificacion' && <PlanningView units={units} />}
+              {section === 'configuracion' && <ConfigurationView />}
+              {section === 'reportes' && <ReportsView />}
             </>
           )}
-
-          {section === 'planificacion' && <PlanningView units={units} />}
-          {section === 'configuracion' && <ConfigurationView />}
-          {section === 'reportes' && <ReportsView />}
         </main>
       </div>
     </div>
+  )
+}
+
+function HomeView({ access, displayName, today, units, selectedUnit, setSelectedUnit, navigate }: {
+  access: DashboardAccess
+  displayName: string
+  today: string
+  units: UnitAccess[]
+  selectedUnit: string
+  setSelectedUnit: (unit: string) => void
+  navigate: (section: Section) => void
+}) {
+  return (
+    <>
+      <section className="welcome-card">
+        <div className="welcome-copy">
+          <span className="welcome-kicker"><Sparkles size={15}/> TODO LISTO PARA EMPEZAR</span>
+          <h1>Hola, {displayName} 👋</h1>
+          <p>Desde aquí puedes organizar la planificación, revisar tus unidades y consultar el avance de la gestión.</p>
+          <div className="welcome-meta">
+            <span><CalendarDays size={16}/> {today}</span>
+            <span><ShieldCheck size={16}/> {roleLabel(access)}</span>
+          </div>
+        </div>
+        <div className="welcome-period">
+          <span>Periodo de trabajo</span>
+          <strong>2026</strong>
+          <button><CalendarDays size={16}/> Cambiar periodo <ChevronDown size={15}/></button>
+        </div>
+      </section>
+
+      <section className="dashboard-section action-section">
+        <div className="section-title-row">
+          <div><span>ACCESOS RÁPIDOS</span><h2>¿Qué quieres hacer hoy?</h2></div>
+        </div>
+        <div className="friendly-actions">
+          <button className="friendly-action friendly-action--primary" onClick={() => navigate('planificacion')}>
+            <span className="friendly-action__icon"><ClipboardList size={24}/></span>
+            <span className="friendly-action__copy"><strong>Trabajar la planificación</strong><small>Periodos, lineamientos y matrices</small></span>
+            <ArrowRight size={19}/>
+          </button>
+          <button className="friendly-action" onClick={() => navigate('configuracion')}>
+            <span className="friendly-action__icon"><SlidersHorizontal size={24}/></span>
+            <span className="friendly-action__copy"><strong>Configurar accesos</strong><small>Usuarios, roles y unidades</small></span>
+            <ArrowRight size={19}/>
+          </button>
+          <button className="friendly-action" onClick={() => navigate('reportes')}>
+            <span className="friendly-action__icon"><FileBarChart size={24}/></span>
+            <span className="friendly-action__copy"><strong>Revisar reportes</strong><small>Seguimiento y vista consolidada</small></span>
+            <ArrowRight size={19}/>
+          </button>
+        </div>
+      </section>
+
+      <section className="dashboard-section">
+        <div className="section-title-row">
+          <div><span>TUS UNIDADES</span><h2>Elige dónde quieres trabajar</h2></div>
+          {selectedUnit !== 'TODAS' && <button className="text-action" onClick={() => setSelectedUnit('TODAS')}>Ver todas <ArrowRight size={16}/></button>}
+        </div>
+        <div className="unit-grid friendly-unit-grid">
+          {units.map((unit, index) => (
+            <button key={unit.code} className={`unit-card unit-card--${unit.code.toLowerCase()} ${selectedUnit === unit.code ? 'selected' : ''}`} onClick={() => setSelectedUnit(unit.code)}>
+              <div className="unit-card__top"><span className="unit-number">0{index + 1}</span><span className="unit-code">{unit.code}</span></div>
+              <div className="unit-icon"><Building2 size={24}/></div>
+              <h3>{unit.name}</h3>
+              <p>{unit.unit_role === 'GLOBAL' ? 'Tienes acceso completo a esta unidad.' : unit.unit_role === 'GERENTE_UNIDAD' ? 'Acceso como Gerente de Unidad.' : 'Acceso como equipo encargado.'}</p>
+              <span className="unit-link">Entrar a la unidad <ArrowRight size={16}/></span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="dashboard-lower-grid friendly-lower-grid">
+        <div className="panel-card overview-panel">
+          <div className="panel-heading"><div><span>RESUMEN</span><h2>Tu espacio de trabajo</h2></div></div>
+          <div className="mini-summary-grid">
+            <SummaryCard icon={<Building2/>} label="Unidades" value={String(units.length)} detail="habilitadas" />
+            <SummaryCard icon={<CalendarDays/>} label="Periodo" value="2026" detail="seleccionado" />
+            <SummaryCard icon={<ShieldCheck/>} label="Acceso" value="Global" detail="Gestión Estratégica" compact />
+          </div>
+        </div>
+
+        <div className="panel-card next-step-card">
+          <div className="next-step-icon"><CheckCircle2 size={25}/></div>
+          <div>
+            <span>SIGUIENTE PASO</span>
+            <h2>Empecemos por Planificación</h2>
+            <p>Ya tienes acceso y permisos listos. El siguiente paso es configurar los periodos y la estructura de trabajo.</p>
+            <button onClick={() => navigate('planificacion')}>Ir a Planificación <ArrowRight size={16}/></button>
+          </div>
+        </div>
+      </section>
+    </>
   )
 }
 
