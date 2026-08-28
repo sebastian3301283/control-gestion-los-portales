@@ -31,9 +31,20 @@ function splitChoices(value: string | null | undefined) {
     .filter(Boolean)
 }
 
+function safeSpanStyle(element: HTMLElement) {
+  const styles: string[] = []
+  const weight = element.style.fontWeight.toLowerCase()
+  if (weight === 'bold' || Number(weight) >= 600) styles.push('font-weight:700')
+  if (element.style.fontStyle.toLowerCase() === 'italic') styles.push('font-style:italic')
+  if (element.style.textDecoration.toLowerCase().includes('underline')) styles.push('text-decoration:underline')
+  const family = element.style.fontFamily.replace(/["']/g, '').trim()
+  if (fonts.includes(family)) styles.push(`font-family:${family}`)
+  return styles.join(';')
+}
+
 function cleanRichHtml(html: string) {
   const doc = new DOMParser().parseFromString(html, 'text/html')
-  const allowed = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'FONT', 'BR', 'DIV', 'P'])
+  const allowed = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'FONT', 'SPAN', 'BR', 'DIV', 'P'])
 
   Array.from(doc.body.querySelectorAll('*')).forEach(element => {
     if (!allowed.has(element.tagName)) {
@@ -41,10 +52,11 @@ function cleanRichHtml(html: string) {
       return
     }
 
-    Array.from(element.attributes).forEach(attribute => {
-      if (element.tagName === 'FONT' && attribute.name.toLowerCase() === 'face' && fonts.includes(attribute.value)) return
-      element.removeAttribute(attribute.name)
-    })
+    const spanStyle = element.tagName === 'SPAN' ? safeSpanStyle(element as HTMLElement) : ''
+    const fontFace = element.tagName === 'FONT' ? (element.getAttribute('face') || '').replace(/["']/g, '').trim() : ''
+    Array.from(element.attributes).forEach(attribute => element.removeAttribute(attribute.name))
+    if (element.tagName === 'SPAN' && spanStyle) element.setAttribute('style', spanStyle)
+    if (element.tagName === 'FONT' && fonts.includes(fontFace)) element.setAttribute('face', fontFace)
   })
 
   return doc.body.innerHTML
