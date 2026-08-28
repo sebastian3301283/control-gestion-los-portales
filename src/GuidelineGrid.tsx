@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
-import { Bold, Check, ChevronDown, Italic, Pencil, Type, Underline as UnderlineIcon } from 'lucide-react'
+import { Bold, Check, ChevronDown, Italic, Pencil, Save, Type, Underline as UnderlineIcon, X } from 'lucide-react'
 import { supabase } from './lib/supabase'
 import './guideline-grid.css'
 
@@ -12,6 +12,12 @@ type GuidelineRow = {
   responsible_manager: string | null
   status: string
 }
+
+type Management = { id: string; name: string }
+type Manager = { id: string; name: string }
+type ManagerManagement = { manager_id: string; management_id: string }
+type GuidelineManagement = { guideline_id: string; management_id: string }
+type GuidelineManager = { guideline_id: string; manager_id: string }
 
 type Props = {
   guidelines: GuidelineRow[]
@@ -131,35 +137,31 @@ function RichTextCell({ initialHtml, initialText, onChange }: {
   )
 }
 
-function MultiSelectCell({ value, options, placeholder, onChange }: {
-  value: string
-  options: string[]
+function RelationMultiSelect({ value, options, placeholder, onChange }: {
+  value: string[]
+  options: Array<{ id: string; label: string }>
   placeholder: string
-  onChange: (value: string) => void
+  onChange: (ids: string[]) => void
 }) {
   const [open, setOpen] = useState(false)
-  const selected = splitChoices(value)
-  const allOptions = Array.from(new Set([...options, ...selected])).sort((a, b) => a.localeCompare(b, 'es'))
+  const selectedLabels = value.map(id => options.find(option => option.id === id)?.label).filter((label): label is string => Boolean(label))
 
-  function toggle(option: string) {
-    const next = selected.includes(option)
-      ? selected.filter(item => item !== option)
-      : [...selected, option]
-    onChange(next.join(' / '))
+  function toggle(id: string) {
+    onChange(value.includes(id) ? value.filter(item => item !== id) : [...value, id])
   }
 
   return (
     <div className="multi-select-cell">
       <button type="button" className={`multi-select-trigger ${open ? 'open' : ''}`} onClick={() => setOpen(current => !current)}>
-        <span>{selected.length ? selected.join(' / ') : placeholder}</span>
+        <span>{selectedLabels.length ? selectedLabels.join(' / ') : placeholder}</span>
         <ChevronDown size={15}/>
       </button>
       {open && (
         <div className="multi-select-menu">
-          {allOptions.length === 0 ? <div className="multi-select-empty">No hay opciones registradas</div> : allOptions.map(option => (
-            <button type="button" key={option} className={selected.includes(option) ? 'selected' : ''} onClick={() => toggle(option)}>
-              <span className="multi-select-check">{selected.includes(option) && <Check size={13}/>}</span>
-              <span>{option}</span>
+          {options.length === 0 ? <div className="multi-select-empty">No hay opciones registradas</div> : options.map(option => (
+            <button type="button" key={option.id} className={value.includes(option.id) ? 'selected' : ''} onClick={() => toggle(option.id)}>
+              <span className="multi-select-check">{value.includes(option.id) && <Check size={13}/>}</span>
+              <span>{option.label}</span>
             </button>
           ))}
         </div>
@@ -170,33 +172,102 @@ function MultiSelectCell({ value, options, placeholder, onChange }: {
 
 export default function GuidelineGrid({ guidelines, unitCode, canManage, onChanged, onError, onNotice }: Props) {
   const [richById, setRichById] = useState<Record<string, string | null>>({})
+  const [managements, setManagements] = useState<Management[]>([])
+  const [managers, setManagers] = useState<Manager[]>([])
+  const [managerManagements, setManagerManagements] = useState<ManagerManagement[]>([])
+  const [guidelineManagements, setGuidelineManagements] = useState<GuidelineManagement[]>([])
+  const [guidelineManagers, setGuidelineManagers] = useState<GuidelineManager[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editHtml, setEditHtml] = useState('')
   const [editText, setEditText] = useState('')
-  const [editManagement, setEditManagement] = useState('')
-  const [editManager, setEditManager] = useState('')
+  const [editManagementIds, setEditManagementIds] = useState<string[]>([])
+  const [editManagerIds, setEditManagerIds] = useState<string[]>([])
   const [editStatus, setEditStatus] = useState('pendiente')
   const [saving, setSaving] = useState(false)
 
-  const managementOptions = useMemo(() => Array.from(new Set(guidelines.flatMap(row => splitChoices(row.responsible_management)))).sort((a, b) => a.localeCompare(b, 'es')), [guidelines])
-  const managerOptions = useMemo(() => Array.from(new Set(guidelines.flatMap(row => splitChoices(row.responsible_manager)))).sort((a, b) => a.localeCompare(b, 'es')), [guidelines])
+  const managementById = useMemo(() => new Map(managements.map(item => [item.id, item.name])), [managements])
+  const managerById = useMemo(() => new Map(managers.map(item => [item.id, item.name])), [managers])
+  const unitManagementIds = useMemo(() => new Set(managements.map(item => item.id)), [managements])
+
+  const managementOptions = useMemo(
+    () => managements.map(item => ({ id: item.id, label: item.name })),
+    [managements],
+  )
+
+  const managerOptions = useMemo(() => {
+    const allowedManagerIds = new Set(
+      managerManagements
+        .filter(link => unitManagementIds.has(link.management_id) && (editManagementIds.length === 0 || editManagementIds.includes(link.management_id)))
+        .map(link => link.manager_id),
+    )
+
+    editManagerIds.forEach(id => allowedManagerIds.add(id))
+    return managers
+      .filter(item => allowedManagerIds.has(item.id))
+      .map(item => ({ id: item.id, label: item.name }))
+  }, [managers, managerManagements, unitManagementIds, editManagementIds, editManagerIds])
 
   useEffect(() => {
-    if (!supabase || guidelines.length === 0) return
+    if (!supabase) return
+    if (guidelines.length === 0) {
+      setRichById({})
+      setGuidelineManagements([])
+      setGuidelineManagers([])
+      return
+    }
+
     void (async () => {
-      const { data } = await supabase.from('guidelines').select('id, title_html').in('id', guidelines.map(row => row.id))
-      const next: Record<string, string | null> = {}
-      ;(data || []).forEach(row => { next[row.id] = row.title_html ? cleanRichHtml(String(row.title_html)) : null })
-      setRichById(next)
+      const guidelineIds = guidelines.map(row => row.id)
+      const [richResult, managementResult, managerResult, managerManagementResult, guidelineManagementResult, guidelineManagerResult] = await Promise.all([
+        supabase.from('guidelines').select('id, title_html').in('id', guidelineIds),
+        supabase.from('managements').select('id, name').eq('unit_code', unitCode).eq('active', true).order('name'),
+        supabase.from('managers').select('id, name').eq('active', true).order('name'),
+        supabase.from('manager_managements').select('manager_id, management_id'),
+        supabase.from('guideline_managements').select('guideline_id, management_id').in('guideline_id', guidelineIds),
+        supabase.from('guideline_managers').select('guideline_id, manager_id').in('guideline_id', guidelineIds),
+      ])
+
+      const nextRich: Record<string, string | null> = {}
+      ;(richResult.data || []).forEach(row => { nextRich[row.id] = row.title_html ? cleanRichHtml(String(row.title_html)) : null })
+      setRichById(nextRich)
+      setManagements((managementResult.data || []) as Management[])
+      setManagers((managerResult.data || []) as Manager[])
+      setManagerManagements((managerManagementResult.data || []) as ManagerManagement[])
+      setGuidelineManagements((guidelineManagementResult.data || []) as GuidelineManagement[])
+      setGuidelineManagers((guidelineManagerResult.data || []) as GuidelineManager[])
     })()
-  }, [guidelines])
+  }, [guidelines, unitCode])
+
+  function relationManagementIds(row: GuidelineRow) {
+    const ids = guidelineManagements.filter(link => link.guideline_id === row.id).map(link => link.management_id)
+    if (ids.length) return ids
+    const names = splitChoices(row.responsible_management)
+    return managements.filter(item => names.includes(item.name)).map(item => item.id)
+  }
+
+  function relationManagerIds(row: GuidelineRow) {
+    const ids = guidelineManagers.filter(link => link.guideline_id === row.id).map(link => link.manager_id)
+    if (ids.length) return ids
+    const names = splitChoices(row.responsible_manager)
+    return managers.filter(item => names.includes(item.name)).map(item => item.id)
+  }
+
+  function relationManagementText(row: GuidelineRow) {
+    const names = relationManagementIds(row).map(id => managementById.get(id)).filter((name): name is string => Boolean(name))
+    return names.length ? names.join(' / ') : (row.responsible_management || '—')
+  }
+
+  function relationManagerText(row: GuidelineRow) {
+    const names = relationManagerIds(row).map(id => managerById.get(id)).filter((name): name is string => Boolean(name))
+    return names.length ? names.join(' / ') : (row.responsible_manager || '—')
+  }
 
   function startEdit(row: GuidelineRow) {
     setEditingId(row.id)
     setEditHtml(richById[row.id] || row.title)
     setEditText(row.title)
-    setEditManagement(row.responsible_management || '')
-    setEditManager(row.responsible_manager || '')
+    setEditManagementIds(relationManagementIds(row))
+    setEditManagerIds(relationManagerIds(row))
     setEditStatus(row.status || 'pendiente')
     onError('')
     onNotice('')
@@ -206,8 +277,8 @@ export default function GuidelineGrid({ guidelines, unitCode, canManage, onChang
     setEditingId(null)
     setEditHtml('')
     setEditText('')
-    setEditManagement('')
-    setEditManager('')
+    setEditManagementIds([])
+    setEditManagerIds([])
     setEditStatus('pendiente')
   }
 
@@ -217,12 +288,15 @@ export default function GuidelineGrid({ guidelines, unitCode, canManage, onChang
     onError('')
     onNotice('')
 
+    const managementNames = editManagementIds.map(id => managementById.get(id)).filter((name): name is string => Boolean(name))
+    const managerNames = editManagerIds.map(id => managerById.get(id)).filter((name): name is string => Boolean(name))
     const safeHtml = cleanRichHtml(editHtml)
+
     const { error } = await supabase.from('guidelines').update({
       title: editText.trim(),
       title_html: safeHtml || null,
-      responsible_management: editManagement || null,
-      responsible_manager: editManager || null,
+      responsible_management: managementNames.length ? managementNames.join(' / ') : null,
+      responsible_manager: managerNames.length ? managerNames.join(' / ') : null,
       status: editStatus || 'pendiente',
     }).eq('id', editingId)
 
@@ -240,7 +314,7 @@ export default function GuidelineGrid({ guidelines, unitCode, canManage, onChang
   return (
     <div className={`guideline-grid-theme guideline-grid-theme--${unitCode.toLowerCase()}`}>
       <div className="guideline-table-wrap guideline-table-wrap--rich">
-        <table className="guideline-table guideline-table--rich">
+        <table className={`guideline-table guideline-table--rich guideline-table--${unitCode.toLowerCase()}`}>
           <thead><tr><th>N°</th><th>Lineamientos Estratégicos</th><th>Gerencia Responsable</th><th>Gerente Responsable</th><th>Estatus</th>{canManage && <th>Acciones</th>}</tr></thead>
           <tbody>
             {guidelines.map((row, index) => {
@@ -250,14 +324,22 @@ export default function GuidelineGrid({ guidelines, unitCode, canManage, onChang
                   <tr className={isEditing ? 'guideline-row--editing' : ''}>
                     <td className="guideline-table__number">{index + 1}</td>
                     <td className="guideline-table__title">{isEditing ? <RichTextCell initialHtml={richById[row.id] || null} initialText={row.title} onChange={(html, text) => { setEditHtml(html); setEditText(text) }} /> : richById[row.id] ? <div className="guideline-rich-display" dangerouslySetInnerHTML={{ __html: richById[row.id] || '' }} /> : row.title}</td>
-                    <td>{isEditing ? <MultiSelectCell value={editManagement} options={managementOptions} placeholder="Seleccionar gerencia" onChange={setEditManagement} /> : (row.responsible_management || '—')}</td>
-                    <td>{isEditing ? <MultiSelectCell value={editManager} options={managerOptions} placeholder="Seleccionar gerente" onChange={setEditManager} /> : (row.responsible_manager || '—')}</td>
+                    <td>{isEditing ? <RelationMultiSelect value={editManagementIds} options={managementOptions} placeholder="Seleccionar gerencia" onChange={setEditManagementIds} /> : relationManagementText(row)}</td>
+                    <td>{isEditing ? <RelationMultiSelect value={editManagerIds} options={managerOptions} placeholder="Seleccionar gerente" onChange={setEditManagerIds} /> : relationManagerText(row)}</td>
                     <td>{isEditing ? <select className="guideline-cell-input guideline-cell-select" value={editStatus} onChange={event => setEditStatus(event.target.value)}><option value="pendiente">Pendiente</option><option value="enviado">Enviado</option><option value="observado">Observado</option><option value="aprobado">Aprobado</option></select> : <span className={`guideline-status guideline-status--${row.status.toLowerCase().replace(/[^a-z0-9]/g, '')}`}>{row.status || 'pendiente'}</span>}</td>
                     {canManage && <td className="guideline-table__actions">{!isEditing && <button type="button" onClick={() => startEdit(row)} disabled={Boolean(editingId)}><Pencil size={14}/> Editar</button>}</td>}
                   </tr>
                   {isEditing && canManage && (
                     <tr className="inline-edit-action-row">
-                      <td className="inline-edit-bar" colSpan={6}><span>Estás editando este lineamiento</span><div><button className="inline-cancel" type="button" onClick={cancelEdit} disabled={saving}>Cancelar</button><button className="inline-save" type="button" onClick={() => void saveEdit()} disabled={saving || !editText.trim()}>{saving ? 'Guardando…' : 'Guardar cambios'}</button></div></td>
+                      <td colSpan={6} className="inline-edit-bar-cell">
+                        <div className="inline-edit-bar">
+                          <span>Edición activa</span>
+                          <div>
+                            <button className="inline-cancel" type="button" onClick={cancelEdit} disabled={saving}><X size={14}/> Cancelar</button>
+                            <button className="inline-save" type="button" onClick={() => void saveEdit()} disabled={saving || !editText.trim()}><Save size={14}/> {saving ? 'Guardando…' : 'Guardar'}</button>
+                          </div>
+                        </div>
+                      </td>
                     </tr>
                   )}
                 </Fragment>
