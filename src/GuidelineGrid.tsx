@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
-import { Bold, Check, ChevronDown, Italic, Pencil, Save, Type, Underline as UnderlineIcon, X } from 'lucide-react'
+import { Bold, Check, ChevronDown, Italic, Pencil, Save, Trash2, Type, Underline as UnderlineIcon, X } from 'lucide-react'
 import { supabase } from './lib/supabase'
 import './guideline-grid.css'
 
@@ -184,6 +184,8 @@ export default function GuidelineGrid({ guidelines, unitCode, canManage, onChang
   const [editManagerIds, setEditManagerIds] = useState<string[]>([])
   const [editStatus, setEditStatus] = useState('pendiente')
   const [saving, setSaving] = useState(false)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [deletingAll, setDeletingAll] = useState(false)
 
   const managementById = useMemo(() => new Map(managements.map(item => [item.id, item.name])), [managements])
   const managerById = useMemo(() => new Map(managers.map(item => [item.id, item.name])), [managers])
@@ -311,8 +313,37 @@ export default function GuidelineGrid({ guidelines, unitCode, canManage, onChang
     await onChanged()
   }
 
+  async function deleteAllGuidelines() {
+    if (!supabase || !canManage || guidelines.length === 0) return
+    setDeletingAll(true)
+    onError('')
+    onNotice('')
+
+    const ids = guidelines.map(row => row.id)
+    const { error } = await supabase.from('guidelines').delete().in('id', ids)
+
+    setDeletingAll(false)
+    if (error) {
+      onError('No pudimos eliminar los lineamientos. Inténtalo nuevamente.')
+      return
+    }
+
+    cancelEdit()
+    setDeleteConfirmOpen(false)
+    onNotice(`${ids.length} lineamiento${ids.length === 1 ? '' : 's'} eliminado${ids.length === 1 ? '' : 's'} correctamente.`)
+    await onChanged()
+  }
+
   return (
     <div className={`guideline-grid-theme guideline-grid-theme--${unitCode.toLowerCase()}`}>
+      {canManage && guidelines.length > 0 && (
+        <div className="guideline-bulk-actions">
+          <button type="button" className="delete-all-guidelines" onClick={() => setDeleteConfirmOpen(true)} disabled={deletingAll || Boolean(editingId)}>
+            <Trash2 size={15}/> Eliminar todos
+          </button>
+        </div>
+      )}
+
       <div className="guideline-table-wrap guideline-table-wrap--rich">
         <table className={`guideline-table guideline-table--rich guideline-table--${unitCode.toLowerCase()}`}>
           <thead><tr><th>N°</th><th>Lineamientos Estratégicos</th><th>Gerencia Responsable</th><th>Gerente Responsable</th><th>Estatus</th>{canManage && <th>Acciones</th>}</tr></thead>
@@ -348,6 +379,23 @@ export default function GuidelineGrid({ guidelines, unitCode, canManage, onChang
           </tbody>
         </table>
       </div>
+
+      {deleteConfirmOpen && (
+        <div className="delete-guidelines-backdrop" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target && !deletingAll) setDeleteConfirmOpen(false) }}>
+          <div className="delete-guidelines-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-all-guidelines-title">
+            <button type="button" className="delete-guidelines-close" onClick={() => setDeleteConfirmOpen(false)} disabled={deletingAll} aria-label="Cerrar"><X size={18}/></button>
+            <span className="delete-guidelines-icon"><Trash2 size={22}/></span>
+            <h3 id="delete-all-guidelines-title">¿Eliminar todos los lineamientos?</h3>
+            <p>Se eliminarán los <strong>{guidelines.length}</strong> lineamientos que ves en esta unidad y periodo. Esta acción no se puede deshacer.</p>
+            <div className="delete-guidelines-actions">
+              <button type="button" className="delete-guidelines-cancel" onClick={() => setDeleteConfirmOpen(false)} disabled={deletingAll}>Cancelar</button>
+              <button type="button" className="delete-guidelines-confirm" onClick={() => void deleteAllGuidelines()} disabled={deletingAll}>
+                <Trash2 size={15}/> {deletingAll ? 'Eliminando…' : 'Sí, eliminar todos'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
