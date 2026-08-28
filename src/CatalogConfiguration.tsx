@@ -3,16 +3,8 @@ import { Building2, Check, Download, LoaderCircle, Mail, Pencil, Plus, UserRound
 import { supabase } from './lib/supabase'
 import './catalog-configuration.css'
 
-type UnitCode = 'HU' | 'DEP' | 'VS' | 'HOT' | 'CENTRAL'
-
-type Unit = {
-  code: UnitCode
-  name: string
-}
-
 type Management = {
   id: string
-  unit_code: UnitCode
   name: string
   active: boolean
 }
@@ -30,7 +22,7 @@ type ManagerManagement = {
 }
 
 type Props = {
-  units: Unit[]
+  units?: Array<{ code: string; name: string }>
   canManage: boolean
 }
 
@@ -40,24 +32,7 @@ function normalize(value: string) {
   return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase('es')
 }
 
-function unitLabel(code: UnitCode) {
-  if (code === 'HU') return 'Habilitación Urbana'
-  if (code === 'DEP') return 'Departamentos'
-  if (code === 'VS') return 'Vivienda Social'
-  if (code === 'HOT') return 'Hoteles'
-  return 'Central'
-}
-
-export default function CatalogConfiguration({ units, canManage }: Props) {
-  const availableUnits = useMemo(() => units.length ? units : [
-    { code: 'CENTRAL' as UnitCode, name: 'Central' },
-    { code: 'HU' as UnitCode, name: 'Habilitación Urbana' },
-    { code: 'DEP' as UnitCode, name: 'Departamentos' },
-    { code: 'VS' as UnitCode, name: 'Vivienda Social' },
-    { code: 'HOT' as UnitCode, name: 'Hoteles' },
-  ], [units])
-
-  const [selectedUnit, setSelectedUnit] = useState<UnitCode>(availableUnits[0]?.code || 'CENTRAL')
+export default function CatalogConfiguration({ canManage }: Props) {
   const [managements, setManagements] = useState<Management[]>([])
   const [managers, setManagers] = useState<Manager[]>([])
   const [links, setLinks] = useState<ManagerManagement[]>([])
@@ -78,24 +53,18 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
   const [managerActive, setManagerActive] = useState(true)
   const [managerManagementIds, setManagerManagementIds] = useState<string[]>([])
 
-  const unitManagementIds = useMemo(() => new Set(managements.map(item => item.id)), [managements])
-  const visibleManagers = useMemo(() => {
-    const ids = new Set(links.filter(link => unitManagementIds.has(link.management_id)).map(link => link.manager_id))
-    return managers.filter(manager => ids.has(manager.id))
-  }, [links, managers, unitManagementIds])
-
   const managementById = useMemo(() => new Map(managements.map(item => [item.id, item.name])), [managements])
 
   useEffect(() => {
     void loadCatalogs()
-  }, [selectedUnit])
+  }, [])
 
   async function loadCatalogs() {
     if (!supabase) return
     setLoading(true)
     setError('')
     const [managementResult, managerResult, linkResult] = await Promise.all([
-      supabase.from('managements').select('id, unit_code, name, active').eq('unit_code', selectedUnit).order('name'),
+      supabase.from('managements_global').select('id, name, active').order('name'),
       supabase.from('managers').select('id, name, email, active').order('name'),
       supabase.from('manager_managements').select('manager_id, management_id'),
     ])
@@ -153,32 +122,26 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
     setSaving(true)
     setError('')
     setNotice('')
-    const duplicate = managements.find(item => normalize(item.name) === normalize(name) && item.id !== editingManagementId)
 
+    const duplicate = managements.find(item => normalize(item.name) === normalize(name) && item.id !== editingManagementId)
     if (duplicate) {
-      const { error: updateError } = await supabase.from('managements').update({ name, active: managementActive }).eq('id', duplicate.id)
       setSaving(false)
-      if (updateError) {
-        setError('No pudimos actualizar la gerencia existente.')
-        return
-      }
-      resetManagementForm()
-      setNotice(`${name} ya existía y fue actualizado.`)
-      await loadCatalogs()
+      setError(`La gerencia “${duplicate.name}” ya existe en el catálogo maestro.`)
       return
     }
 
     const result = editingManagementId
-      ? await supabase.from('managements').update({ name, active: managementActive }).eq('id', editingManagementId)
-      : await supabase.from('managements').insert({ unit_code: selectedUnit, name, active: managementActive })
+      ? await supabase.from('managements_global').update({ name, active: managementActive }).eq('id', editingManagementId)
+      : await supabase.from('managements_global').insert({ name, active: managementActive })
 
     setSaving(false)
     if (result.error) {
       setError('No pudimos guardar la gerencia. Verifica que el nombre no esté duplicado.')
       return
     }
+
     resetManagementForm()
-    setNotice('Gerencia guardada correctamente.')
+    setNotice('Gerencia guardada correctamente. Estará disponible para todas las unidades.')
     await loadCatalogs()
   }
 
@@ -191,7 +154,7 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
 
   function editManager(item: Manager) {
     const selectedLinks = links
-      .filter(link => link.manager_id === item.id && unitManagementIds.has(link.management_id))
+      .filter(link => link.manager_id === item.id)
       .map(link => link.management_id)
     setEditingManagerId(item.id)
     setManagerName(item.name)
@@ -212,6 +175,7 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
     if (!supabase || !canManage) return
     const name = managerName.trim().replace(/\s+/g, ' ')
     const email = managerEmail.trim().toLowerCase()
+
     if (!name) {
       setError('Escribe el nombre del responsable.')
       return
@@ -240,7 +204,7 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
         const { error: updateError } = await supabase.from('managers').update({ email: email || existing.email, active: managerActive }).eq('id', managerId)
         if (updateError) {
           setSaving(false)
-          setError('No pudimos vincular el responsable existente.')
+          setError('No pudimos actualizar el responsable existente.')
           return
         }
       } else {
@@ -254,19 +218,17 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
       }
     }
 
-    const currentUnitIds = managements.map(item => item.id)
-    if (currentUnitIds.length) {
-      const { error: deleteError } = await supabase.from('manager_managements').delete().eq('manager_id', managerId).in('management_id', currentUnitIds)
-      if (deleteError) {
-        setSaving(false)
-        setError('No pudimos actualizar las relaciones del responsable.')
-        return
-      }
+    const { error: deleteError } = await supabase.from('manager_managements').delete().eq('manager_id', managerId)
+    if (deleteError) {
+      setSaving(false)
+      setError('No pudimos actualizar las relaciones del responsable.')
+      return
     }
 
     const { error: linkError } = await supabase.from('manager_managements').insert(
       managerManagementIds.map(managementId => ({ manager_id: managerId, management_id: managementId })),
     )
+
     setSaving(false)
     if (linkError) {
       setError('El responsable fue guardado, pero no pudimos asociarlo a las gerencias.')
@@ -281,23 +243,27 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
   async function downloadTemplate() {
     try {
       const XLSX = await import(/* @vite-ignore */ XLSX_MODULE_URL)
+      const firstManagement = managements.find(item => item.active)
+      const firstManager = firstManagement
+        ? managers.find(manager => manager.active && links.some(link => link.manager_id === manager.id && link.management_id === firstManagement.id))
+        : null
+
       const lineamientos = XLSX.utils.aoa_to_sheet([
         ['N°', 'Lineamientos Estratégicos', 'Gerencia Responsable', 'Gerente Responsable', 'Estatus'],
-        [1, 'Ejemplo de lineamiento', managements.find(item => item.active)?.name || '', visibleManagers.find(item => item.active)?.name || '', 'pendiente'],
+        [1, 'Ejemplo de lineamiento', firstManagement?.name || '', firstManager?.name || '', 'pendiente'],
       ])
       lineamientos['!cols'] = [{ wch: 6 }, { wch: 65 }, { wch: 30 }, { wch: 30 }, { wch: 16 }]
 
       const gerencias = XLSX.utils.json_to_sheet(managements.map(item => ({
-        Unidad: unitLabel(selectedUnit),
         Gerencia: item.name,
         Estado: item.active ? 'Activo' : 'Inactivo',
       })))
 
-      const responsables = XLSX.utils.json_to_sheet(visibleManagers.map(manager => ({
+      const responsables = XLSX.utils.json_to_sheet(managers.map(manager => ({
         Responsable: manager.name,
         Correo: manager.email || '',
         Gerencias: links
-          .filter(link => link.manager_id === manager.id && unitManagementIds.has(link.management_id))
+          .filter(link => link.manager_id === manager.id)
           .map(link => managementById.get(link.management_id))
           .filter(Boolean)
           .join(' / '),
@@ -308,47 +274,41 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
       XLSX.utils.book_append_sheet(workbook, lineamientos, 'Lineamientos')
       XLSX.utils.book_append_sheet(workbook, gerencias, 'Gerencias válidas')
       XLSX.utils.book_append_sheet(workbook, responsables, 'Responsables válidos')
-      XLSX.writeFile(workbook, `Plantilla_Lineamientos_${selectedUnit}.xlsx`)
+      XLSX.writeFile(workbook, 'Plantilla_Lineamientos_Catalogo_Maestro.xlsx')
     } catch {
       setError('No pudimos generar la plantilla Excel.')
     }
   }
 
   return (
-    <div className={`catalog-config catalog-config--${selectedUnit.toLowerCase()}`}>
+    <div className="catalog-config catalog-config--central">
       <section className="catalog-hero">
         <div>
-          <span className="catalog-kicker">Catálogo maestro</span>
+          <span className="catalog-kicker">Catálogo maestro global</span>
           <h2>Gerencias y responsables</h2>
-          <p>Configura primero quién pertenece a cada gerencia. Estos datos serán los únicos permitidos en los lineamientos y en los Excel.</p>
+          <p>Este catálogo es único para toda la empresa. Una gerencia como TI, Comercial o Control de Gestión se registra una sola vez y queda disponible para Central, HU, Departamentos, Vivienda Social y Hoteles.</p>
         </div>
         <button className="catalog-template-button" type="button" onClick={() => void downloadTemplate()}><Download size={16}/> Descargar plantilla Excel</button>
       </section>
 
-      <div className="catalog-unit-tabs" role="tablist" aria-label="Unidad de negocio">
-        {availableUnits.map(unit => (
-          <button key={unit.code} className={selectedUnit === unit.code ? 'active' : ''} onClick={() => { setSelectedUnit(unit.code); resetManagementForm(); resetManagerForm() }}>
-            <Building2 size={15}/><span>{unit.code}</span><small>{unit.name}</small>
-          </button>
-        ))}
-      </div>
+      <div className="catalog-message catalog-message--success"><Check size={15}/> Las mismas gerencias y responsables se utilizan en las 5 unidades de negocio.</div>
 
       {error && <div className="catalog-message catalog-message--error">{error}</div>}
       {notice && <div className="catalog-message catalog-message--success"><Check size={15}/>{notice}</div>}
 
       {loading ? (
-        <div className="catalog-loading"><LoaderCircle className="spin" size={24}/> Cargando configuración...</div>
+        <div className="catalog-loading"><LoaderCircle className="spin" size={24}/> Cargando catálogo maestro...</div>
       ) : (
         <div className="catalog-columns">
           <section className="catalog-panel">
             <div className="catalog-panel-head">
-              <div><span><Users size={17}/></span><div><h3>Gerencias / Áreas</h3><p>{managements.length} registradas en {unitLabel(selectedUnit)}</p></div></div>
+              <div><span><Users size={17}/></span><div><h3>Gerencias / Áreas</h3><p>{managements.length} registradas · catálogo global</p></div></div>
               {canManage && <button className="catalog-add" onClick={openNewManagement}><Plus size={15}/> Nueva gerencia</button>}
             </div>
 
             {managementFormOpen && (
               <form className="catalog-form" onSubmit={saveManagement}>
-                <label>Nombre<input autoFocus value={managementName} onChange={event => setManagementName(event.target.value)} placeholder="Ej. Comercial" /></label>
+                <label>Nombre<input autoFocus value={managementName} onChange={event => setManagementName(event.target.value)} placeholder="Ej. TI" /></label>
                 <label className="catalog-toggle"><input type="checkbox" checked={managementActive} onChange={event => setManagementActive(event.target.checked)} /><span>Activo</span></label>
                 <div><button type="button" className="catalog-cancel" onClick={resetManagementForm}><X size={14}/> Cancelar</button><button className="catalog-save" disabled={saving || !managementName.trim()}>{saving ? <LoaderCircle className="spin" size={14}/> : <Check size={14}/>} Guardar</button></div>
               </form>
@@ -358,7 +318,7 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
               {managements.length === 0 ? <div className="catalog-empty">Aún no hay gerencias configuradas.</div> : managements.map(item => (
                 <div className="catalog-row" key={item.id}>
                   <span className="catalog-row-icon"><Building2 size={17}/></span>
-                  <div><strong>{item.name}</strong><small>{item.active ? 'Activo' : 'Inactivo'}</small></div>
+                  <div><strong>{item.name}</strong><small>Disponible para todas las unidades</small></div>
                   <span className={`catalog-status ${item.active ? 'active' : 'inactive'}`}>{item.active ? 'Activo' : 'Inactivo'}</span>
                   {canManage && <button className="catalog-edit" onClick={() => editManagement(item)} aria-label={`Editar ${item.name}`}><Pencil size={14}/></button>}
                 </div>
@@ -368,7 +328,7 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
 
           <section className="catalog-panel">
             <div className="catalog-panel-head">
-              <div><span><UserRound size={17}/></span><div><h3>Gerentes / Responsables</h3><p>{visibleManagers.length} vinculados a esta unidad</p></div></div>
+              <div><span><UserRound size={17}/></span><div><h3>Gerentes / Responsables</h3><p>{managers.length} registrados · relacionados con sus gerencias</p></div></div>
               {canManage && <button className="catalog-add" onClick={openNewManager}><Plus size={15}/> Nuevo responsable</button>}
             </div>
 
@@ -395,9 +355,9 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
             )}
 
             <div className="catalog-list">
-              {visibleManagers.length === 0 ? <div className="catalog-empty">Aún no hay responsables relacionados con esta unidad.</div> : visibleManagers.map(item => {
+              {managers.length === 0 ? <div className="catalog-empty">Aún no hay responsables registrados.</div> : managers.map(item => {
                 const relatedNames = links
-                  .filter(link => link.manager_id === item.id && unitManagementIds.has(link.management_id))
+                  .filter(link => link.manager_id === item.id)
                   .map(link => managementById.get(link.management_id))
                   .filter((name): name is string => Boolean(name))
                 return (
