@@ -1,5 +1,5 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
-import { Bold, Italic, Pencil, Type, Underline as UnderlineIcon } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Bold, Check, ChevronDown, Italic, Pencil, Type, Underline as UnderlineIcon } from 'lucide-react'
 import { supabase } from './lib/supabase'
 import './guideline-grid.css'
 
@@ -23,6 +23,13 @@ type Props = {
 }
 
 const fonts = ['Arial', 'Calibri', 'Verdana', 'Georgia', 'Times New Roman']
+
+function splitChoices(value: string | null | undefined) {
+  return String(value || '')
+    .split(/\s*(?:\/|;|\||\n)\s*/g)
+    .map(item => item.trim())
+    .filter(Boolean)
+}
 
 function cleanRichHtml(html: string) {
   const doc = new DOMParser().parseFromString(html, 'text/html')
@@ -90,11 +97,13 @@ function RichTextCell({ initialHtml, initialText, onChange }: {
   return (
     <div className="rich-cell-editor">
       <div className="rich-cell-toolbar">
-        <button type="button" title="Negrita" onMouseDown={event => { event.preventDefault(); rememberSelection() }} onClick={() => command('bold')}><Bold size={14}/></button>
-        <button type="button" title="Cursiva" onMouseDown={event => { event.preventDefault(); rememberSelection() }} onClick={() => command('italic')}><Italic size={14}/></button>
-        <button type="button" title="Subrayado" onMouseDown={event => { event.preventDefault(); rememberSelection() }} onClick={() => command('underline')}><UnderlineIcon size={14}/></button>
-        <label title="Tipo de letra" onMouseDown={rememberSelection}><Type size={14}/><select defaultValue="Arial" onFocus={rememberSelection} onChange={event => command('fontName', event.target.value)}>{fonts.map(font => <option key={font} value={font}>{font}</option>)}</select></label>
         <span className="rich-cell-hint">Selecciona solo las palabras que quieras cambiar</span>
+        <div className="rich-cell-tools">
+          <button type="button" title="Negrita" onMouseDown={event => { event.preventDefault(); rememberSelection() }} onClick={() => command('bold')}><Bold size={14}/></button>
+          <button type="button" title="Cursiva" onMouseDown={event => { event.preventDefault(); rememberSelection() }} onClick={() => command('italic')}><Italic size={14}/></button>
+          <button type="button" title="Subrayado" onMouseDown={event => { event.preventDefault(); rememberSelection() }} onClick={() => command('underline')}><UnderlineIcon size={14}/></button>
+          <label title="Tipo de letra" onMouseDown={rememberSelection}><Type size={14}/><select defaultValue="Arial" onChange={event => command('fontName', event.target.value)}>{fonts.map(font => <option key={font} value={font}>{font}</option>)}</select></label>
+        </div>
       </div>
       <div
         ref={editorRef}
@@ -104,9 +113,45 @@ function RichTextCell({ initialHtml, initialText, onChange }: {
         onInput={sync}
         onMouseUp={rememberSelection}
         onKeyUp={rememberSelection}
-        onFocus={rememberSelection}
         onBlur={sync}
       />
+    </div>
+  )
+}
+
+function MultiSelectCell({ value, options, placeholder, onChange }: {
+  value: string
+  options: string[]
+  placeholder: string
+  onChange: (value: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const selected = splitChoices(value)
+  const allOptions = Array.from(new Set([...options, ...selected])).sort((a, b) => a.localeCompare(b, 'es'))
+
+  function toggle(option: string) {
+    const next = selected.includes(option)
+      ? selected.filter(item => item !== option)
+      : [...selected, option]
+    onChange(next.join(' / '))
+  }
+
+  return (
+    <div className="multi-select-cell">
+      <button type="button" className={`multi-select-trigger ${open ? 'open' : ''}`} onClick={() => setOpen(current => !current)}>
+        <span>{selected.length ? selected.join(' / ') : placeholder}</span>
+        <ChevronDown size={15}/>
+      </button>
+      {open && (
+        <div className="multi-select-menu">
+          {allOptions.length === 0 ? <div className="multi-select-empty">No hay opciones registradas</div> : allOptions.map(option => (
+            <button type="button" key={option} className={selected.includes(option) ? 'selected' : ''} onClick={() => toggle(option)}>
+              <span className="multi-select-check">{selected.includes(option) && <Check size={13}/>}</span>
+              <span>{option}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -121,8 +166,8 @@ export default function GuidelineGrid({ guidelines, unitCode, canManage, onChang
   const [editStatus, setEditStatus] = useState('pendiente')
   const [saving, setSaving] = useState(false)
 
-  const managementOptions = useMemo(() => Array.from(new Set(guidelines.map(row => row.responsible_management?.trim()).filter((value): value is string => Boolean(value)))).sort(), [guidelines])
-  const managerOptions = useMemo(() => Array.from(new Set(guidelines.map(row => row.responsible_manager?.trim()).filter((value): value is string => Boolean(value)))).sort(), [guidelines])
+  const managementOptions = useMemo(() => Array.from(new Set(guidelines.flatMap(row => splitChoices(row.responsible_management)))).sort((a, b) => a.localeCompare(b, 'es')), [guidelines])
+  const managerOptions = useMemo(() => Array.from(new Set(guidelines.flatMap(row => splitChoices(row.responsible_manager)))).sort((a, b) => a.localeCompare(b, 'es')), [guidelines])
 
   useEffect(() => {
     if (!supabase || guidelines.length === 0) return
@@ -188,31 +233,16 @@ export default function GuidelineGrid({ guidelines, unitCode, canManage, onChang
           <tbody>
             {guidelines.map((row, index) => {
               const isEditing = editingId === row.id
-              const columnCount = canManage ? 6 : 5
               return (
-                <Fragment key={row.id}>
-                  <tr className={isEditing ? 'guideline-row--editing' : ''}>
-                    <td className="guideline-table__number">{index + 1}</td>
-                    <td className="guideline-table__title">{isEditing ? <RichTextCell initialHtml={richById[row.id] || null} initialText={row.title} onChange={(html, text) => { setEditHtml(html); setEditText(text) }} /> : richById[row.id] ? <div className="guideline-rich-display" dangerouslySetInnerHTML={{ __html: richById[row.id] || '' }} /> : row.title}</td>
-                    <td>{isEditing ? <select className="guideline-cell-input guideline-cell-select" value={editManagement} onChange={event => setEditManagement(event.target.value)}><option value="">Seleccionar gerencia</option>{editManagement && !managementOptions.includes(editManagement) && <option value={editManagement}>{editManagement}</option>}{managementOptions.map(value => <option key={value} value={value}>{value}</option>)}</select> : (row.responsible_management || '—')}</td>
-                    <td>{isEditing ? <select className="guideline-cell-input guideline-cell-select" value={editManager} onChange={event => setEditManager(event.target.value)}><option value="">Seleccionar gerente</option>{editManager && !managerOptions.includes(editManager) && <option value={editManager}>{editManager}</option>}{managerOptions.map(value => <option key={value} value={value}>{value}</option>)}</select> : (row.responsible_manager || '—')}</td>
-                    <td>{isEditing ? <select className="guideline-cell-input guideline-cell-select" value={editStatus} onChange={event => setEditStatus(event.target.value)}><option value="pendiente">Pendiente</option><option value="enviado">Enviado</option><option value="observado">Observado</option><option value="aprobado">Aprobado</option></select> : <span className={`guideline-status guideline-status--${row.status.toLowerCase().replace(/[^a-z0-9]/g, '')}`}>{row.status || 'pendiente'}</span>}</td>
-                    {canManage && <td className="guideline-table__actions">{isEditing ? <span className="editing-label">Editando</span> : <button type="button" onClick={() => startEdit(row)} disabled={Boolean(editingId)}><Pencil size={14}/> Editar</button>}</td>}
-                  </tr>
-                  {isEditing && (
-                    <tr className="guideline-edit-footer-row">
-                      <td colSpan={columnCount}>
-                        <div className="guideline-edit-footer">
-                          <span>Termina de editar y guarda los cambios.</span>
-                          <div className="inline-edit-actions">
-                            <button className="inline-cancel" type="button" onClick={cancelEdit} disabled={saving}>Cancelar</button>
-                            <button className="inline-save" type="button" onClick={() => void saveEdit()} disabled={saving || !editText.trim()}>{saving ? 'Guardando…' : 'Guardar cambios'}</button>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
+                <tr key={row.id} className={isEditing ? 'guideline-row--editing' : ''}>
+                  <td className="guideline-table__number">{index + 1}</td>
+                  <td className="guideline-table__title">{isEditing ? <RichTextCell initialHtml={richById[row.id] || null} initialText={row.title} onChange={(html, text) => { setEditHtml(html); setEditText(text) }} /> : richById[row.id] ? <div className="guideline-rich-display" dangerouslySetInnerHTML={{ __html: richById[row.id] || '' }} /> : row.title}</td>
+                  <td>{isEditing ? <MultiSelectCell value={editManagement} options={managementOptions} placeholder="Seleccionar gerencia" onChange={setEditManagement} /> : (row.responsible_management || '—')}</td>
+                  <td>{isEditing ? <MultiSelectCell value={editManager} options={managerOptions} placeholder="Seleccionar gerente" onChange={setEditManager} /> : (row.responsible_manager || '—')}</td>
+                  <td>{isEditing ? <select className="guideline-cell-input guideline-cell-select" value={editStatus} onChange={event => setEditStatus(event.target.value)}><option value="pendiente">Pendiente</option><option value="enviado">Enviado</option><option value="observado">Observado</option><option value="aprobado">Aprobado</option></select> : <span className={`guideline-status guideline-status--${row.status.toLowerCase().replace(/[^a-z0-9]/g, '')}`}>{row.status || 'pendiente'}</span>}</td>
+                  {canManage && <td className="guideline-table__actions">{!isEditing && <button type="button" onClick={() => startEdit(row)} disabled={Boolean(editingId)}><Pencil size={14}/> Editar</button>}</td>}
+                  {isEditing && canManage && <td className="inline-edit-bar" colSpan={6}><span>Estás editando este lineamiento</span><div><button className="inline-cancel" type="button" onClick={cancelEdit} disabled={saving}>Cancelar</button><button className="inline-save" type="button" onClick={() => void saveEdit()} disabled={saving || !editText.trim()}>{saving ? 'Guardando…' : 'Guardar cambios'}</button></div></td>}
+                </tr>
               )
             })}
           </tbody>
