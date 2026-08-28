@@ -26,6 +26,7 @@ import {
   X,
 } from 'lucide-react'
 import { supabase } from './lib/supabase'
+import GuidelineGrid from './GuidelineGrid'
 import './dashboard.css'
 import './planning.css'
 import './interaction-fixes.css'
@@ -116,9 +117,7 @@ function ConfirmDialog({ open, title, message, confirmText, cancelText = 'Cancel
         <p>{message}</p>
         <div className="cg-modal-actions">
           <button type="button" className="cg-modal-secondary" onClick={onCancel} disabled={busy}>{cancelText}</button>
-          <button type="button" className="cg-modal-primary" onClick={() => void onConfirm()} disabled={busy}>
-            {busy && <LoaderCircle className="spin" size={16}/>} {confirmText}
-          </button>
+          <button type="button" className="cg-modal-primary" onClick={() => void onConfirm()} disabled={busy}>{busy && <LoaderCircle className="spin" size={16}/>} {confirmText}</button>
         </div>
       </div>
     </div>
@@ -221,11 +220,7 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
   return (
     <div className="dashboard-shell">
       <aside className={`dashboard-sidebar ${menuOpen ? 'dashboard-sidebar--open' : ''}`}>
-        <div className="dashboard-sidebar__head">
-          <BrandMark />
-          <button className="sidebar-close" onClick={() => setMenuOpen(false)} aria-label="Cerrar menú"><X size={20}/></button>
-        </div>
-
+        <div className="dashboard-sidebar__head"><BrandMark /><button className="sidebar-close" onClick={() => setMenuOpen(false)} aria-label="Cerrar menú"><X size={20}/></button></div>
         <nav className="dashboard-nav" aria-label="Navegación principal">
           <span className="dashboard-nav__label">Menú</span>
           <button className={section === 'inicio' ? 'active' : ''} onClick={() => navigate('inicio')}><LayoutDashboard size={19}/><span>Inicio</span></button>
@@ -233,7 +228,6 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
           <button className={section === 'configuracion' ? 'active' : ''} onClick={() => navigate('configuracion')}><Settings size={19}/><span>Configuración</span></button>
           <button className={section === 'reportes' ? 'active' : ''} onClick={() => navigate('reportes')}><BarChart3 size={19}/><span>Reportes</span></button>
         </nav>
-
         <div className="dashboard-sidebar__bottom">
           <div className="sidebar-access"><ShieldCheck size={18}/><div><strong>{roleLabel(access)}</strong><small>{access.global_access ? 'Acceso a todas las unidades' : 'Acceso por unidad'}</small></div></div>
           <button className="sidebar-logout" onClick={requestSignOut}><LogOut size={18}/> Cerrar sesión</button>
@@ -244,58 +238,21 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
 
       <div className="dashboard-main">
         <header className="dashboard-topbar">
-          <div className="topbar-left">
-            <button className="mobile-menu" onClick={() => setMenuOpen(true)} aria-label="Abrir menú"><Menu size={22}/></button>
-            <div className="dashboard-search"><Search size={18}/><input aria-label="Buscar" placeholder="Buscar" /></div>
-          </div>
+          <div className="topbar-left"><button className="mobile-menu" onClick={() => setMenuOpen(true)} aria-label="Abrir menú"><Menu size={22}/></button><div className="dashboard-search"><Search size={18}/><input aria-label="Buscar" placeholder="Buscar" /></div></div>
           <div className="topbar-actions profile-menu-wrap">
             <button className="icon-button" aria-label="Notificaciones"><Bell size={19}/><span className="notification-dot" /></button>
-            <button className={`profile-chip ${profileOpen ? 'profile-chip--open' : ''}`} onClick={() => setProfileOpen(value => !value)}>
-              <span className="profile-avatar">{initials(access)}</span>
-              <span className="profile-copy"><strong>{displayName}</strong><small>{roleLabel(access)}</small></span>
-              <ChevronDown className={profileOpen ? 'chevron-open' : ''} size={16}/>
-            </button>
-            {profileOpen && (
-              <div className="profile-dropdown">
-                <div><strong>{displayName}</strong><small>{access.email}</small></div>
-                <span>{roleLabel(access)}</span>
-                <button onClick={requestSignOut}><LogOut size={16}/> Cerrar sesión</button>
-              </div>
-            )}
+            <button className={`profile-chip ${profileOpen ? 'profile-chip--open' : ''}`} onClick={() => setProfileOpen(value => !value)}><span className="profile-avatar">{initials(access)}</span><span className="profile-copy"><strong>{displayName}</strong><small>{roleLabel(access)}</small></span><ChevronDown className={profileOpen ? 'chevron-open' : ''} size={16}/></button>
+            {profileOpen && <div className="profile-dropdown"><div><strong>{displayName}</strong><small>{access.email}</small></div><span>{roleLabel(access)}</span><button onClick={requestSignOut}><LogOut size={16}/> Cerrar sesión</button></div>}
           </div>
         </header>
 
         <main className="dashboard-content">
           {section === 'inicio' ? (
-            <HomeView
-              access={access}
-              displayName={displayName}
-              today={today}
-              units={units}
-              selectedUnit={selectedUnit}
-              selectedHomeUnit={selectedHomeUnit}
-              setSelectedUnit={setSelectedUnit}
-              navigate={navigate}
-              periods={periods}
-              selectedYear={selectedHomeYear}
-              setSelectedYear={setSelectedHomeYear}
-              openLineamientos={openLineamientos}
-            />
+            <HomeView access={access} displayName={displayName} today={today} units={units} selectedUnit={selectedUnit} selectedHomeUnit={selectedHomeUnit} setSelectedUnit={setSelectedUnit} navigate={navigate} periods={periods} selectedYear={selectedHomeYear} setSelectedYear={setSelectedHomeYear} openLineamientos={openLineamientos} />
           ) : (
             <>
-              <div className="page-heading compact-heading">
-                <div><span className="page-kicker">{sectionLabels[section]}</span><h1>{sectionLabels[section]}</h1><p>{sectionDescription(section)}</p></div>
-              </div>
-              {section === 'planificacion' && (
-                <PlanningView
-                  key={planningEntry ? `${planningEntry.year}-${planningEntry.unitCode}-${planningEntry.token}` : 'planning-default'}
-                  access={access}
-                  units={units}
-                  initialYear={planningEntry?.year}
-                  initialUnitCode={planningEntry?.unitCode}
-                  onPeriodsChanged={loadDashboardPeriods}
-                />
-              )}
+              <div className="page-heading compact-heading"><div><span className="page-kicker">{sectionLabels[section]}</span><h1>{sectionLabels[section]}</h1><p>{sectionDescription(section)}</p></div></div>
+              {section === 'planificacion' && <PlanningView key={planningEntry ? `${planningEntry.year}-${planningEntry.unitCode}-${planningEntry.token}` : 'planning-default'} access={access} units={units} initialYear={planningEntry?.year} initialUnitCode={planningEntry?.unitCode} onPeriodsChanged={loadDashboardPeriods} />}
               {section === 'configuracion' && <ConfigurationView />}
               {section === 'reportes' && <ReportsView />}
             </>
@@ -303,15 +260,7 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
         </main>
       </div>
 
-      <ConfirmDialog
-        open={logoutConfirmOpen}
-        title="¿Cerrar sesión?"
-        message="Tu sesión actual se cerrará y tendrás que volver a ingresar para continuar."
-        confirmText="Sí, cerrar sesión"
-        busy={logoutBusy}
-        onCancel={() => setLogoutConfirmOpen(false)}
-        onConfirm={confirmSignOut}
-      />
+      <ConfirmDialog open={logoutConfirmOpen} title="¿Cerrar sesión?" message="Tu sesión actual se cerrará y tendrás que volver a ingresar para continuar." confirmText="Sí, cerrar sesión" busy={logoutBusy} onCancel={() => setLogoutConfirmOpen(false)} onConfirm={confirmSignOut} />
     </div>
   )
 }
@@ -333,23 +282,8 @@ function HomeView({ access, displayName, today, units, selectedUnit, selectedHom
   return (
     <>
       <section className="welcome-card">
-        <div className="welcome-copy">
-          <span className="welcome-kicker"><Sparkles size={15}/> Todo listo</span>
-          <h1>Hola, {displayName} 👋</h1>
-          <p>Elige una opción y empieza a trabajar.</p>
-          <div className="welcome-meta"><span><CalendarDays size={16}/> {today}</span><span><ShieldCheck size={16}/> {roleLabel(access)}</span></div>
-        </div>
-        <div className="welcome-period">
-          <span>Periodo</span>
-          <strong>{selectedYear}</strong>
-          <label className="period-select-control">
-            <CalendarDays size={16}/>
-            <select value={selectedYear} onChange={event => setSelectedYear(Number(event.target.value))} aria-label="Cambiar periodo">
-              {periods.map(period => <option key={period.id} value={period.year}>{period.year} · {period.status === 'OPEN' ? 'Actual' : period.status === 'CLOSED' ? 'Cerrado' : 'Borrador'}</option>)}
-            </select>
-            <ChevronDown size={15}/>
-          </label>
-        </div>
+        <div className="welcome-copy"><span className="welcome-kicker"><Sparkles size={15}/> Todo listo</span><h1>Hola, {displayName} 👋</h1><p>Elige una opción y empieza a trabajar.</p><div className="welcome-meta"><span><CalendarDays size={16}/> {today}</span><span><ShieldCheck size={16}/> {roleLabel(access)}</span></div></div>
+        <div className="welcome-period"><span>Periodo</span><strong>{selectedYear}</strong><label className="period-select-control"><CalendarDays size={16}/><select value={selectedYear} onChange={event => setSelectedYear(Number(event.target.value))} aria-label="Cambiar periodo">{periods.map(period => <option key={period.id} value={period.year}>{period.year} · {period.status === 'OPEN' ? 'Actual' : period.status === 'CLOSED' ? 'Cerrado' : 'Borrador'}</option>)}</select><ChevronDown size={15}/></label></div>
       </section>
 
       <section className="dashboard-section action-section">
@@ -362,35 +296,13 @@ function HomeView({ access, displayName, today, units, selectedUnit, selectedHom
       </section>
 
       <section className="dashboard-section">
-        <div className="section-title-row">
-          <div><span>Unidades</span><h2>¿Dónde quieres entrar?</h2></div>
-          {selectedUnit !== 'TODAS' && <button className="text-action" onClick={() => setSelectedUnit('TODAS')}>Ver todas <ArrowRight size={16}/></button>}
-        </div>
+        <div className="section-title-row"><div><span>Unidades</span><h2>¿Dónde quieres entrar?</h2></div>{selectedUnit !== 'TODAS' && <button className="text-action" onClick={() => setSelectedUnit('TODAS')}>Ver todas <ArrowRight size={16}/></button>}</div>
         <div className="unit-grid friendly-unit-grid">
-          {units.map(unit => (
-            <button key={unit.code} className={`unit-card unit-card--${unit.code.toLowerCase()} ${selectedUnit === unit.code ? 'selected' : ''}`} onClick={() => setSelectedUnit(unit.code)}>
-              <div className="unit-card__top"><span className="unit-code">{unit.code}</span></div>
-              <div className="unit-icon"><Building2 size={26}/></div>
-              <h3>{unit.name}</h3>
-              <p>{unit.unit_role === 'GLOBAL' ? 'Acceso completo' : unit.unit_role === 'GERENTE_UNIDAD' ? 'Gerente de Unidad' : 'Equipo encargado'}</p>
-              <span className="unit-link">Entrar <ArrowRight size={16}/></span>
-            </button>
-          ))}
+          {units.map(unit => <button key={unit.code} className={`unit-card unit-card--${unit.code.toLowerCase()} ${selectedUnit === unit.code ? 'selected' : ''}`} onClick={() => setSelectedUnit(unit.code)}><div className="unit-card__top"><span className="unit-code">{unit.code}</span></div><div className="unit-icon"><Building2 size={26}/></div><h3>{unit.name}</h3><p>{unit.unit_role === 'GLOBAL' ? 'Acceso completo' : unit.unit_role === 'GERENTE_UNIDAD' ? 'Gerente de Unidad' : 'Equipo encargado'}</p><span className="unit-link">Entrar <ArrowRight size={16}/></span></button>)}
         </div>
       </section>
 
-      {selectedHomeUnit && (
-        <section className="dashboard-section unit-module-section">
-          <div className="section-title-row"><div><span>{selectedHomeUnit.name}</span><h2>¿Qué quieres revisar?</h2></div></div>
-          <div className="unit-module-grid">
-            <button className={`unit-module-card unit-module-card--${selectedHomeUnit.code.toLowerCase()}`} onClick={() => openLineamientos(selectedHomeUnit.code)}>
-              <span className="unit-module-icon"><ClipboardList size={28}/></span>
-              <div><small>Periodo {selectedYear}</small><strong>Lineamientos</strong><p>Ver los lineamientos escritos o importados desde Excel.</p></div>
-              <ArrowRight size={20}/>
-            </button>
-          </div>
-        </section>
-      )}
+      {selectedHomeUnit && <section className="dashboard-section unit-module-section"><div className="section-title-row"><div><span>{selectedHomeUnit.name}</span><h2>¿Qué quieres revisar?</h2></div></div><div className="unit-module-grid"><button className={`unit-module-card unit-module-card--${selectedHomeUnit.code.toLowerCase()}`} onClick={() => openLineamientos(selectedHomeUnit.code)}><span className="unit-module-icon"><ClipboardList size={28}/></span><div><small>Periodo {selectedYear}</small><strong>Lineamientos</strong><p>Ver los lineamientos escritos o importados desde Excel.</p></div><ArrowRight size={20}/></button></div></section>}
     </>
   )
 }
@@ -427,15 +339,12 @@ function PlanningView({ access, units, initialYear, initialUnitCode, onPeriodsCh
   const [editingPeriod, setEditingPeriod] = useState<PlanningPeriod | null>(null)
   const [editPeriodYear, setEditPeriodYear] = useState('')
   const [editPeriodStatus, setEditPeriodStatus] = useState<PlanningPeriod['status']>('DRAFT')
-  const [editingGuideline, setEditingGuideline] = useState<Guideline | null>(null)
-  const [editTitle, setEditTitle] = useState('')
-  const [editManagement, setEditManagement] = useState('')
-  const [editManager, setEditManager] = useState('')
-  const [editStatus, setEditStatus] = useState('pendiente')
   const [saving, setSaving] = useState(false)
   const [excelBusy, setExcelBusy] = useState(false)
 
   const canManage = access.global_role === 'GESTION_ESTRATEGICA'
+  const managementSuggestions = useMemo(() => Array.from(new Set(guidelines.map(item => item.responsible_management?.trim()).filter((value): value is string => Boolean(value)))).sort(), [guidelines])
+  const managerSuggestions = useMemo(() => Array.from(new Set(guidelines.map(item => item.responsible_manager?.trim()).filter((value): value is string => Boolean(value)))).sort(), [guidelines])
 
   useEffect(() => { void loadPeriods() }, [])
 
@@ -459,10 +368,7 @@ function PlanningView({ access, units, initialYear, initialUnitCode, onPeriodsCh
     setError('')
     const { data, error: queryError } = await supabase.from('planning_periods').select('id, year, name, status').order('year', { ascending: true })
     setLoading(false)
-    if (queryError) {
-      setError('No pudimos cargar los periodos.')
-      return
-    }
+    if (queryError) { setError('No pudimos cargar los periodos.'); return }
     setPeriods((data || []) as PlanningPeriod[])
   }
 
@@ -470,19 +376,9 @@ function PlanningView({ access, units, initialYear, initialUnitCode, onPeriodsCh
     if (!supabase) return
     setGuidelinesLoading(true)
     setError('')
-    const { data, error: queryError } = await supabase
-      .from('guidelines')
-      .select('id, title, responsible_management, responsible_manager, status, sort_order, active')
-      .eq('period_id', periodId)
-      .eq('unit_code', unitCode)
-      .eq('active', true)
-      .order('sort_order', { ascending: true })
-      .order('created_at', { ascending: true })
+    const { data, error: queryError } = await supabase.from('guidelines').select('id, title, responsible_management, responsible_manager, status, sort_order, active').eq('period_id', periodId).eq('unit_code', unitCode).eq('active', true).order('sort_order', { ascending: true }).order('created_at', { ascending: true })
     setGuidelinesLoading(false)
-    if (queryError) {
-      setError('No pudimos cargar los lineamientos.')
-      return
-    }
+    if (queryError) { setError('No pudimos cargar los lineamientos.'); return }
     setGuidelines((data || []) as Guideline[])
   }
 
@@ -490,23 +386,12 @@ function PlanningView({ access, units, initialYear, initialUnitCode, onPeriodsCh
     event.preventDefault()
     if (!supabase || !canManage) return
     const year = Number(newYear)
-    if (!Number.isInteger(year) || year < 2020 || year > 2100) {
-      setError('Ingresa un año válido.')
-      return
-    }
-    setSaving(true)
-    setError('')
-    setNotice('')
+    if (!Number.isInteger(year) || year < 2020 || year > 2100) { setError('Ingresa un año válido.'); return }
+    setSaving(true); setError(''); setNotice('')
     const { error: insertError } = await supabase.from('planning_periods').insert({ year, name: `Periodo ${year}`, status: 'DRAFT' })
     setSaving(false)
-    if (insertError) {
-      setError(insertError.code === '23505' ? 'Ese periodo ya existe.' : 'No pudimos crear el periodo.')
-      return
-    }
-    setNewYear('')
-    setShowPeriodForm(false)
-    await loadPeriods()
-    await onPeriodsChanged()
+    if (insertError) { setError(insertError.code === '23505' ? 'Ese periodo ya existe.' : 'No pudimos crear el periodo.'); return }
+    setNewYear(''); setShowPeriodForm(false); await loadPeriods(); await onPeriodsChanged()
   }
 
   function startEditPeriod(period: PlanningPeriod) {
@@ -521,123 +406,28 @@ function PlanningView({ access, units, initialYear, initialUnitCode, onPeriodsCh
     event.preventDefault()
     if (!supabase || !canManage || !editingPeriod) return
     const year = Number(editPeriodYear)
-    if (!Number.isInteger(year) || year < 2020 || year > 2100) {
-      setError('Ingresa un año válido.')
-      return
-    }
-
-    setSaving(true)
-    setError('')
-    setNotice('')
-
+    if (!Number.isInteger(year) || year < 2020 || year > 2100) { setError('Ingresa un año válido.'); return }
+    setSaving(true); setError(''); setNotice('')
     if (editPeriodStatus === 'OPEN') {
       const { error: resetError } = await supabase.from('planning_periods').update({ status: 'DRAFT' }).neq('id', editingPeriod.id).eq('status', 'OPEN')
-      if (resetError) {
-        setSaving(false)
-        setError('No pudimos actualizar el periodo actual.')
-        return
-      }
+      if (resetError) { setSaving(false); setError('No pudimos actualizar el periodo actual.'); return }
     }
-
-    const { error: updateError } = await supabase
-      .from('planning_periods')
-      .update({ year, name: `Periodo ${year}`, status: editPeriodStatus })
-      .eq('id', editingPeriod.id)
-
+    const { error: updateError } = await supabase.from('planning_periods').update({ year, name: `Periodo ${year}`, status: editPeriodStatus }).eq('id', editingPeriod.id)
     setSaving(false)
-    if (updateError) {
-      setError(updateError.code === '23505' ? 'Ese año ya existe.' : 'No pudimos actualizar el periodo.')
-      return
-    }
-
-    setEditingPeriod(null)
-    setNotice(`Periodo ${year} actualizado.`)
-    await loadPeriods()
-    await onPeriodsChanged()
+    if (updateError) { setError(updateError.code === '23505' ? 'Ese año ya existe.' : 'No pudimos actualizar el periodo.'); return }
+    setEditingPeriod(null); setNotice(`Periodo ${year} actualizado.`); await loadPeriods(); await onPeriodsChanged()
   }
 
   async function createGuideline(event: FormEvent) {
     event.preventDefault()
     if (!supabase || !canManage || !selectedPeriod || !selectedPlanningUnit) return
     const title = guidelineTitle.trim()
-    if (!title) {
-      setError('Escribe el lineamiento estratégico.')
-      return
-    }
-    setSaving(true)
-    setError('')
-    setNotice('')
-    const { error: insertError } = await supabase.from('guidelines').insert({
-      period_id: selectedPeriod.id,
-      unit_code: selectedPlanningUnit.code,
-      title,
-      responsible_management: responsibleManagement.trim() || null,
-      responsible_manager: responsibleManager.trim() || null,
-      status: guidelineStatus.trim() || 'pendiente',
-      sort_order: guidelines.length,
-    })
+    if (!title) { setError('Escribe el lineamiento estratégico.'); return }
+    setSaving(true); setError(''); setNotice('')
+    const { error: insertError } = await supabase.from('guidelines').insert({ period_id: selectedPeriod.id, unit_code: selectedPlanningUnit.code, title, responsible_management: responsibleManagement.trim() || null, responsible_manager: responsibleManager.trim() || null, status: guidelineStatus.trim() || 'pendiente', sort_order: guidelines.length })
     setSaving(false)
-    if (insertError) {
-      setError('No pudimos guardar el lineamiento.')
-      return
-    }
-    setGuidelineTitle('')
-    setResponsibleManagement('')
-    setResponsibleManager('')
-    setGuidelineStatus('pendiente')
-    setShowGuidelineForm(false)
-    setNotice('Lineamiento guardado correctamente.')
-    await loadGuidelines(selectedPeriod.id, selectedPlanningUnit.code)
-  }
-
-  function startEditGuideline(guideline: Guideline) {
-    setEditingGuideline(guideline)
-    setEditTitle(guideline.title)
-    setEditManagement(guideline.responsible_management || '')
-    setEditManager(guideline.responsible_manager || '')
-    setEditStatus(guideline.status || 'pendiente')
-    setError('')
-    setNotice('')
-  }
-
-  function cancelEditGuideline() {
-    setEditingGuideline(null)
-    setEditTitle('')
-    setEditManagement('')
-    setEditManager('')
-    setEditStatus('pendiente')
-  }
-
-  async function updateGuideline() {
-    if (!supabase || !canManage || !editingGuideline || !selectedPeriod || !selectedPlanningUnit) return
-    const title = editTitle.trim()
-    if (!title) {
-      setError('El lineamiento no puede quedar vacío.')
-      return
-    }
-
-    setSaving(true)
-    setError('')
-    setNotice('')
-    const { error: updateError } = await supabase
-      .from('guidelines')
-      .update({
-        title,
-        responsible_management: editManagement.trim() || null,
-        responsible_manager: editManager.trim() || null,
-        status: editStatus.trim() || 'pendiente',
-      })
-      .eq('id', editingGuideline.id)
-    setSaving(false)
-
-    if (updateError) {
-      setError('No pudimos actualizar el lineamiento.')
-      return
-    }
-
-    cancelEditGuideline()
-    setNotice('Lineamiento actualizado correctamente.')
-    await loadGuidelines(selectedPeriod.id, selectedPlanningUnit.code)
+    if (insertError) { setError('No pudimos guardar el lineamiento.'); return }
+    setGuidelineTitle(''); setResponsibleManagement(''); setResponsibleManager(''); setGuidelineStatus('pendiente'); setShowGuidelineForm(false); setNotice('Lineamiento guardado correctamente.'); await loadGuidelines(selectedPeriod.id, selectedPlanningUnit.code)
   }
 
   async function importGuidelinesFromExcel(event: ChangeEvent<HTMLInputElement>) {
@@ -645,21 +435,14 @@ function PlanningView({ access, units, initialYear, initialUnitCode, onPeriodsCh
     event.target.value = ''
     if (!file || !supabase || !canManage || !selectedPeriod || !selectedPlanningUnit) return
     if (guidelines.length > 0 && !window.confirm('Ya existen lineamientos en esta unidad. Los registros del Excel se agregarán a los actuales. ¿Deseas continuar?')) return
-
-    setExcelBusy(true)
-    setError('')
-    setNotice('')
+    setExcelBusy(true); setError(''); setNotice('')
     try {
       const XLSX = await loadSpreadsheetLibrary()
       const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' })
       const sheet = workbook.Sheets[workbook.SheetNames[0]]
       const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false }) as unknown[][]
-      const headerRowIndex = matrix.findIndex(row => row.some(cell => {
-        const header = normalizeHeader(cell)
-        return header === 'lineamientosestrategicos' || header === 'lineamientoestrategico' || header === 'lineamientos'
-      }))
+      const headerRowIndex = matrix.findIndex(row => row.some(cell => ['lineamientosestrategicos', 'lineamientoestrategico', 'lineamientos'].includes(normalizeHeader(cell))))
       if (headerRowIndex < 0) throw new Error('HEADER_NOT_FOUND')
-
       const headers = matrix[headerRowIndex].map(normalizeHeader)
       const findColumn = (...aliases: string[]) => headers.findIndex(header => aliases.includes(header))
       const lineamientoIndex = findColumn('lineamientosestrategicos', 'lineamientoestrategico', 'lineamientos', 'lineamiento')
@@ -667,24 +450,9 @@ function PlanningView({ access, units, initialYear, initialUnitCode, onPeriodsCh
       const gerenteIndex = findColumn('gerenteresponsable', 'responsable')
       const statusIndex = findColumn('estatus', 'estado', 'status')
       if (lineamientoIndex < 0) throw new Error('HEADER_NOT_FOUND')
-
-      const parsedRows = matrix.slice(headerRowIndex + 1).map(row => ({
-        title: String(row[lineamientoIndex] ?? '').trim(),
-        responsible_management: gerenciaIndex >= 0 ? String(row[gerenciaIndex] ?? '').trim() || null : null,
-        responsible_manager: gerenteIndex >= 0 ? String(row[gerenteIndex] ?? '').trim() || null : null,
-        status: statusIndex >= 0 ? String(row[statusIndex] ?? '').trim().toLowerCase() || 'pendiente' : 'pendiente',
-      })).filter(row => row.title).slice(0, 500)
-
+      const parsedRows = matrix.slice(headerRowIndex + 1).map(row => ({ title: String(row[lineamientoIndex] ?? '').trim(), responsible_management: gerenciaIndex >= 0 ? String(row[gerenciaIndex] ?? '').trim() || null : null, responsible_manager: gerenteIndex >= 0 ? String(row[gerenteIndex] ?? '').trim() || null : null, status: statusIndex >= 0 ? String(row[statusIndex] ?? '').trim().toLowerCase() || 'pendiente' : 'pendiente' })).filter(row => row.title).slice(0, 500)
       if (parsedRows.length === 0) throw new Error('NO_ROWS')
-      const payload = parsedRows.map((row, index) => ({
-        period_id: selectedPeriod.id,
-        unit_code: selectedPlanningUnit.code,
-        title: row.title,
-        responsible_management: row.responsible_management,
-        responsible_manager: row.responsible_manager,
-        status: row.status,
-        sort_order: guidelines.length + index,
-      }))
+      const payload = parsedRows.map((row, index) => ({ period_id: selectedPeriod.id, unit_code: selectedPlanningUnit.code, title: row.title, responsible_management: row.responsible_management, responsible_manager: row.responsible_manager, status: row.status, sort_order: guidelines.length + index }))
       const { error: insertError } = await supabase.from('guidelines').insert(payload)
       if (insertError) throw insertError
       await loadGuidelines(selectedPeriod.id, selectedPlanningUnit.code)
@@ -694,217 +462,59 @@ function PlanningView({ access, units, initialYear, initialUnitCode, onPeriodsCh
       if (message === 'HEADER_NOT_FOUND') setError('No encontramos la columna “Lineamientos Estratégicos”.')
       else if (message === 'NO_ROWS') setError('El Excel no contiene lineamientos para importar.')
       else setError('No pudimos importar el Excel. Verifica el formato e inténtalo nuevamente.')
-    } finally {
-      setExcelBusy(false)
-    }
+    } finally { setExcelBusy(false) }
   }
 
   async function exportGuidelinesToExcel() {
     if (!selectedPeriod || !selectedPlanningUnit) return
-    setExcelBusy(true)
-    setError('')
-    setNotice('')
+    setExcelBusy(true); setError(''); setNotice('')
     try {
       const XLSX = await loadSpreadsheetLibrary()
-      const rows = guidelines.map((guideline, index) => ({
-        'N°': index + 1,
-        'Lineamientos Estratégicos': guideline.title,
-        'Gerencia Responsable': guideline.responsible_management || '',
-        'Gerente Responsable': guideline.responsible_manager || '',
-        'Estatus': guideline.status || 'pendiente',
-      }))
+      const rows = guidelines.map((guideline, index) => ({ 'N°': index + 1, 'Lineamientos Estratégicos': guideline.title, 'Gerencia Responsable': guideline.responsible_management || '', 'Gerente Responsable': guideline.responsible_manager || '', 'Estatus': guideline.status || 'pendiente' }))
       const headers = ['N°', 'Lineamientos Estratégicos', 'Gerencia Responsable', 'Gerente Responsable', 'Estatus']
       const worksheet = rows.length ? XLSX.utils.json_to_sheet(rows, { header: headers }) : XLSX.utils.aoa_to_sheet([headers])
       worksheet['!cols'] = [{ wch: 6 }, { wch: 70 }, { wch: 28 }, { wch: 28 }, { wch: 16 }]
-      const workbook = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Lineamientos')
-      XLSX.writeFile(workbook, `Lineamientos_${selectedPlanningUnit.code}_${selectedPeriod.year}.xlsx`)
-      setNotice('Excel generado correctamente.')
-    } catch {
-      setError('No pudimos generar el Excel.')
-    } finally {
-      setExcelBusy(false)
-    }
+      const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, worksheet, 'Lineamientos'); XLSX.writeFile(workbook, `Lineamientos_${selectedPlanningUnit.code}_${selectedPeriod.year}.xlsx`); setNotice('Excel generado correctamente.')
+    } catch { setError('No pudimos generar el Excel.') }
+    finally { setExcelBusy(false) }
   }
 
-  function selectPeriod(period: PlanningPeriod) {
-    setSelectedPeriod(period)
-    setSelectedPlanningUnit(null)
-    setStep('units')
-    setError('')
-    setNotice('')
-  }
-
-  function selectUnit(unit: UnitAccess) {
-    setSelectedPlanningUnit(unit)
-    setStep('guidelines')
-    setError('')
-    setNotice('')
-  }
-
-  function goBack() {
-    setError('')
-    setNotice('')
-    cancelEditGuideline()
-    if (step === 'guidelines') {
-      setStep('units')
-      setSelectedPlanningUnit(null)
-      return
-    }
-    if (step === 'units') {
-      setStep('periods')
-      setSelectedPeriod(null)
-    }
-  }
+  function selectPeriod(period: PlanningPeriod) { setSelectedPeriod(period); setSelectedPlanningUnit(null); setStep('units'); setError(''); setNotice('') }
+  function selectUnit(unit: UnitAccess) { setSelectedPlanningUnit(unit); setStep('guidelines'); setError(''); setNotice('') }
+  function goBack() { setError(''); setNotice(''); if (step === 'guidelines') { setStep('units'); setSelectedPlanningUnit(null); return } if (step === 'units') { setStep('periods'); setSelectedPeriod(null) } }
 
   return (
     <>
       <div className="planning-flow">
-        <div className="planning-breadcrumbs">
-          <button className={step === 'periods' ? 'current' : ''} onClick={() => { setStep('periods'); setSelectedPeriod(null); setSelectedPlanningUnit(null); cancelEditGuideline() }}>1. Periodo</button>
-          <span>→</span>
-          <button className={step === 'units' ? 'current' : ''} disabled={!selectedPeriod} onClick={() => selectedPeriod && setStep('units')}>2. Unidad</button>
-          <span>→</span>
-          <button className={step === 'guidelines' ? 'current' : ''} disabled={!selectedPeriod || !selectedPlanningUnit}>3. Lineamientos</button>
-        </div>
-
+        <div className="planning-breadcrumbs"><button className={step === 'periods' ? 'current' : ''} onClick={() => { setStep('periods'); setSelectedPeriod(null); setSelectedPlanningUnit(null) }}>1. Periodo</button><span>→</span><button className={step === 'units' ? 'current' : ''} disabled={!selectedPeriod} onClick={() => selectedPeriod && setStep('units')}>2. Unidad</button><span>→</span><button className={step === 'guidelines' ? 'current' : ''} disabled={!selectedPeriod || !selectedPlanningUnit}>3. Lineamientos</button></div>
         {step !== 'periods' && <button className="planning-back" onClick={goBack}><ArrowLeft size={17}/> Volver</button>}
         {error && <div className="planning-message">{error}</div>}
         {notice && <div className="planning-message planning-message--success">{notice}</div>}
 
-        {step === 'periods' && (
-          <section className="planning-panel">
-            <div className="planning-title-row">
-              <div><span>Paso 1</span><h2>Elige el periodo</h2><p>Selecciona el año que quieres gestionar.</p></div>
-              {canManage && <button className="planning-primary" onClick={() => setShowPeriodForm(value => !value)}><Plus size={17}/> Nuevo periodo</button>}
-            </div>
+        {step === 'periods' && <section className="planning-panel">
+          <div className="planning-title-row"><div><span>Paso 1</span><h2>Elige el periodo</h2><p>Selecciona el año que quieres gestionar.</p></div>{canManage && <button className="planning-primary" onClick={() => setShowPeriodForm(value => !value)}><Plus size={17}/> Nuevo periodo</button>}</div>
+          {showPeriodForm && <form className="planning-inline-form" onSubmit={createPeriod}><label>Año<input inputMode="numeric" maxLength={4} value={newYear} onChange={event => setNewYear(event.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="2030" /></label><button className="planning-primary" disabled={saving}>{saving ? <LoaderCircle className="spin" size={17}/> : <Plus size={17}/>} Crear</button><button type="button" className="planning-secondary" onClick={() => setShowPeriodForm(false)}>Cancelar</button></form>}
+          {loading ? <div className="planning-loading"><LoaderCircle className="spin" size={24}/> Cargando periodos...</div> : <div className="planning-period-grid">{periods.map(period => <div className={`planning-period-card-shell ${period.status === 'OPEN' ? 'open' : ''}`} key={period.id}><button className="planning-period-card planning-period-card--inside" onClick={() => selectPeriod(period)}><span className="planning-period-icon"><CalendarDays size={24}/></span><div><small>{period.status === 'OPEN' ? 'Periodo actual' : period.status === 'CLOSED' ? 'Cerrado' : 'Borrador'}</small><strong>{period.year}</strong></div><ArrowRight size={19}/></button>{canManage && <button className="period-edit" title={`Editar ${period.year}`} onClick={() => startEditPeriod(period)}><Pencil size={14}/><span>Editar</span></button>}</div>)}</div>}
+        </section>}
 
-            {showPeriodForm && (
-              <form className="planning-inline-form" onSubmit={createPeriod}>
-                <label>Año<input inputMode="numeric" maxLength={4} value={newYear} onChange={event => setNewYear(event.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="2030" /></label>
-                <button className="planning-primary" disabled={saving}>{saving ? <LoaderCircle className="spin" size={17}/> : <Plus size={17}/>} Crear</button>
-                <button type="button" className="planning-secondary" onClick={() => setShowPeriodForm(false)}>Cancelar</button>
-              </form>
-            )}
+        {step === 'units' && selectedPeriod && <section className="planning-panel"><div className="planning-title-row"><div><span>Paso 2 · {selectedPeriod.year}</span><h2>Elige una unidad</h2><p>Selecciona una unidad para revisar sus lineamientos.</p></div></div><div className="planning-unit-grid">{units.map(unit => <button key={unit.code} className={`planning-unit-card planning-unit-card--${unit.code.toLowerCase()}`} onClick={() => selectUnit(unit)}><span className="planning-unit-icon"><Building2 size={27}/></span><div><small>{unit.code}</small><strong>{unit.name}</strong></div><ArrowRight size={19}/></button>)}</div></section>}
 
-            {loading ? (
-              <div className="planning-loading"><LoaderCircle className="spin" size={24}/> Cargando periodos...</div>
-            ) : (
-              <div className="planning-period-grid">
-                {periods.map(period => (
-                  <div className={`planning-period-card-shell ${period.status === 'OPEN' ? 'open' : ''}`} key={period.id}>
-                    <button className="planning-period-card planning-period-card--inside" onClick={() => selectPeriod(period)}>
-                      <span className="planning-period-icon"><CalendarDays size={24}/></span>
-                      <div><small>{period.status === 'OPEN' ? 'Periodo actual' : period.status === 'CLOSED' ? 'Cerrado' : 'Borrador'}</small><strong>{period.year}</strong></div>
-                      <ArrowRight size={19}/>
-                    </button>
-                    {canManage && <button className="period-edit" title={`Editar ${period.year}`} onClick={() => startEditPeriod(period)}><Pencil size={14}/><span>Editar</span></button>}
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        )}
+        {step === 'guidelines' && selectedPeriod && selectedPlanningUnit && <section className="planning-panel planning-panel--wide">
+          <div className="planning-title-row"><div><span>Paso 3 · {selectedPeriod.year} · {selectedPlanningUnit.code}</span><h2>Lineamientos de {selectedPlanningUnit.name}</h2><p>Selecciona texto para aplicar negrita, cursiva, subrayado o tipo de letra. Gerencia y gerente se eligen desde una lista.</p></div><div className="guideline-actions"><button className="planning-secondary" type="button" onClick={() => void exportGuidelinesToExcel()} disabled={excelBusy}>{excelBusy ? <LoaderCircle className="spin" size={17}/> : <Download size={17}/>} Exportar Excel</button>{canManage && <label className={`planning-secondary planning-file-button ${excelBusy ? 'disabled' : ''}`}><Upload size={17}/> Subir Excel<input type="file" accept=".xlsx,.xls" onChange={importGuidelinesFromExcel} disabled={excelBusy} /></label>}{canManage && <button className="planning-primary" onClick={() => setShowGuidelineForm(value => !value)}><Plus size={17}/> Nuevo lineamiento</button>}</div></div>
 
-        {step === 'units' && selectedPeriod && (
-          <section className="planning-panel">
-            <div className="planning-title-row"><div><span>Paso 2 · {selectedPeriod.year}</span><h2>Elige una unidad</h2><p>Selecciona una unidad para revisar sus lineamientos.</p></div></div>
-            <div className="planning-unit-grid">
-              {units.map(unit => (
-                <button key={unit.code} className={`planning-unit-card planning-unit-card--${unit.code.toLowerCase()}`} onClick={() => selectUnit(unit)}>
-                  <span className="planning-unit-icon"><Building2 size={27}/></span>
-                  <div><small>{unit.code}</small><strong>{unit.name}</strong></div>
-                  <ArrowRight size={19}/>
-                </button>
-              ))}
-            </div>
-          </section>
-        )}
+          {showGuidelineForm && <form className="guideline-form guideline-form--table" onSubmit={createGuideline}>
+            <label className="guideline-form__wide">Lineamiento estratégico<textarea rows={3} value={guidelineTitle} onChange={event => setGuidelineTitle(event.target.value)} placeholder="Escribe el lineamiento estratégico" /></label>
+            <label>Gerencia Responsable<input list="management-suggestions" value={responsibleManagement} onChange={event => setResponsibleManagement(event.target.value)} placeholder="Selecciona o escribe" /><datalist id="management-suggestions">{managementSuggestions.map(value => <option key={value} value={value} />)}</datalist></label>
+            <label>Gerente Responsable<input list="manager-suggestions" value={responsibleManager} onChange={event => setResponsibleManager(event.target.value)} placeholder="Selecciona o escribe" /><datalist id="manager-suggestions">{managerSuggestions.map(value => <option key={value} value={value} />)}</datalist></label>
+            <label>Estatus<select value={guidelineStatus} onChange={event => setGuidelineStatus(event.target.value)}><option value="pendiente">Pendiente</option><option value="enviado">Enviado</option><option value="observado">Observado</option><option value="aprobado">Aprobado</option></select></label>
+            <div className="guideline-form__actions"><button className="planning-primary" disabled={saving}>{saving ? <LoaderCircle className="spin" size={17}/> : <Plus size={17}/>} Guardar lineamiento</button><button type="button" className="planning-secondary" onClick={() => setShowGuidelineForm(false)}>Cancelar</button></div>
+          </form>}
 
-        {step === 'guidelines' && selectedPeriod && selectedPlanningUnit && (
-          <section className="planning-panel planning-panel--wide">
-            <div className="planning-title-row">
-              <div><span>Paso 3 · {selectedPeriod.year} · {selectedPlanningUnit.code}</span><h2>Lineamientos de {selectedPlanningUnit.name}</h2><p>Haz clic en “Editar” para escribir directamente en la fila, como en Excel.</p></div>
-              <div className="guideline-actions">
-                <button className="planning-secondary" type="button" onClick={() => void exportGuidelinesToExcel()} disabled={excelBusy}>{excelBusy ? <LoaderCircle className="spin" size={17}/> : <Download size={17}/>} Exportar Excel</button>
-                {canManage && <label className={`planning-secondary planning-file-button ${excelBusy ? 'disabled' : ''}`}><Upload size={17}/> Subir Excel<input type="file" accept=".xlsx,.xls" onChange={importGuidelinesFromExcel} disabled={excelBusy} /></label>}
-                {canManage && <button className="planning-primary" onClick={() => setShowGuidelineForm(value => !value)}><Plus size={17}/> Nuevo lineamiento</button>}
-              </div>
-            </div>
-
-            {showGuidelineForm && (
-              <form className="guideline-form guideline-form--table" onSubmit={createGuideline}>
-                <label className="guideline-form__wide">Lineamiento estratégico<textarea rows={3} value={guidelineTitle} onChange={event => setGuidelineTitle(event.target.value)} placeholder="Escribe el lineamiento estratégico" /></label>
-                <label>Gerencia Responsable<input value={responsibleManagement} onChange={event => setResponsibleManagement(event.target.value)} placeholder="Ej. Comercial / MKT" /></label>
-                <label>Gerente Responsable<input value={responsibleManager} onChange={event => setResponsibleManager(event.target.value)} placeholder="Ej. Jorge M. / Lorena A." /></label>
-                <label>Estatus<select value={guidelineStatus} onChange={event => setGuidelineStatus(event.target.value)}><option value="pendiente">Pendiente</option><option value="enviado">Enviado</option><option value="observado">Observado</option><option value="aprobado">Aprobado</option></select></label>
-                <div className="guideline-form__actions"><button className="planning-primary" disabled={saving}>{saving ? <LoaderCircle className="spin" size={17}/> : <Plus size={17}/>} Guardar lineamiento</button><button type="button" className="planning-secondary" onClick={() => setShowGuidelineForm(false)}>Cancelar</button></div>
-              </form>
-            )}
-
-            {guidelinesLoading ? (
-              <div className="planning-loading"><LoaderCircle className="spin" size={24}/> Cargando lineamientos...</div>
-            ) : guidelines.length === 0 ? (
-              <div className="planning-empty">
-                <span><ClipboardList size={30}/></span><h3>Aún no hay lineamientos</h3><p>{canManage ? 'Puedes crear el primero manualmente o subir tu Excel actual.' : 'Gestión Estratégica todavía no ha registrado lineamientos.'}</p>
-                {canManage && <div className="planning-empty__actions"><button className="planning-primary" onClick={() => setShowGuidelineForm(true)}><Plus size={17}/> Crear lineamiento</button><label className="planning-secondary planning-file-button"><Upload size={17}/> Subir Excel<input type="file" accept=".xlsx,.xls" onChange={importGuidelinesFromExcel} /></label></div>}
-              </div>
-            ) : (
-              <div className="guideline-table-wrap">
-                <table className={`guideline-table guideline-table--${selectedPlanningUnit.code.toLowerCase()}`}>
-                  <thead><tr><th>N°</th><th>Lineamientos Estratégicos</th><th>Gerencia Responsable</th><th>Gerente Responsable</th><th>Estatus</th>{canManage && <th>Acciones</th>}</tr></thead>
-                  <tbody>
-                    {guidelines.map((guideline, index) => {
-                      const isEditing = editingGuideline?.id === guideline.id
-                      return (
-                        <tr key={guideline.id} className={isEditing ? 'guideline-row--editing' : ''}>
-                          <td className="guideline-table__number">{index + 1}</td>
-                          <td className="guideline-table__title">
-                            {isEditing ? <textarea className="guideline-cell-input guideline-cell-input--title" rows={3} value={editTitle} onChange={event => setEditTitle(event.target.value)} autoFocus /> : guideline.title}
-                          </td>
-                          <td>{isEditing ? <input className="guideline-cell-input" value={editManagement} onChange={event => setEditManagement(event.target.value)} /> : (guideline.responsible_management || '—')}</td>
-                          <td>{isEditing ? <input className="guideline-cell-input" value={editManager} onChange={event => setEditManager(event.target.value)} /> : (guideline.responsible_manager || '—')}</td>
-                          <td>
-                            {isEditing ? (
-                              <select className="guideline-cell-input guideline-cell-select" value={editStatus} onChange={event => setEditStatus(event.target.value)}>
-                                <option value="pendiente">Pendiente</option><option value="enviado">Enviado</option><option value="observado">Observado</option><option value="aprobado">Aprobado</option>
-                              </select>
-                            ) : <span className={`guideline-status guideline-status--${normalizeHeader(guideline.status)}`}>{guideline.status || 'pendiente'}</span>}
-                          </td>
-                          {canManage && (
-                            <td className="guideline-table__actions">
-                              {isEditing ? (
-                                <div className="inline-edit-actions">
-                                  <button className="inline-save" type="button" onClick={() => void updateGuideline()} disabled={saving || !editTitle.trim()}>{saving ? <LoaderCircle className="spin" size={13}/> : null} Guardar</button>
-                                  <button className="inline-cancel" type="button" onClick={cancelEditGuideline} disabled={saving}>Cancelar</button>
-                                </div>
-                              ) : <button type="button" onClick={() => startEditGuideline(guideline)} disabled={Boolean(editingGuideline)}><Pencil size={14}/> Editar</button>}
-                            </td>
-                          )}
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-        )}
+          {guidelinesLoading ? <div className="planning-loading"><LoaderCircle className="spin" size={24}/> Cargando lineamientos...</div> : guidelines.length === 0 ? <div className="planning-empty"><span><ClipboardList size={30}/></span><h3>Aún no hay lineamientos</h3><p>{canManage ? 'Puedes crear el primero manualmente o subir tu Excel actual.' : 'Gestión Estratégica todavía no ha registrado lineamientos.'}</p>{canManage && <div className="planning-empty__actions"><button className="planning-primary" onClick={() => setShowGuidelineForm(true)}><Plus size={17}/> Crear lineamiento</button><label className="planning-secondary planning-file-button"><Upload size={17}/> Subir Excel<input type="file" accept=".xlsx,.xls" onChange={importGuidelinesFromExcel} /></label></div>}</div> : <GuidelineGrid guidelines={guidelines} unitCode={selectedPlanningUnit.code} canManage={canManage} onChanged={() => loadGuidelines(selectedPeriod.id, selectedPlanningUnit.code)} onError={setError} onNotice={setNotice} />}
+        </section>}
       </div>
 
-      {editingPeriod && (
-        <div className="cg-modal-backdrop" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target && !saving) setEditingPeriod(null) }}>
-          <div className="cg-edit-dialog cg-period-dialog" role="dialog" aria-modal="true" aria-labelledby="edit-period-title">
-            <button className="cg-modal-close" type="button" onClick={() => setEditingPeriod(null)} disabled={saving} aria-label="Cerrar"><X size={18}/></button>
-            <div className="cg-edit-heading"><span><Pencil size={18}/></span><div><small>Editar periodo</small><h3 id="edit-period-title">Periodo {editingPeriod.year}</h3></div></div>
-            <form className="cg-edit-form" onSubmit={updatePeriod}>
-              <label>Año<input inputMode="numeric" maxLength={4} value={editPeriodYear} onChange={event => setEditPeriodYear(event.target.value.replace(/\D/g, '').slice(0, 4))} /></label>
-              <label>Estado<select value={editPeriodStatus} onChange={event => setEditPeriodStatus(event.target.value as PlanningPeriod['status'])}><option value="DRAFT">Borrador</option><option value="OPEN">Periodo actual</option><option value="CLOSED">Cerrado</option></select></label>
-              <div className="cg-modal-actions"><button type="button" className="cg-modal-secondary" onClick={() => setEditingPeriod(null)} disabled={saving}>Cancelar</button><button type="submit" className="cg-modal-primary" disabled={saving || editPeriodYear.length !== 4}>{saving && <LoaderCircle className="spin" size={16}/>} Guardar cambios</button></div>
-            </form>
-          </div>
-        </div>
-      )}
+      {editingPeriod && <div className="cg-modal-backdrop" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target && !saving) setEditingPeriod(null) }}><div className="cg-edit-dialog cg-period-dialog" role="dialog" aria-modal="true" aria-labelledby="edit-period-title"><button className="cg-modal-close" type="button" onClick={() => setEditingPeriod(null)} disabled={saving} aria-label="Cerrar"><X size={18}/></button><div className="cg-edit-heading"><span><Pencil size={18}/></span><div><small>Editar periodo</small><h3 id="edit-period-title">Periodo {editingPeriod.year}</h3></div></div><form className="cg-edit-form" onSubmit={updatePeriod}><label>Año<input inputMode="numeric" maxLength={4} value={editPeriodYear} onChange={event => setEditPeriodYear(event.target.value.replace(/\D/g, '').slice(0, 4))} /></label><label>Estado<select value={editPeriodStatus} onChange={event => setEditPeriodStatus(event.target.value as PlanningPeriod['status'])}><option value="DRAFT">Borrador</option><option value="OPEN">Periodo actual</option><option value="CLOSED">Cerrado</option></select></label><div className="cg-modal-actions"><button type="button" className="cg-modal-secondary" onClick={() => setEditingPeriod(null)} disabled={saving}>Cancelar</button><button type="submit" className="cg-modal-primary" disabled={saving || editPeriodYear.length !== 4}>{saving && <LoaderCircle className="spin" size={16}/>} Guardar cambios</button></div></form></div></div>}
     </>
   )
 }
@@ -920,14 +530,5 @@ function ConfigurationView() {
 }
 
 function ReportsView() {
-  return (
-    <div className="module-stack">
-      <div className="reports-hero panel-card"><div><span>Reportes</span><h2>Vista consolidada</h2><p>Aquí podrás revisar el avance de todas las unidades.</p></div><FileBarChart size={56}/></div>
-      <div className="report-grid">
-        <button className="report-card"><BarChart3 size={24}/><h3>Avance por unidad</h3><p>Compara el avance entre unidades.</p><span>Ver reporte <ArrowRight size={16}/></span></button>
-        <button className="report-card"><ClipboardList size={24}/><h3>Estado de matrices</h3><p>Revisa matrices pendientes y aprobadas.</p><span>Ver reporte <ArrowRight size={16}/></span></button>
-        <button className="report-card"><FileBarChart size={24}/><h3>Resumen ejecutivo</h3><p>Consulta la información consolidada.</p><span>Ver reporte <ArrowRight size={16}/></span></button>
-      </div>
-    </div>
-  )
+  return <div className="module-stack"><div className="reports-hero panel-card"><div><span>Reportes</span><h2>Vista consolidada</h2><p>Aquí podrás revisar el avance de todas las unidades.</p></div><FileBarChart size={56}/></div><div className="report-grid"><button className="report-card"><BarChart3 size={24}/><h3>Avance por unidad</h3><p>Compara el avance entre unidades.</p><span>Ver reporte <ArrowRight size={16}/></span></button><button className="report-card"><ClipboardList size={24}/><h3>Estado de matrices</h3><p>Revisa matrices pendientes y aprobadas.</p><span>Ver reporte <ArrowRight size={16}/></span></button><button className="report-card"><FileBarChart size={24}/><h3>Resumen ejecutivo</h3><p>Consulta la información consolidada.</p><span>Ver reporte <ArrowRight size={16}/></span></button></div></div>
 }
