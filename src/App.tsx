@@ -1,5 +1,6 @@
-import { FormEvent, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
 import { ArrowLeft, ArrowRight, Building2, CheckCircle2, HelpCircle, KeyRound, LockKeyhole, Mail, ShieldCheck } from 'lucide-react'
+import Dashboard from './Dashboard'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 
 type View = 'chooser' | 'corporate' | 'verify' | 'personal'
@@ -31,19 +32,6 @@ function BrandMark() {
   )
 }
 
-function roleLabel(access: AccessContext) {
-  if (access.global_role === 'GESTION_ESTRATEGICA') return 'Gestión Estratégica'
-  if (access.global_role === 'GERENTE_GENERAL') return 'Gerente General'
-  if (access.units.some(unit => unit.unit_role === 'GERENTE_UNIDAD')) return 'Gerente de Unidad'
-  return 'Equipo de Unidad'
-}
-
-function unitRoleLabel(role: UnitAccess['unit_role']) {
-  if (role === 'GERENTE_UNIDAD') return 'Gerente de Unidad'
-  if (role === 'EQUIPO_UNIDAD') return 'Equipo encargado'
-  return 'Acceso global'
-}
-
 export default function App() {
   const [view, setView] = useState<View>('chooser')
   const [email, setEmail] = useState('')
@@ -53,6 +41,25 @@ export default function App() {
   const [messageTone, setMessageTone] = useState<MessageTone>('info')
   const [busy, setBusy] = useState(false)
   const [access, setAccess] = useState<AccessContext | null>(null)
+
+  useEffect(() => {
+    let mounted = true
+
+    async function restoreAccess() {
+      if (!supabase) return
+      const { data: sessionData } = await supabase.auth.getSession()
+      if (!sessionData.session || !mounted) return
+
+      const { data, error } = await supabase.rpc('current_access')
+      const currentAccess = data as AccessContext | null
+      if (!mounted || error || !currentAccess?.active) return
+      if (!currentAccess.global_access && (!currentAccess.units || currentAccess.units.length === 0)) return
+      setAccess(currentAccess)
+    }
+
+    restoreAccess()
+    return () => { mounted = false }
+  }, [])
 
   function setStatus(text: string, tone: MessageTone = 'info') {
     setMessage(text)
@@ -173,41 +180,13 @@ export default function App() {
 
   if (access) {
     return (
-      <main className="auth-shell">
-        <section className="brand-panel">
-          <div className="brand-panel__top"><BrandMark /></div>
-          <div className="brand-panel__content">
-            <div className="eyebrow cyan"><ShieldCheck size={16} /> ACCESO VERIFICADO</div>
-            <h1>Control de Gestión</h1>
-            <div className="accent-line" />
-            <p>Tu identidad corporativa y tus permisos fueron validados correctamente.</p>
-          </div>
-        </section>
-        <section className="access-panel">
-          <div className="access-card-wrap form-screen">
-            <div className="form-icon"><CheckCircle2 /></div>
-            <div className="eyebrow">BIENVENIDO</div>
-            <h2>{access.full_name || access.email}</h2>
-            <p className="subtitle">Tu acceso ya está listo. Estas son las unidades habilitadas para tu usuario.</p>
-            <div className="security-banner">
-              <ShieldCheck size={25}/>
-              <div>
-                <strong>{roleLabel(access)}</strong>
-                <small>{access.global_access ? 'Acceso a las 5 unidades de negocio' : `${access.units.length} unidad${access.units.length === 1 ? '' : 'es'} asignada${access.units.length === 1 ? '' : 's'}`}</small>
-              </div>
-            </div>
-            <div className="access-options">
-              {access.units.map(unit => (
-                <div className="access-option" key={unit.code}>
-                  <span className="option-icon"><Building2 size={24}/></span>
-                  <span className="option-copy"><strong>{unit.name}</strong><small>{unitRoleLabel(unit.unit_role)}</small></span>
-                </div>
-              ))}
-            </div>
-            <button className="submit-button" onClick={async () => { await supabase?.auth.signOut(); resetView('chooser') }}>Cerrar sesión</button>
-          </div>
-        </section>
-      </main>
+      <Dashboard
+        access={access}
+        onSignOut={async () => {
+          await supabase?.auth.signOut()
+          resetView('chooser')
+        }}
+      />
     )
   }
 
@@ -348,7 +327,7 @@ function AuthForm(props: {
       <h2>{title}</h2>
       <p className="subtitle">{subtitle}</p>
       <form className="auth-form" onSubmit={props.onSubmit}>
-        <label>Correo electrónico<input type="email" value={props.email} onChange={e => props.onEmail(e.target.value)} placeholder={corporate ? 'correo@ejemplo.com' : 'correo@ejemplo.com'} autoComplete="email" /></label>
+        <label>Correo electrónico<input type="email" value={props.email} onChange={e => props.onEmail(e.target.value)} placeholder="correo@ejemplo.com" autoComplete="email" /></label>
         {!corporate && <label>Contraseña<input type="password" value={props.password} onChange={e => props.onPassword(e.target.value)} placeholder="Contraseña" autoComplete="current-password" /></label>}
         <button className="submit-button" type="submit" disabled={props.busy}>{props.busy ? 'Procesando...' : corporate ? 'Enviar código de acceso' : 'Iniciar sesión'}<ArrowRight size={19}/></button>
       </form>
