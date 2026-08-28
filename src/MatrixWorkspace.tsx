@@ -55,7 +55,10 @@ export default function MatrixWorkspace({ periodId, year, unitCode, unitName, ca
     return matrices.filter(item=>processIds.has(item.process_id))
   },[matrices,processes,selectedAreaId])
 
-  useEffect(()=>{ if(unitCode==='CENTRAL') return; setPage('areas'); setSelectedAreaId(''); setSelectedMatrixId(''); setRows([]); void loadWorkspace() },[periodId,unitCode])
+  useEffect(()=>{
+    setPage('areas'); setSelectedAreaId(''); setSelectedMatrixId(''); setRows([])
+    void loadWorkspace()
+  },[periodId,unitCode])
   useEffect(()=>{ if(!selectedMatrixId){setRows([]);return} void loadRows(selectedMatrixId) },[selectedMatrixId])
 
   async function loadManagers(){
@@ -79,7 +82,7 @@ export default function MatrixWorkspace({ periodId, year, unitCode, unitName, ca
     setLoading(true); onError('')
     try{
       const [catalogResult,allAreasResult,processResult,matrixResult,managerList]=await Promise.all([
-        supabase.from('matrix_area_catalog').select('management_id'),
+        supabase.from('matrix_unit_area_catalog').select('management_id').eq('unit_code',unitCode).order('created_at'),
         supabase.from('managements_global').select('id,name,unit_code,directory_group').eq('active',true).order('name'),
         supabase.from('processes').select('id,name,description,management_id,unit_code,directory_group,sort_order').eq('unit_code',unitCode).eq('active',true).order('sort_order').order('name'),
         supabase.from('matrices').select('id,name,description,process_id,status,sort_order').eq('period_id',periodId).eq('unit_code',unitCode).eq('active',true).order('sort_order').order('name'),
@@ -87,9 +90,12 @@ export default function MatrixWorkspace({ periodId, year, unitCode, unitName, ca
       ])
       if(catalogResult.error||allAreasResult.error||processResult.error||matrixResult.error) throw new Error('LOAD')
 
-      const enabledIds=new Set((catalogResult.data||[]).map(item=>String(item.management_id)))
+      const allAreas=(allAreasResult.data||[]) as Area[]
+      const areaById=new Map(allAreas.map(area=>[area.id,area]))
       const uniqueAreas=new Map<string,Area>()
-      ;((allAreasResult.data||[]) as Area[]).filter(area=>enabledIds.has(area.id)).forEach(area=>{
+      ;(catalogResult.data||[]).forEach(item=>{
+        const area=areaById.get(String(item.management_id))
+        if(!area) return
         const key=normalize(area.name)
         if(!uniqueAreas.has(key)) uniqueAreas.set(key,area)
       })
@@ -99,7 +105,7 @@ export default function MatrixWorkspace({ periodId, year, unitCode, unitName, ca
       setMatrices((matrixResult.data||[]) as Matrix[])
       setManagers(managerList)
     }catch{
-      onError('No pudimos cargar las áreas configuradas para Matrices.')
+      onError('No pudimos cargar las áreas activadas para esta unidad.')
     }finally{
       setLoading(false)
     }
@@ -129,7 +135,7 @@ export default function MatrixWorkspace({ periodId, year, unitCode, unitName, ca
     if(existing) return existing
     const {data,error}=await supabase.from('processes').insert({
       unit_code:unitCode,
-      directory_group:area.directory_group,
+      directory_group:'GENERAL',
       management_id:area.id,
       name:'Matriz general',
       description:'Proceso automático para matrices',
@@ -195,23 +201,18 @@ export default function MatrixWorkspace({ periodId, year, unitCode, unitName, ca
     onNotice('Fila eliminada.');await loadRows(selectedMatrix.id)
   }
 
-  if(unitCode==='CENTRAL') return <section className="matrix-placeholder matrix-placeholder--central"><span><ClipboardList size={26}/></span><div><small>Etapa de matrices</small><h3>Central se configurará después</h3><p>Primero construiremos las matrices de VS, HU, Departamentos y Hoteles.</p></div></section>
-
   return <div className={`matrix-workspace matrix-workspace--${unitAccent[unitCode]}`}>
     <section className="matrix-intro">
-      <div><span className="matrix-kicker">Periodo {year} · {unitCode}</span><h3>Matrices de {unitName}</h3><p>Las áreas visibles se eligen únicamente en <strong>Configuración → Áreas visibles en Matrices</strong>. Son transversales y pueden utilizarse en cualquier unidad.</p></div>
-      <div className="matrix-route"><button className={page==='areas'?'active':'done'} onClick={()=>{setPage('areas');setSelectedAreaId('');setSelectedMatrixId('')}}>1. Área</button><ChevronRight size={15}/><span className={page==='matrices'?'active':page==='sheet'?'done':''}>2. Matrices</span><ChevronRight size={15}/><span className={page==='sheet'?'active':''}>3. Edición</span></div>
+      <div><span className="matrix-kicker">Periodo {year} · {unitCode}</span><h3>Matrices de {unitName}</h3><p>Primero activa las áreas para esta unidad en <strong>Configuración → Activar áreas por unidad</strong>. Aquí solo aparecerán las que hayas activado.</p></div>
+      <div className="matrix-route"><button className={page==='areas'?'active':'done'} onClick={()=>{setPage('areas');setSelectedAreaId('');setSelectedMatrixId('')}}>1. Áreas activas</button><ChevronRight size={15}/><span className={page==='matrices'?'active':page==='sheet'?'done':''}>2. Matrices</span><ChevronRight size={15}/><span className={page==='sheet'?'active':''}>3. Edición</span></div>
     </section>
 
     {page!=='areas'&&<button className="matrix-back" onClick={goBack}><ArrowLeft size={16}/> Volver</button>}
 
-    {loading?<div className="matrix-loading"><LoaderCircle className="spin" size={22}/> Cargando áreas y matrices...</div>:<>
+    {loading?<div className="matrix-loading"><LoaderCircle className="spin" size={22}/> Cargando áreas activadas...</div>:<>
       {page==='areas'&&<section className="matrix-stage">
-        <div className="matrix-stage-head"><div><small>Áreas habilitadas</small><h4>Genera una matriz directamente</h4><p>Solo aparecen las áreas que Gestión Estratégica dejó visibles en Configuración. No necesitas crear procesos.</p></div></div>
-        {areas.length===0?<div className="matrix-empty"><Building2 size={24}/><strong>No hay áreas habilitadas</strong><span>Ve a Configuración → Áreas visibles en Matrices y añade las que quieras utilizar.</span></div>:<div className="matrix-area-grid">{areas.map(area=>{
-          const count=matricesForArea(area.id).length
-          return <div className="matrix-area-card matrix-area-card--direct" key={area.id}><button className="matrix-area-open" onClick={()=>openArea(area)}><span><Building2 size={20}/></span><div><strong>{area.name}</strong><small>Área transversal · {count} matriz{count===1?'':'ces'} en {unitCode}</small></div><ArrowRight size={17}/></button>{canManage&&<button className="matrix-generate" onClick={()=>startMatrix(area)}><Plus size={14}/> Generar matriz</button>}</div>
-        })}</div>}
+        <div className="matrix-stage-head"><div><small>Áreas activadas para {unitName}</small><h4>Genera una matriz directamente</h4><p>Si falta un área, actívala primero desde Configuración. No se muestran áreas que no hayas habilitado para esta unidad.</p></div></div>
+        {areas.length===0?<div className="matrix-empty"><Building2 size={24}/><strong>No hay áreas activadas</strong><span>Ve a Configuración → Activar áreas por unidad → {unitName} y activa las áreas que necesitas.</span></div>:<div className="matrix-area-grid">{areas.map(area=>{const count=matricesForArea(area.id).length;return <div className="matrix-area-card matrix-area-card--direct" key={area.id}><button className="matrix-area-open" onClick={()=>openArea(area)}><span><Building2 size={20}/></span><div><strong>{area.name}</strong><small>{count} matriz{count===1?'':'ces'} generada{count===1?'':'s'} en {unitCode}</small></div><ArrowRight size={17}/></button>{canManage&&<button className="matrix-generate" onClick={()=>startMatrix(area)}><Plus size={14}/> Generar matriz</button>}</div>})}</div>}
       </section>}
 
       {page==='matrices'&&selectedArea&&<section className="matrix-stage">
@@ -227,6 +228,6 @@ export default function MatrixWorkspace({ periodId, year, unitCode, unitName, ca
       </section>}
     </>}
 
-    {matrixFormOpen&&selectedArea&&<div className="matrix-modal-backdrop" onMouseDown={event=>{if(event.currentTarget===event.target&&!saving)setMatrixFormOpen(false)}}><div className="matrix-modal"><button className="matrix-modal-close" onClick={()=>setMatrixFormOpen(false)}><X size={17}/></button><small>{selectedArea.name}</small><h4>Generar matriz</h4><p>La matriz quedará asociada directamente a esta área. El proceso técnico se crea automáticamente y no tienes que configurarlo.</p><form className="matrix-modal-form" onSubmit={createMatrix}><label>Nombre de la matriz<input autoFocus value={matrixName} onChange={e=>setMatrixName(e.target.value)}/></label><label>Descripción<input value={matrixDescription} onChange={e=>setMatrixDescription(e.target.value)} placeholder="Opcional"/></label><div><button type="button" onClick={()=>setMatrixFormOpen(false)}>Cancelar</button><button className="matrix-primary" disabled={saving}>{saving?<LoaderCircle className="spin" size={15}/>:<Save size={15}/>} Generar matriz</button></div></form></div></div>}
+    {matrixFormOpen&&selectedArea&&<div className="matrix-modal-backdrop" onMouseDown={event=>{if(event.currentTarget===event.target&&!saving)setMatrixFormOpen(false)}}><div className="matrix-modal"><button className="matrix-modal-close" onClick={()=>setMatrixFormOpen(false)}><X size={17}/></button><small>{selectedArea.name} · {unitName}</small><h4>Generar matriz</h4><p>Esta matriz se generará únicamente para {unitName}. El área seguirá siendo transversal y puede activarse también en otras unidades.</p><form className="matrix-modal-form" onSubmit={createMatrix}><label>Nombre de la matriz<input autoFocus value={matrixName} onChange={e=>setMatrixName(e.target.value)}/></label><label>Descripción<input value={matrixDescription} onChange={e=>setMatrixDescription(e.target.value)} placeholder="Opcional"/></label><div><button type="button" onClick={()=>setMatrixFormOpen(false)}>Cancelar</button><button className="matrix-primary" disabled={saving}>{saving?<LoaderCircle className="spin" size={15}/>:<Save size={15}/>} Generar matriz</button></div></form></div></div>}
   </div>
 }
