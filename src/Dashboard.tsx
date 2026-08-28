@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react'
 import {
   ArrowLeft,
   ArrowRight,
@@ -8,6 +8,7 @@ import {
   CalendarDays,
   ChevronDown,
   ClipboardList,
+  Download,
   FileBarChart,
   LayoutDashboard,
   LoaderCircle,
@@ -19,6 +20,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  Upload,
   Users,
   X,
 } from 'lucide-react'
@@ -52,13 +54,14 @@ type PlanningPeriod = {
 type Guideline = {
   id: string
   title: string
-  description: string | null
+  responsible_management: string | null
+  responsible_manager: string | null
+  status: string
   sort_order: number
   active: boolean
 }
 
 type Section = 'inicio' | 'planificacion' | 'configuracion' | 'reportes'
-
 type PlanningStep = 'periods' | 'units' | 'guidelines'
 
 const sectionLabels: Record<Section, string> = {
@@ -69,6 +72,19 @@ const sectionLabels: Record<Section, string> = {
 }
 
 const unitOrder: UnitAccess['code'][] = ['CENTRAL', 'HU', 'DEP', 'VS', 'HOT']
+const XLSX_MODULE_URL = 'https://unpkg.com/xlsx@0.18.5/xlsx.mjs'
+
+async function loadSpreadsheetLibrary() {
+  return import(/* @vite-ignore */ XLSX_MODULE_URL)
+}
+
+function normalizeHeader(value: unknown) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+}
 
 function BrandMark() {
   return (
@@ -280,12 +296,16 @@ function PlanningView({ access, units }: { access: DashboardAccess; units: UnitA
   const [loading, setLoading] = useState(true)
   const [guidelinesLoading, setGuidelinesLoading] = useState(false)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   const [showPeriodForm, setShowPeriodForm] = useState(false)
   const [newYear, setNewYear] = useState('')
   const [showGuidelineForm, setShowGuidelineForm] = useState(false)
   const [guidelineTitle, setGuidelineTitle] = useState('')
-  const [guidelineDescription, setGuidelineDescription] = useState('')
+  const [responsibleManagement, setResponsibleManagement] = useState('')
+  const [responsibleManager, setResponsibleManager] = useState('')
+  const [guidelineStatus, setGuidelineStatus] = useState('pendiente')
   const [saving, setSaving] = useState(false)
+  const [excelBusy, setExcelBusy] = useState(false)
 
   const canManage = access.global_role === 'GESTION_ESTRATEGICA'
 
@@ -321,7 +341,7 @@ function PlanningView({ access, units }: { access: DashboardAccess; units: UnitA
     setError('')
     const { data, error: queryError } = await supabase
       .from('guidelines')
-      .select('id, title, description, sort_order, active')
+      .select('id, title, responsible_management, responsible_manager, status, sort_order, active')
       .eq('period_id', periodId)
       .eq('unit_code', unitCode)
       .eq('active', true)
@@ -345,6 +365,7 @@ function PlanningView({ access, units }: { access: DashboardAccess; units: UnitA
     }
     setSaving(true)
     setError('')
+    setNotice('')
     const { error: insertError } = await supabase.from('planning_periods').insert({
       year,
       name: `Periodo ${year}`,
@@ -365,16 +386,19 @@ function PlanningView({ access, units }: { access: DashboardAccess; units: UnitA
     if (!supabase || !canManage || !selectedPeriod || !selectedPlanningUnit) return
     const title = guidelineTitle.trim()
     if (!title) {
-      setError('Escribe el nombre del lineamiento.')
+      setError('Escribe el lineamiento estratégico.')
       return
     }
     setSaving(true)
     setError('')
+    setNotice('')
     const { error: insertError } = await supabase.from('guidelines').insert({
       period_id: selectedPeriod.id,
       unit_code: selectedPlanningUnit.code,
       title,
-      description: guidelineDescription.trim() || null,
+      responsible_management: responsibleManagement.trim() || null,
+      responsible_manager: responsibleManager.trim() || null,
+      status: guidelineStatus.trim() || 'pendiente',
       sort_order: guidelines.length,
     })
     setSaving(false)
@@ -383,9 +407,118 @@ function PlanningView({ access, units }: { access: DashboardAccess; units: UnitA
       return
     }
     setGuidelineTitle('')
-    setGuidelineDescription('')
+    setResponsibleManagement('')
+    setResponsibleManager('')
+    setGuidelineStatus('pendiente')
     setShowGuidelineForm(false)
+    setNotice('Lineamiento guardado correctamente.')
     await loadGuidelines(selectedPeriod.id, selectedPlanningUnit.code)
+  }
+
+  async function importGuidelinesFromExcel(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file || !supabase || !canManage || !selectedPeriod || !selectedPlanningUnit) return
+
+    if (guidelines.length > 0 && !window.confirm('Ya existen lineamientos en esta unidad. Los registros del Excel se agregarán a los actuales. ¿Deseas continuar?')) return
+
+    setExcelBusy(true)
+    setError('')
+    setNotice('')
+
+    try {
+      const XLSX = await loadSpreadsheetLibrary()
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' })
+      const sheetName = workbook.SheetNames[0]
+      const sheet = workbook.Sheets[sheetName]
+      const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false }) as unknown[][]
+
+      const headerRowIndex = matrix.findIndex(row => row.some(cell => {
+        const header = normalizeHeader(cell)
+        return header === 'lineamientosestrategicos' || header === 'lineamientoestrategico' || header === 'lineamientos'
+      }))
+
+      if (headerRowIndex < 0) throw new Error('HEADER_NOT_FOUND')
+
+      const headers = matrix[headerRowIndex].map(normalizeHeader)
+      const findColumn = (...aliases: string[]) => headers.findIndex(header => aliases.includes(header))
+      const lineamientoIndex = findColumn('lineamientosestrategicos', 'lineamientoestrategico', 'lineamientos', 'lineamiento')
+      const gerenciaIndex = findColumn('gerenciaresponsable', 'arearesponsable')
+      const gerenteIndex = findColumn('gerenteresponsable', 'responsable')
+      const statusIndex = findColumn('estatus', 'estado', 'status')
+
+      if (lineamientoIndex < 0) throw new Error('HEADER_NOT_FOUND')
+
+      const parsedRows = matrix
+        .slice(headerRowIndex + 1)
+        .map(row => ({
+          title: String(row[lineamientoIndex] ?? '').trim(),
+          responsible_management: gerenciaIndex >= 0 ? String(row[gerenciaIndex] ?? '').trim() || null : null,
+          responsible_manager: gerenteIndex >= 0 ? String(row[gerenteIndex] ?? '').trim() || null : null,
+          status: statusIndex >= 0 ? String(row[statusIndex] ?? '').trim().toLowerCase() || 'pendiente' : 'pendiente',
+        }))
+        .filter(row => row.title)
+        .slice(0, 500)
+
+      if (parsedRows.length === 0) throw new Error('NO_ROWS')
+
+      const payload = parsedRows.map((row, index) => ({
+        period_id: selectedPeriod.id,
+        unit_code: selectedPlanningUnit.code,
+        title: row.title,
+        responsible_management: row.responsible_management,
+        responsible_manager: row.responsible_manager,
+        status: row.status,
+        sort_order: guidelines.length + index,
+      }))
+
+      const { error: insertError } = await supabase.from('guidelines').insert(payload)
+      if (insertError) throw insertError
+
+      await loadGuidelines(selectedPeriod.id, selectedPlanningUnit.code)
+      setNotice(`${payload.length} lineamiento${payload.length === 1 ? '' : 's'} importado${payload.length === 1 ? '' : 's'} desde Excel.`)
+    } catch (importError) {
+      const message = importError instanceof Error ? importError.message : ''
+      if (message === 'HEADER_NOT_FOUND') {
+        setError('No encontramos la columna “Lineamientos Estratégicos”. Usa las columnas: N°, Lineamientos Estratégicos, Gerencia Responsable, Gerente Responsable y Estatus.')
+      } else if (message === 'NO_ROWS') {
+        setError('El Excel no contiene lineamientos para importar.')
+      } else {
+        setError('No pudimos importar el Excel. Verifica el formato e inténtalo nuevamente.')
+      }
+    } finally {
+      setExcelBusy(false)
+    }
+  }
+
+  async function exportGuidelinesToExcel() {
+    if (!selectedPeriod || !selectedPlanningUnit) return
+    setExcelBusy(true)
+    setError('')
+    setNotice('')
+    try {
+      const XLSX = await loadSpreadsheetLibrary()
+      const rows = guidelines.map((guideline, index) => ({
+        'N°': index + 1,
+        'Lineamientos Estratégicos': guideline.title,
+        'Gerencia Responsable': guideline.responsible_management || '',
+        'Gerente Responsable': guideline.responsible_manager || '',
+        'Estatus': guideline.status || 'pendiente',
+      }))
+      const headers = ['N°', 'Lineamientos Estratégicos', 'Gerencia Responsable', 'Gerente Responsable', 'Estatus']
+      const worksheet = rows.length > 0
+        ? XLSX.utils.json_to_sheet(rows, { header: headers })
+        : XLSX.utils.aoa_to_sheet([headers])
+      worksheet['!cols'] = [{ wch: 6 }, { wch: 70 }, { wch: 28 }, { wch: 28 }, { wch: 16 }]
+      const workbook = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Lineamientos')
+      XLSX.writeFile(workbook, `Lineamientos_${selectedPlanningUnit.code}_${selectedPeriod.year}.xlsx`)
+      setNotice('Excel generado correctamente.')
+    } catch {
+      setError('No pudimos generar el Excel.')
+    } finally {
+      setExcelBusy(false)
+    }
   }
 
   function selectPeriod(period: PlanningPeriod) {
@@ -393,16 +526,19 @@ function PlanningView({ access, units }: { access: DashboardAccess; units: UnitA
     setSelectedPlanningUnit(null)
     setStep('units')
     setError('')
+    setNotice('')
   }
 
   function selectUnit(unit: UnitAccess) {
     setSelectedPlanningUnit(unit)
     setStep('guidelines')
     setError('')
+    setNotice('')
   }
 
   function goBack() {
     setError('')
+    setNotice('')
     if (step === 'guidelines') {
       setStep('units')
       setSelectedPlanningUnit(null)
@@ -424,20 +560,14 @@ function PlanningView({ access, units }: { access: DashboardAccess; units: UnitA
         <button className={step === 'guidelines' ? 'current' : ''} disabled={!selectedPeriod || !selectedPlanningUnit}>3. Lineamientos</button>
       </div>
 
-      {step !== 'periods' && (
-        <button className="planning-back" onClick={goBack}><ArrowLeft size={17}/> Volver</button>
-      )}
-
+      {step !== 'periods' && <button className="planning-back" onClick={goBack}><ArrowLeft size={17}/> Volver</button>}
       {error && <div className="planning-message">{error}</div>}
+      {notice && <div className="planning-message planning-message--success">{notice}</div>}
 
       {step === 'periods' && (
         <section className="planning-panel">
           <div className="planning-title-row">
-            <div>
-              <span>Paso 1</span>
-              <h2>Elige el periodo</h2>
-              <p>Selecciona el año que quieres gestionar.</p>
-            </div>
+            <div><span>Paso 1</span><h2>Elige el periodo</h2><p>Selecciona el año que quieres gestionar.</p></div>
             {canManage && <button className="planning-primary" onClick={() => setShowPeriodForm(value => !value)}><Plus size={17}/> Nuevo periodo</button>}
           </div>
 
@@ -468,11 +598,7 @@ function PlanningView({ access, units }: { access: DashboardAccess; units: UnitA
       {step === 'units' && selectedPeriod && (
         <section className="planning-panel">
           <div className="planning-title-row">
-            <div>
-              <span>Paso 2 · {selectedPeriod.year}</span>
-              <h2>Elige una unidad</h2>
-              <p>Entrarás a los lineamientos de la unidad seleccionada.</p>
-            </div>
+            <div><span>Paso 2 · {selectedPeriod.year}</span><h2>Elige una unidad</h2><p>Entrarás a los lineamientos de la unidad seleccionada.</p></div>
           </div>
           <div className="planning-unit-grid">
             {units.map(unit => (
@@ -487,21 +613,34 @@ function PlanningView({ access, units }: { access: DashboardAccess; units: UnitA
       )}
 
       {step === 'guidelines' && selectedPeriod && selectedPlanningUnit && (
-        <section className="planning-panel">
+        <section className="planning-panel planning-panel--wide">
           <div className="planning-title-row">
             <div>
               <span>Paso 3 · {selectedPeriod.year} · {selectedPlanningUnit.code}</span>
               <h2>Lineamientos de {selectedPlanningUnit.name}</h2>
-              <p>Aquí se guardarán los lineamientos reales de esta unidad y periodo.</p>
+              <p>Formato: lineamiento estratégico, gerencia responsable, gerente responsable y estatus.</p>
             </div>
-            {canManage && <button className="planning-primary" onClick={() => setShowGuidelineForm(value => !value)}><Plus size={17}/> Nuevo lineamiento</button>}
+            <div className="guideline-actions">
+              <button className="planning-secondary" type="button" onClick={() => void exportGuidelinesToExcel()} disabled={excelBusy}>
+                {excelBusy ? <LoaderCircle className="spin" size={17}/> : <Download size={17}/>} Exportar Excel
+              </button>
+              {canManage && (
+                <label className={`planning-secondary planning-file-button ${excelBusy ? 'disabled' : ''}`}>
+                  <Upload size={17}/> Subir Excel
+                  <input type="file" accept=".xlsx,.xls" onChange={importGuidelinesFromExcel} disabled={excelBusy} />
+                </label>
+              )}
+              {canManage && <button className="planning-primary" onClick={() => setShowGuidelineForm(value => !value)}><Plus size={17}/> Nuevo lineamiento</button>}
+            </div>
           </div>
 
           {showGuidelineForm && (
-            <form className="guideline-form" onSubmit={createGuideline}>
-              <label>Nombre del lineamiento<input value={guidelineTitle} onChange={event => setGuidelineTitle(event.target.value)} placeholder="Ej. Crecimiento y rentabilidad" /></label>
-              <label>Descripción <span>(opcional)</span><textarea rows={3} value={guidelineDescription} onChange={event => setGuidelineDescription(event.target.value)} placeholder="Escribe una breve descripción" /></label>
-              <div><button className="planning-primary" disabled={saving}>{saving ? <LoaderCircle className="spin" size={17}/> : <Plus size={17}/>} Guardar lineamiento</button><button type="button" className="planning-secondary" onClick={() => setShowGuidelineForm(false)}>Cancelar</button></div>
+            <form className="guideline-form guideline-form--table" onSubmit={createGuideline}>
+              <label className="guideline-form__wide">Lineamiento estratégico<textarea rows={3} value={guidelineTitle} onChange={event => setGuidelineTitle(event.target.value)} placeholder="Escribe el lineamiento estratégico" /></label>
+              <label>Gerencia Responsable<input value={responsibleManagement} onChange={event => setResponsibleManagement(event.target.value)} placeholder="Ej. Comercial / MKT" /></label>
+              <label>Gerente Responsable<input value={responsibleManager} onChange={event => setResponsibleManager(event.target.value)} placeholder="Ej. Jorge M. / Lorena A." /></label>
+              <label>Estatus<select value={guidelineStatus} onChange={event => setGuidelineStatus(event.target.value)}><option value="pendiente">Pendiente</option><option value="enviado">Enviado</option><option value="observado">Observado</option><option value="aprobado">Aprobado</option></select></label>
+              <div className="guideline-form__actions"><button className="planning-primary" disabled={saving}>{saving ? <LoaderCircle className="spin" size={17}/> : <Plus size={17}/>} Guardar lineamiento</button><button type="button" className="planning-secondary" onClick={() => setShowGuidelineForm(false)}>Cancelar</button></div>
             </form>
           )}
 
@@ -511,21 +650,33 @@ function PlanningView({ access, units }: { access: DashboardAccess; units: UnitA
             <div className="planning-empty">
               <span><ClipboardList size={30}/></span>
               <h3>Aún no hay lineamientos</h3>
-              <p>{canManage ? 'Crea el primer lineamiento para comenzar.' : 'Gestión Estratégica todavía no ha registrado lineamientos.'}</p>
-              {canManage && <button className="planning-primary" onClick={() => setShowGuidelineForm(true)}><Plus size={17}/> Crear lineamiento</button>}
+              <p>{canManage ? 'Puedes crear el primero manualmente o subir tu Excel actual.' : 'Gestión Estratégica todavía no ha registrado lineamientos.'}</p>
+              {canManage && <div className="planning-empty__actions"><button className="planning-primary" onClick={() => setShowGuidelineForm(true)}><Plus size={17}/> Crear lineamiento</button><label className="planning-secondary planning-file-button"><Upload size={17}/> Subir Excel<input type="file" accept=".xlsx,.xls" onChange={importGuidelinesFromExcel} /></label></div>}
             </div>
           ) : (
-            <div className="guideline-list">
-              {guidelines.map((guideline, index) => (
-                <article className="guideline-card" key={guideline.id}>
-                  <span className="guideline-number">{String(index + 1).padStart(2, '0')}</span>
-                  <div>
-                    <h3>{guideline.title}</h3>
-                    <p>{guideline.description || 'Sin descripción'}</p>
-                  </div>
-                  <button disabled title="Disponible en el siguiente paso">Matrices <ArrowRight size={16}/></button>
-                </article>
-              ))}
+            <div className="guideline-table-wrap">
+              <table className="guideline-table">
+                <thead>
+                  <tr>
+                    <th>N°</th>
+                    <th>Lineamientos Estratégicos</th>
+                    <th>Gerencia Responsable</th>
+                    <th>Gerente Responsable</th>
+                    <th>Estatus</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {guidelines.map((guideline, index) => (
+                    <tr key={guideline.id}>
+                      <td className="guideline-table__number">{index + 1}</td>
+                      <td className="guideline-table__title">{guideline.title}</td>
+                      <td>{guideline.responsible_management || '—'}</td>
+                      <td>{guideline.responsible_manager || '—'}</td>
+                      <td><span className={`guideline-status guideline-status--${normalizeHeader(guideline.status)}`}>{guideline.status || 'pendiente'}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </section>
