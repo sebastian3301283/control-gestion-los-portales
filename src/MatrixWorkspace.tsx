@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, ArrowRight, Building2, Check, Download, LoaderCircle, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Building2, Check, Download, LoaderCircle, Maximize2, Minimize2, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { supabase } from './lib/supabase'
 import './matrix-workspace.css'
 
@@ -75,6 +75,7 @@ export default function MatrixWorkspace({ periodId, year, unitCode, unitName, ca
   const [rowsLoading, setRowsLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [expanded, setExpanded] = useState(false)
   const [rowFormOpen, setRowFormOpen] = useState(false)
   const [editingRowId, setEditingRowId] = useState<string | null>(null)
   const [rowDraft, setRowDraft] = useState<RowDraft>(emptyRow)
@@ -92,6 +93,7 @@ export default function MatrixWorkspace({ periodId, year, unitCode, unitName, ca
     setPage('areas')
     setSelectedAreaId('')
     setSelectedMatrixId('')
+    setExpanded(false)
     setRows([])
     void loadWorkspace()
   }, [periodId, unitCode])
@@ -103,6 +105,20 @@ export default function MatrixWorkspace({ periodId, year, unitCode, unitName, ca
     }
     void loadRows(selectedMatrixId)
   }, [selectedMatrixId])
+
+  useEffect(() => {
+    if (!expanded) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setExpanded(false)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [expanded])
 
   async function loadManagers() {
     if (!supabase) return [] as Manager[]
@@ -188,6 +204,7 @@ export default function MatrixWorkspace({ periodId, year, unitCode, unitName, ca
     onError('')
     onNotice('')
     cancelRowEdit()
+    setExpanded(false)
     setSelectedMatrixId('')
     setSelectedAreaId('')
     setPage('areas')
@@ -309,7 +326,7 @@ export default function MatrixWorkspace({ periodId, year, unitCode, unitName, ca
 
   const tableColSpan = canManage ? 14 : 13
 
-  return <div className={`matrix-workspace matrix-workspace--${unitAccent[unitCode]} ${page === 'sheet' ? 'matrix-workspace--sheet' : ''}`}>
+  return <div className={`matrix-workspace matrix-workspace--${unitAccent[unitCode]} ${page === 'sheet' ? 'matrix-workspace--sheet' : ''} ${expanded ? 'matrix-workspace--expanded' : ''}`}>
     {page === 'areas' && <>
       <section className="matrix-intro">
         <div><span className="matrix-kicker">Periodo {year} · {unitCode}</span><h3>Matrices de {unitName}</h3><p>Las áreas se activan en <strong>Configuración → Activar áreas por unidad</strong>. Al activar un área, su matriz queda preparada automáticamente.</p></div>
@@ -332,6 +349,7 @@ export default function MatrixWorkspace({ periodId, year, unitCode, unitName, ca
       <div className="matrix-plan-title-row">
         <div><span className="matrix-plan-eyebrow">Matriz de Plan de Acción</span><h2>PLAN DE ACCIÓN {year}</h2></div>
         <div className="matrix-plan-actions">
+          <button className="matrix-expand" onClick={() => setExpanded(value => !value)} title={expanded ? 'Salir de pantalla completa' : 'Expandir matriz'}>{expanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />} {expanded ? 'Salir de pantalla completa' : 'Expandir matriz'}</button>
           <button className="matrix-export" onClick={() => void exportExcel()} disabled={exporting}><Download size={16} /> {exporting ? 'Exportando...' : 'Exportar Excel'}</button>
           {canManage && <button className="matrix-primary" onClick={startNewRow}><Plus size={16} /> Nueva fila</button>}
         </div>
