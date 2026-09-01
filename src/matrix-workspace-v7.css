@@ -1,0 +1,5 @@
+/* Los lineamientos se administran en Configuración → Lineamientos. */
+.matrix-v5-guidelines-head > button{display:none!important}
+.matrix-v5-guidelines-head::after{content:'Se administra desde Configuración → Lineamientos';display:inline-flex;align-items:center;min-height:30px;padding:0 9px;border:1px solid #dbe3e9;border-radius:7px;background:#f8fafb;color:#738797;font-size:9px;font-weight:750;white-space:nowrap}
+.matrix-v5-edit-row td:nth-child(3) select{font-weight:700}
+@media(max-width:760px){.matrix-v5-guidelines-head::after{white-space:normal;text-align:right;max-width:180px}}
