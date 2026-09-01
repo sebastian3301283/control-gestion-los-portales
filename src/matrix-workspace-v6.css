@@ -1,0 +1,74 @@
+/* Matrix V6: full viewport only when expanded, strict containment otherwise. */
+.planning-panel--wide{min-width:0;max-width:100%;overflow:hidden}
+.matrix-v5--sheet,.matrix-v5-plan-shell,.matrix-v5-toolbar,.matrix-v5-title,.matrix-v5-guidelines-card,.matrix-v5-summary,.matrix-v5-sheet-card,.matrix-v5-footer{min-width:0;max-width:100%}
+.matrix-v5--sheet{width:100%;overflow:hidden}
+.matrix-v5-plan-shell{width:100%;overflow:hidden}
+.matrix-v5-guidelines-scroll,.matrix-v5-sheet-scroll{max-width:100%;overflow-x:auto;overscroll-behavior-x:contain}
+.matrix-v5-sheet-card{overflow:hidden}
+
+/* Vista completa real: la matriz ocupa todo el viewport y no depende del layout padre. */
+.matrix-v5--expanded{
+  position:fixed!important;
+  inset:0!important;
+  top:0!important;
+  left:0!important;
+  right:0!important;
+  bottom:0!important;
+  z-index:10000!important;
+  width:100vw!important;
+  height:100dvh!important;
+  max-width:none!important;
+  margin:0!important;
+  padding:10px 12px!important;
+  box-sizing:border-box!important;
+  overflow:hidden!important;
+  background:#f6f8fa!important;
+}
+.matrix-v5--expanded .matrix-v5-plan-shell{
+  width:100%!important;
+  height:100%!important;
+  max-width:none!important;
+  min-height:0!important;
+  display:flex!important;
+  flex-direction:column!important;
+  overflow:hidden!important;
+}
+.matrix-v5--expanded .matrix-v5-toolbar{
+  flex:0 0 auto!important;
+  margin:0 0 6px!important;
+  padding:0!important;
+}
+.matrix-v5--expanded .matrix-v5-toolbar-actions{width:100%;justify-content:flex-end}
+.matrix-v5--expanded .matrix-v5-title{flex:0 0 auto!important;margin:0 0 6px!important}
+.matrix-v5--expanded .matrix-v5-title h2{font-size:25px!important}
+.matrix-v5--expanded .matrix-v5-guidelines-card{flex:0 0 auto!important;margin:0 0 6px!important}
+.matrix-v5--expanded .matrix-v5-summary{flex:0 0 auto!important;margin:0 0 6px!important}
+.matrix-v5--expanded .matrix-v5-sheet-card{
+  flex:1 1 auto!important;
+  min-height:0!important;
+  height:auto!important;
+  width:100%!important;
+  max-width:100%!important;
+  overflow:hidden!important;
+}
+.matrix-v5--expanded .matrix-v5-sheet-scroll{
+  width:100%!important;
+  height:100%!important;
+  min-height:0!important;
+  max-height:none!important;
+  max-width:100%!important;
+  overflow:auto!important;
+  scrollbar-gutter:stable both-edges;
+}
+.matrix-v5--expanded .matrix-v5-sheet{zoom:var(--matrix-zoom,1)}
+.matrix-v5--expanded .matrix-v5-footer{flex:0 0 auto!important;padding:5px 2px 0!important;margin:0!important}
+
+/* Mejor legibilidad en celdas y edición. */
+.matrix-v5-sheet td{font-size:12px!important}
+.matrix-v5-edit-row textarea,.matrix-v5-edit-row input,.matrix-v5-edit-row select{font-size:12px!important}
+.matrix-v5-person-chip{font-size:11px!important}
+.matrix-v5-objective-row td{font-size:11.5px!important}
+
+@media(max-width:900px){
+  .matrix-v5--expanded{inset:0!important;width:100vw!important;height:100dvh!important;padding:7px!important}
+}
