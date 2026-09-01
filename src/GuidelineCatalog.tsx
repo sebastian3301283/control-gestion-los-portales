@@ -222,10 +222,13 @@ export default function GuidelineCatalog({ units, canManage }: Props) {
       {error && <div className="guideline-message error">{error}</div>}
       {notice && <div className="guideline-message success"><Check size={14}/>{notice}</div>}
 
+      <div className="guideline-unit-selector" role="tablist" aria-label="Unidad de lineamientos">
+        {unitOptions.map(unit => <button key={unit.code} type="button" className={unitCode === unit.code ? 'active' : ''} onClick={() => { setUnitCode(unit.code); setAreaFilter(''); setError(''); setNotice('') }}><strong>{unit.code}</strong><small>{unit.name}</small></button>)}
+      </div>
+
       <div className="guideline-toolbar">
         <div className="guideline-filters">
           <select value={periodId} onChange={event => setPeriodId(event.target.value)}>{periods.map(item => <option key={item.id} value={item.id}>{item.year}{item.status === 'OPEN' ? ' · Actual' : ''}</option>)}</select>
-          <select value={unitCode} onChange={event => setUnitCode(event.target.value)}>{unitOptions.map(item => <option key={item.code} value={item.code}>{item.code} · {item.name}</option>)}</select>
           <select value={areaFilter} onChange={event => setAreaFilter(event.target.value)}><option value="">Todas las gerencias</option>{uniqueAreas.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
           <label><Search size={15}/><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar lineamiento"/></label>
         </div>
