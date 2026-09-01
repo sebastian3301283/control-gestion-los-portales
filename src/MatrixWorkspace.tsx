@@ -1,5 +1,4 @@
-import MatrixWorkspaceV5 from './MatrixWorkspaceV5'
+import MatrixWorkspaceV8 from './MatrixWorkspaceV8'
 import './matrix-workspace-v6.css'
-import './matrix-workspace-v7.css'
 
-export default MatrixWorkspaceV5
+export default MatrixWorkspaceV8
