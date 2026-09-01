@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowLeft,
   ArrowRight,
@@ -13,8 +13,6 @@ import {
   LoaderCircle,
   LogOut,
   Menu,
-  Pencil,
-  Plus,
   Search,
   Settings,
   ShieldCheck,
@@ -53,7 +51,7 @@ type PlanningPeriod = {
 }
 
 type Section = 'inicio' | 'planificacion' | 'configuracion' | 'reportes'
-type PlanningStep = 'periods' | 'units' | 'matrices'
+type PlanningStep = 'units' | 'matrices'
 
 type PlanningEntry = {
   year: number
@@ -211,7 +209,7 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
         <main className="dashboard-content">
           {section === 'inicio' ? <HomeView access={access} displayName={displayName} today={today} units={units} selectedUnit={selectedUnit} selectedHomeUnit={selectedHomeUnit} setSelectedUnit={setSelectedUnit} navigate={navigate} periods={periods} selectedYear={selectedHomeYear} setSelectedYear={setSelectedHomeYear} openMatrices={openMatrices} /> : <>
             <div className="page-heading compact-heading"><div><span className="page-kicker">{sectionLabels[section]}</span><h1>{sectionLabels[section]}</h1><p>{sectionDescription(section)}</p></div></div>
-            {section === 'planificacion' && <PlanningView key={planningEntry ? `${planningEntry.year}-${planningEntry.unitCode}-${planningEntry.token}` : 'planning-default'} access={access} units={units} initialYear={planningEntry?.year} initialUnitCode={planningEntry?.unitCode} onPeriodsChanged={loadDashboardPeriods} />}
+            {section === 'planificacion' && <PlanningView key={planningEntry ? `${planningEntry.year}-${planningEntry.unitCode}-${planningEntry.token}` : 'planning-default'} access={access} units={units} initialYear={planningEntry?.year} initialUnitCode={planningEntry?.unitCode} />}
             {section === 'configuracion' && <CatalogConfiguration units={units.map(unit => ({ code: unit.code, name: unit.name }))} canManage={access.global_role === 'GESTION_ESTRATEGICA'} />}
             {section === 'reportes' && <ReportsView />}
           </>}
@@ -246,8 +244,8 @@ function HomeView({ access, displayName, today, units, selectedUnit, selectedHom
     <section className="dashboard-section action-section">
       <div className="section-title-row"><div><span>Accesos rápidos</span><h2>¿Qué quieres hacer?</h2></div></div>
       <div className="friendly-actions">
-        <button className="friendly-action friendly-action--planning" onClick={() => navigate('planificacion')}><span className="friendly-action__icon"><ClipboardList size={25}/></span><span className="friendly-action__copy"><strong>Planificar</strong><small>Áreas, procesos y matrices</small></span><ArrowRight size={19}/></button>
-        <button className="friendly-action friendly-action--settings" onClick={() => navigate('configuracion')}><span className="friendly-action__icon"><SlidersHorizontal size={25}/></span><span className="friendly-action__copy"><strong>Configurar</strong><small>Áreas y bonistas</small></span><ArrowRight size={19}/></button>
+        <button className="friendly-action friendly-action--planning" onClick={() => navigate('planificacion')}><span className="friendly-action__icon"><ClipboardList size={25}/></span><span className="friendly-action__copy"><strong>Planificar</strong><small>Áreas y matrices</small></span><ArrowRight size={19}/></button>
+        <button className="friendly-action friendly-action--settings" onClick={() => navigate('configuracion')}><span className="friendly-action__icon"><SlidersHorizontal size={25}/></span><span className="friendly-action__copy"><strong>Configurar</strong><small>Periodos, áreas, bonistas y lineamientos</small></span><ArrowRight size={19}/></button>
         <button className="friendly-action friendly-action--reports" onClick={() => navigate('reportes')}><span className="friendly-action__icon"><FileBarChart size={25}/></span><span className="friendly-action__copy"><strong>Ver reportes</strong><small>Avance y resultados</small></span><ArrowRight size={19}/></button>
       </div>
     </section>
@@ -257,119 +255,79 @@ function HomeView({ access, displayName, today, units, selectedUnit, selectedHom
       <div className="unit-grid friendly-unit-grid">{units.map(unit => <button key={unit.code} className={`unit-card unit-card--${unit.code.toLowerCase()} ${selectedUnit === unit.code ? 'selected' : ''}`} onClick={() => setSelectedUnit(unit.code)}><div className="unit-card__top"><span className="unit-code">{unit.code}</span></div><div className="unit-icon"><Building2 size={26}/></div><h3>{unit.name}</h3><p>{unit.unit_role === 'GLOBAL' ? 'Acceso completo' : unit.unit_role === 'GERENTE_UNIDAD' ? 'Gerente de Unidad' : 'Equipo encargado'}</p><span className="unit-link">Entrar <ArrowRight size={16}/></span></button>)}</div>
     </section>
 
-    {selectedHomeUnit && <section className="dashboard-section unit-module-section"><div className="section-title-row"><div><span>{selectedHomeUnit.name}</span><h2>¿Qué quieres revisar?</h2></div></div><div className="unit-module-grid"><button className={`unit-module-card unit-module-card--${selectedHomeUnit.code.toLowerCase()}`} onClick={() => openMatrices(selectedHomeUnit.code)}><span className="unit-module-icon"><ClipboardList size={28}/></span><div><small>Periodo {selectedYear}</small><strong>Matrices</strong><p>Entrar por área, proceso y matriz de gestión.</p></div><ArrowRight size={20}/></button></div></section>}
+    {selectedHomeUnit && <section className="dashboard-section unit-module-section"><div className="section-title-row"><div><span>{selectedHomeUnit.name}</span><h2>¿Qué quieres revisar?</h2></div></div><div className="unit-module-grid"><button className={`unit-module-card unit-module-card--${selectedHomeUnit.code.toLowerCase()}`} onClick={() => openMatrices(selectedHomeUnit.code)}><span className="unit-module-icon"><ClipboardList size={28}/></span><div><small>Periodo {selectedYear}</small><strong>Matrices</strong><p>Entrar por área y matriz de gestión.</p></div><ArrowRight size={20}/></button></div></section>}
   </>
 }
 
 function sectionDescription(section: Section) {
-  if (section === 'planificacion') return 'Periodo → unidad → área → proceso → matriz.'
-  if (section === 'configuracion') return 'Administra áreas y bonistas que alimentan la planificación.'
+  if (section === 'planificacion') return 'Unidad → área → matriz.'
+  if (section === 'configuracion') return 'Administra periodos, áreas, bonistas y lineamientos que alimentan la planificación.'
   return 'Consulta el avance y los resultados de gestión.'
 }
 
-function PlanningView({ access, units, initialYear, initialUnitCode, onPeriodsChanged }: {
+function PlanningView({ access, units, initialYear, initialUnitCode }: {
   access: DashboardAccess
   units: UnitAccess[]
   initialYear?: number
   initialUnitCode?: UnitAccess['code']
-  onPeriodsChanged: () => void | Promise<void>
 }) {
-  const [step, setStep] = useState<PlanningStep>('periods')
-  const [periods, setPeriods] = useState<PlanningPeriod[]>([])
+  const [step, setStep] = useState<PlanningStep>('units')
   const [selectedPeriod, setSelectedPeriod] = useState<PlanningPeriod | null>(null)
   const [selectedPlanningUnit, setSelectedPlanningUnit] = useState<UnitAccess | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
-  const [showPeriodForm, setShowPeriodForm] = useState(false)
-  const [newYear, setNewYear] = useState('')
-  const [editingPeriod, setEditingPeriod] = useState<PlanningPeriod | null>(null)
-  const [editPeriodYear, setEditPeriodYear] = useState('')
-  const [editPeriodStatus, setEditPeriodStatus] = useState<PlanningPeriod['status']>('DRAFT')
-  const [saving, setSaving] = useState(false)
   const canManage = access.global_role === 'GESTION_ESTRATEGICA'
 
-  useEffect(() => { void loadPeriods() }, [])
+  useEffect(() => { void loadPeriodContext() }, [initialYear])
 
   useEffect(() => {
-    if (!initialYear || !initialUnitCode || periods.length === 0) return
-    const period = periods.find(item => item.year === initialYear)
+    if (!selectedPeriod || !initialUnitCode) return
     const unit = units.find(item => item.code === initialUnitCode)
-    if (!period || !unit) return
-    setSelectedPeriod(period)
+    if (!unit) return
     setSelectedPlanningUnit(unit)
     setStep('matrices')
-  }, [periods, initialYear, initialUnitCode, units])
+  }, [selectedPeriod, initialUnitCode, units])
 
-  async function loadPeriods() {
+  async function loadPeriodContext() {
     if (!supabase) return
     setLoading(true); setError('')
     const { data, error: queryError } = await supabase.from('planning_periods').select('id, year, name, status').order('year', { ascending: true })
     setLoading(false)
-    if (queryError) { setError('No pudimos cargar los periodos.'); return }
-    setPeriods((data || []) as PlanningPeriod[])
+    if (queryError) { setError('No pudimos cargar el periodo configurado.'); return }
+    const available = (data || []) as PlanningPeriod[]
+    const preferred = (initialYear ? available.find(item => item.year === initialYear) : null) || available.find(item => item.status === 'OPEN') || available[0] || null
+    if (!preferred) { setError('No hay un periodo configurado. Créalo desde Configuración → Periodos.'); return }
+    setSelectedPeriod(preferred)
+    if (!initialUnitCode) { setSelectedPlanningUnit(null); setStep('units') }
   }
 
-  async function createPeriod(event: FormEvent) {
-    event.preventDefault()
-    if (!supabase || !canManage) return
-    const year = Number(newYear)
-    if (!Number.isInteger(year) || year < 2020 || year > 2100) { setError('Ingresa un año válido.'); return }
-    setSaving(true); setError(''); setNotice('')
-    const { error: insertError } = await supabase.from('planning_periods').insert({ year, name: `Periodo ${year}`, status: 'DRAFT' })
-    setSaving(false)
-    if (insertError) { setError(insertError.code === '23505' ? 'Ese periodo ya existe.' : 'No pudimos crear el periodo.'); return }
-    setNewYear(''); setShowPeriodForm(false); await loadPeriods(); await onPeriodsChanged()
+  function selectUnit(unit: UnitAccess) {
+    setSelectedPlanningUnit(unit)
+    setStep('matrices')
+    setError('')
+    setNotice('')
   }
 
-  function startEditPeriod(period: PlanningPeriod) {
-    setEditingPeriod(period); setEditPeriodYear(String(period.year)); setEditPeriodStatus(period.status); setError(''); setNotice('')
-  }
-
-  async function updatePeriod(event: FormEvent) {
-    event.preventDefault()
-    if (!supabase || !canManage || !editingPeriod) return
-    const year = Number(editPeriodYear)
-    if (!Number.isInteger(year) || year < 2020 || year > 2100) { setError('Ingresa un año válido.'); return }
-    setSaving(true); setError(''); setNotice('')
-    if (editPeriodStatus === 'OPEN') {
-      const { error: resetError } = await supabase.from('planning_periods').update({ status: 'DRAFT' }).neq('id', editingPeriod.id).eq('status', 'OPEN')
-      if (resetError) { setSaving(false); setError('No pudimos actualizar el periodo actual.'); return }
-    }
-    const { error: updateError } = await supabase.from('planning_periods').update({ year, name: `Periodo ${year}`, status: editPeriodStatus }).eq('id', editingPeriod.id)
-    setSaving(false)
-    if (updateError) { setError(updateError.code === '23505' ? 'Ese año ya existe.' : 'No pudimos actualizar el periodo.'); return }
-    setEditingPeriod(null); setNotice(`Periodo ${year} actualizado.`); await loadPeriods(); await onPeriodsChanged()
-  }
-
-  function selectPeriod(period: PlanningPeriod) { setSelectedPeriod(period); setSelectedPlanningUnit(null); setStep('units'); setError(''); setNotice('') }
-  function selectUnit(unit: UnitAccess) { setSelectedPlanningUnit(unit); setStep('matrices'); setError(''); setNotice('') }
   function goBack() {
-    setError(''); setNotice('')
-    if (step === 'matrices') { setStep('units'); setSelectedPlanningUnit(null); return }
-    if (step === 'units') { setStep('periods'); setSelectedPeriod(null) }
+    setError('')
+    setNotice('')
+    if (step === 'matrices') {
+      setStep('units')
+      setSelectedPlanningUnit(null)
+    }
   }
 
-  return <>
-    <div className="planning-flow">
-      <div className="planning-breadcrumbs"><button className={step === 'periods' ? 'current' : ''} onClick={() => { setStep('periods'); setSelectedPeriod(null); setSelectedPlanningUnit(null) }}>1. Periodo</button><span>→</span><button className={step === 'units' ? 'current' : ''} disabled={!selectedPeriod} onClick={() => selectedPeriod && setStep('units')}>2. Unidad</button><span>→</span><button className={step === 'matrices' ? 'current' : ''} disabled={!selectedPeriod || !selectedPlanningUnit}>3. Matrices</button></div>
-      {step !== 'periods' && <button className="planning-back" onClick={goBack}><ArrowLeft size={17}/> Volver</button>}
-      {error && <div className="planning-message">{error}</div>}
-      {notice && <div className="planning-message planning-message--success">{notice}</div>}
+  return <div className="planning-flow">
+    <div className="planning-breadcrumbs"><button className={step === 'units' ? 'current' : ''} onClick={() => { setStep('units'); setSelectedPlanningUnit(null) }}>1. Unidad</button><span>→</span><button className={step === 'matrices' ? 'current' : ''} disabled={!selectedPeriod || !selectedPlanningUnit}>2. Matrices</button></div>
+    {step === 'matrices' && <button className="planning-back" onClick={goBack}><ArrowLeft size={17}/> Volver</button>}
+    {error && <div className="planning-message">{error}</div>}
+    {notice && <div className="planning-message planning-message--success">{notice}</div>}
 
-      {step === 'periods' && <section className="planning-panel">
-        <div className="planning-title-row"><div><span>Paso 1</span><h2>Elige el periodo</h2><p>Selecciona el año que quieres gestionar.</p></div>{canManage && <button className="planning-primary" onClick={() => setShowPeriodForm(value => !value)}><Plus size={17}/> Nuevo periodo</button>}</div>
-        {showPeriodForm && <form className="planning-inline-form" onSubmit={createPeriod}><label>Año<input inputMode="numeric" maxLength={4} value={newYear} onChange={event => setNewYear(event.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="2030" /></label><button className="planning-primary" disabled={saving}>{saving ? <LoaderCircle className="spin" size={17}/> : <Plus size={17}/>} Crear</button><button type="button" className="planning-secondary" onClick={() => setShowPeriodForm(false)}>Cancelar</button></form>}
-        {loading ? <div className="planning-loading"><LoaderCircle className="spin" size={24}/> Cargando periodos...</div> : <div className="planning-period-grid">{periods.map(period => <div className={`planning-period-card-shell ${period.status === 'OPEN' ? 'open' : ''}`} key={period.id}><button className="planning-period-card planning-period-card--inside" onClick={() => selectPeriod(period)}><span className="planning-period-icon"><CalendarDays size={24}/></span><div><small>{period.status === 'OPEN' ? 'Periodo actual' : period.status === 'CLOSED' ? 'Cerrado' : 'Borrador'}</small><strong>{period.year}</strong></div><ArrowRight size={19}/></button>{canManage && <button className="period-edit" title={`Editar ${period.year}`} onClick={() => startEditPeriod(period)}><Pencil size={14}/><span>Editar</span></button>}</div>)}</div>}
-      </section>}
+    {loading ? <div className="planning-loading"><LoaderCircle className="spin" size={24}/> Cargando planificación...</div> : step === 'units' && selectedPeriod ? <section className="planning-panel"><div className="planning-title-row"><div><span>Paso 1 · Periodo {selectedPeriod.year}</span><h2>Elige una unidad</h2><p>El periodo se administra desde Configuración. Aquí entras directamente a las matrices.</p></div></div><div className="planning-unit-grid">{units.map(unit => <button key={unit.code} className={`planning-unit-card planning-unit-card--${unit.code.toLowerCase()}`} onClick={() => selectUnit(unit)}><span className="planning-unit-icon"><Building2 size={27}/></span><div><small>{unit.code}</small><strong>{unit.name}</strong></div><ArrowRight size={19}/></button>)}</div></section> : null}
 
-      {step === 'units' && selectedPeriod && <section className="planning-panel"><div className="planning-title-row"><div><span>Paso 2 · {selectedPeriod.year}</span><h2>Elige una unidad</h2><p>VS, HU, Departamentos y Hoteles trabajarán primero por áreas, procesos y matrices.</p></div></div><div className="planning-unit-grid">{units.map(unit => <button key={unit.code} className={`planning-unit-card planning-unit-card--${unit.code.toLowerCase()}`} onClick={() => selectUnit(unit)}><span className="planning-unit-icon"><Building2 size={27}/></span><div><small>{unit.code}</small><strong>{unit.name}</strong></div><ArrowRight size={19}/></button>)}</div></section>}
-
-      {step === 'matrices' && selectedPeriod && selectedPlanningUnit && <section className="planning-panel planning-panel--wide"><MatrixWorkspace periodId={selectedPeriod.id} year={selectedPeriod.year} unitCode={selectedPlanningUnit.code} unitName={selectedPlanningUnit.name} canManage={canManage} onError={setError} onNotice={setNotice} /></section>}
-    </div>
-
-    {editingPeriod && <div className="cg-modal-backdrop" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target && !saving) setEditingPeriod(null) }}><div className="cg-edit-dialog cg-period-dialog" role="dialog" aria-modal="true"><button className="cg-modal-close" type="button" onClick={() => setEditingPeriod(null)} disabled={saving}><X size={18}/></button><div className="cg-edit-heading"><span><Pencil size={18}/></span><div><small>Editar periodo</small><h3>Periodo {editingPeriod.year}</h3></div></div><form className="cg-edit-form" onSubmit={updatePeriod}><label>Año<input inputMode="numeric" maxLength={4} value={editPeriodYear} onChange={event => setEditPeriodYear(event.target.value.replace(/\D/g, '').slice(0, 4))} /></label><label>Estado<select value={editPeriodStatus} onChange={event => setEditPeriodStatus(event.target.value as PlanningPeriod['status'])}><option value="DRAFT">Borrador</option><option value="OPEN">Periodo actual</option><option value="CLOSED">Cerrado</option></select></label><div className="cg-modal-actions"><button type="button" className="cg-modal-secondary" onClick={() => setEditingPeriod(null)} disabled={saving}>Cancelar</button><button type="submit" className="cg-modal-primary" disabled={saving || editPeriodYear.length !== 4}>{saving && <LoaderCircle className="spin" size={16}/>} Guardar cambios</button></div></form></div></div>}
-  </>
+    {step === 'matrices' && selectedPeriod && selectedPlanningUnit && <section className="planning-panel planning-panel--wide"><MatrixWorkspace periodId={selectedPeriod.id} year={selectedPeriod.year} unitCode={selectedPlanningUnit.code} unitName={selectedPlanningUnit.name} canManage={canManage} onError={setError} onNotice={setNotice} /></section>}
+  </div>
 }
 
 function ReportsView() {
