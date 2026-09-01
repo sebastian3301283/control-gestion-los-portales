@@ -43,9 +43,15 @@ function splitGuideline(value: string, explicitCode?: string | null) {
   return match ? { code: match[1].toUpperCase(), text: match[2].trim() } : { code: '', text: value.trim() }
 }
 
+function displayNumber(item: Guideline, index: number) {
+  const parsed = splitGuideline(item.guideline_text, item.code)
+  const match = parsed.code.match(/L(\d+)/i)
+  return match ? Number(match[1]) : index + 1
+}
+
 export default function GuidelineCatalog({ units, canManage }: Props) {
   const unitOptions = units?.length ? units : fallbackUnits
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -69,7 +75,6 @@ export default function GuidelineCatalog({ units, canManage }: Props) {
   const [formResponsibleId, setFormResponsibleId] = useState('')
   const [formActive, setFormActive] = useState(true)
 
-  const periodById = useMemo(() => new Map(periods.map(item => [item.id, item])), [periods])
   const managerById = useMemo(() => new Map(managers.map(item => [item.id, item])), [managers])
   const managementById = useMemo(() => new Map(managements.map(item => [item.id, item])), [managements])
   const unitByCode = useMemo(() => new Map(unitOptions.map(item => [item.code, item.name])), [unitOptions])
@@ -221,16 +226,17 @@ export default function GuidelineCatalog({ units, canManage }: Props) {
         <div className="guideline-filters">
           <select value={periodId} onChange={event => setPeriodId(event.target.value)}>{periods.map(item => <option key={item.id} value={item.id}>{item.year}{item.status === 'OPEN' ? ' · Actual' : ''}</option>)}</select>
           <select value={unitCode} onChange={event => setUnitCode(event.target.value)}>{unitOptions.map(item => <option key={item.code} value={item.code}>{item.code} · {item.name}</option>)}</select>
-          <select value={areaFilter} onChange={event => setAreaFilter(event.target.value)}><option value="">Todas las áreas</option>{uniqueAreas.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
+          <select value={areaFilter} onChange={event => setAreaFilter(event.target.value)}><option value="">Todas las gerencias</option>{uniqueAreas.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
           <label><Search size={15}/><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar lineamiento"/></label>
         </div>
         {canManage && <button className="guideline-add" onClick={openNew}><Plus size={15}/> Nuevo lineamiento</button>}
       </div>
 
-      {loading ? <div className="guideline-loading"><LoaderCircle className="spin" size={22}/> Cargando lineamientos...</div> : <div className="guideline-table-scroll"><table className="guideline-catalog-table"><thead><tr><th>N°</th><th>Lineamiento estratégico</th><th>Periodo</th><th>Unidad</th><th>Área</th><th>Responsable</th><th>Estado</th>{canManage && <th>Acciones</th>}</tr></thead><tbody>
-        {filteredGuidelines.length === 0 ? <tr><td colSpan={canManage ? 8 : 7} className="guideline-empty">No hay lineamientos en esta vista.</td></tr> : filteredGuidelines.map((item, index) => {
+      {loading ? <div className="guideline-loading"><LoaderCircle className="spin" size={22}/> Cargando lineamientos...</div> : <div className="guideline-table-scroll"><table className="guideline-catalog-table guideline-catalog-table--strategic"><thead><tr><th>N°</th><th>Lineamientos Estratégicos</th><th>Gerencia Responsable</th><th>Gerente Responsable</th>{canManage && <th>Acciones</th>}</tr></thead><tbody>
+        {filteredGuidelines.length === 0 ? <tr><td colSpan={canManage ? 5 : 4} className="guideline-empty">No hay lineamientos en esta vista.</td></tr> : filteredGuidelines.map((item, index) => {
           const responsible = item.responsible_manager_id ? managerById.get(item.responsible_manager_id) : null
-          return <tr key={item.id}><td className="guideline-number">{index + 1}</td><td><strong>{item.guideline_text}</strong></td><td>{periodById.get(item.period_id)?.year || '—'}</td><td><span className="guideline-unit">{item.unit_code}</span></td><td>{managementById.get(item.management_id)?.name || '—'}</td><td>{responsible ? <div className="guideline-responsible"><strong>{responsible.name}</strong><small>{responsible.cargo || 'Bonista'}</small></div> : <span className="muted">Sin asignar</span>}</td><td><span className={`guideline-status ${item.active ? 'active' : 'inactive'}`}>{item.active ? 'Activo' : 'Inactivo'}</span></td>{canManage && <td><div className="guideline-actions"><button onClick={() => openEdit(item)} title="Editar"><Pencil size={14}/></button><button className="danger" onClick={() => void deleteGuideline(item)} title="Eliminar"><Trash2 size={14}/></button></div></td>}</tr>
+          const parsed = splitGuideline(item.guideline_text, item.code)
+          return <tr key={item.id} className={!item.active ? 'inactive-row' : ''}><td className="guideline-number">{displayNumber(item, index)}</td><td className="guideline-text-cell">{parsed.code && <strong className="guideline-code">{parsed.code}: </strong>}<span>{parsed.text}</span></td><td className="guideline-management">{managementById.get(item.management_id)?.name || '—'}</td><td>{responsible ? <div className="guideline-responsible"><strong>{responsible.name}</strong><small>{responsible.cargo || 'Bonista'}</small></div> : <span className="muted">Sin asignar</span>}</td>{canManage && <td><div className="guideline-actions"><button onClick={() => openEdit(item)} title="Editar"><Pencil size={14}/></button><button className="danger" onClick={() => void deleteGuideline(item)} title="Eliminar"><Trash2 size={14}/></button></div></td>}</tr>
         })}
       </tbody></table></div>}
 
@@ -240,10 +246,10 @@ export default function GuidelineCatalog({ units, canManage }: Props) {
         <div className="guideline-form-grid">
           <label>Periodo<select value={formPeriodId} onChange={event => setFormPeriodId(event.target.value)} required>{periods.map(item => <option key={item.id} value={item.id}>{item.year}</option>)}</select></label>
           <label>Unidad<select value={formUnitCode} onChange={event => setFormUnitCode(event.target.value)} required>{unitOptions.map(item => <option key={item.code} value={item.code}>{item.name}</option>)}</select></label>
-          <label>Área<select value={formAreaId} onChange={event => { setFormAreaId(event.target.value); setFormResponsibleId('') }} required><option value="">Seleccionar área</option>{uniqueAreas.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          <label>Gerencia responsable<select value={formAreaId} onChange={event => { setFormAreaId(event.target.value); setFormResponsibleId('') }} required><option value="">Seleccionar gerencia</option>{uniqueAreas.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           <label>Código<input value={formCode} onChange={event => setFormCode(event.target.value)} placeholder="L5"/></label>
           <label className="wide">Lineamiento<textarea value={formText} onChange={event => setFormText(event.target.value)} placeholder="Desarrollar productos alineados..." required/></label>
-          <label className="wide">Responsable · Bonistas<select value={formResponsibleId} onChange={event => setFormResponsibleId(event.target.value)}><option value="">Sin responsable</option>{responsibleOptions.map(item => <option key={item.id} value={item.id}>{item.name} · {item.cargo || 'Sin cargo'} · {unitByCode.get(item.unit_code) || item.unit_code}</option>)}</select><small>Esta lista sale directamente del directorio de Bonistas y se filtra por el área seleccionada.</small></label>
+          <label className="wide">Gerente responsable · Bonistas<select value={formResponsibleId} onChange={event => setFormResponsibleId(event.target.value)}><option value="">Sin responsable</option>{responsibleOptions.map(item => <option key={item.id} value={item.id}>{item.name} · {item.cargo || 'Sin cargo'} · {unitByCode.get(item.unit_code) || item.unit_code}</option>)}</select><small>La lista sale directamente del directorio de Bonistas y se filtra por la gerencia seleccionada.</small></label>
           <label className="guideline-active"><input type="checkbox" checked={formActive} onChange={event => setFormActive(event.target.checked)}/> Activo</label>
         </div>
         <div className="guideline-modal-actions"><button type="button" onClick={closeForm} disabled={saving}>Cancelar</button><button className="primary" type="submit" disabled={saving}>{saving && <LoaderCircle className="spin" size={15}/>} Guardar lineamiento</button></div>
