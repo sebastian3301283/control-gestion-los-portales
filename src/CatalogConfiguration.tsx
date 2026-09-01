@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import CatalogConfigurationLegacy from './CatalogConfigurationLegacy'
-import GuidelineCatalog from './GuidelineCatalog'
+import GuidelineCatalogV2 from './GuidelineCatalogV2'
 import PeriodCatalog from './PeriodCatalog'
 
 type Unit = { code: string; name: string }
@@ -20,7 +20,7 @@ export default function CatalogConfiguration(props: Props) {
       root.querySelectorAll<HTMLElement>('.config-accordion.open').forEach(section => {
         const title = section.querySelector('h2')?.textContent?.trim() || ''
         if (!targets.has(title) || closed.has(title)) return
-        const button = section.querySelector<HTMLButtonElement>(':scope > .config-accordion-head')
+        const button = section.querySelector<HTMLButtonElement>('.config-accordion-head')
         if (button) {
           closed.add(title)
           button.click()
@@ -30,15 +30,15 @@ export default function CatalogConfiguration(props: Props) {
     }
 
     const observer = new MutationObserver(closeLegacyAccordionsOnce)
-    observer.observe(root, { childList: true, subtree: true })
+    observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] })
     closeLegacyAccordionsOnce()
 
     return () => observer.disconnect()
   }, [])
 
-  return <div ref={rootRef} style={{ display: 'grid', gap: 16 }}>
+  return <div ref={rootRef} className="configuration-catalog-stack" style={{ display: 'grid', gap: 16 }}>
     <PeriodCatalog canManage={props.canManage} />
     <CatalogConfigurationLegacy {...props} />
-    <GuidelineCatalog {...props} />
+    <GuidelineCatalogV2 {...props} />
   </div>
 }
