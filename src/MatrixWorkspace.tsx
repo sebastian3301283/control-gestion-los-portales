@@ -1,1 +1,1 @@
-export { default } from './MatrixWorkspaceV3'
+export { default } from './MatrixWorkspaceV4'
