@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import CatalogConfigurationLegacy from './CatalogConfigurationLegacy'
 import GuidelineCatalogV2 from './GuidelineCatalogV2'
 import PeriodCatalog from './PeriodCatalog'
+import './configuration-area-filter.css'
 
 type Unit = { code: string; name: string }
 type Props = { units?: Unit[]; canManage: boolean }
@@ -32,6 +33,47 @@ export default function CatalogConfiguration(props: Props) {
     const observer = new MutationObserver(closeLegacyAccordionsOnce)
     observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] })
     closeLegacyAccordionsOnce()
+
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root) return
+
+    let currentFilter = 'ALL'
+
+    const applyStatusFilter = () => {
+      root.querySelectorAll<HTMLElement>('.matrix-area-source-card').forEach(card => {
+        const active = Boolean(card.querySelector('.matrix-area-visibility.on'))
+        const visible = currentFilter === 'ALL' || (currentFilter === 'ACTIVE' && active) || (currentFilter === 'INACTIVE' && !active)
+        card.style.display = visible ? '' : 'none'
+      })
+    }
+
+    const ensureStatusFilter = () => {
+      const toolbar = root.querySelector<HTMLElement>('.area-editor-toolbar')
+      if (!toolbar) return
+
+      let select = toolbar.querySelector<HTMLSelectElement>('.matrix-area-status-filter')
+      if (!select) {
+        select = document.createElement('select')
+        select.className = 'matrix-area-status-filter'
+        select.setAttribute('aria-label', 'Filtrar áreas por estado')
+        select.innerHTML = '<option value="ALL">Todas</option><option value="ACTIVE">Activas</option><option value="INACTIVE">No activas</option>'
+        select.value = currentFilter
+        select.addEventListener('change', () => {
+          currentFilter = select?.value || 'ALL'
+          applyStatusFilter()
+        })
+        toolbar.appendChild(select)
+      }
+      applyStatusFilter()
+    }
+
+    const observer = new MutationObserver(ensureStatusFilter)
+    observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] })
+    ensureStatusFilter()
 
     return () => observer.disconnect()
   }, [])
