@@ -223,8 +223,8 @@ export default function MatrixWorkspace({ periodId, year, unitCode, unitName, ca
 
   async function saveRow() {
     if (!supabase || !selectedMatrix || !canManage) return
-    if (!String(rowDraft.objective || '').trim() && !String(rowDraft.action_plan || '').trim()) {
-      onError('Escribe al menos el objetivo o el plan de acción.')
+    if (!String(rowDraft.objective || '').trim()) {
+      onError('Escribe la acción antes de guardar.')
       return
     }
     setSaving(true)
@@ -282,23 +282,21 @@ export default function MatrixWorkspace({ periodId, year, unitCode, unitName, ca
       const XLSX = await import(/* @vite-ignore */ XLSX_MODULE_URL)
       const exportRows = rows.map((row, index) => ({
         'N°': index + 1,
-        'Objetivo / Acción': row.objective || '',
-        'Plan de acción': row.action_plan || '',
+        Acción: row.objective || '',
         Responsable: row.responsible_manager_id ? managerById.get(row.responsible_manager_id)?.name || row.responsible_text || '' : row.responsible_text || '',
         Prioridad: row.priority || '',
-        Hitos: row.milestones || '',
-        KPI: row.kpi || '',
-        'Objetivo KPI': row.target || '',
-        'Fecha inicio': row.start_date || '',
-        'Fecha fin': row.end_date || '',
-        Riesgos: row.risks || '',
+        'Hitos / Fechas': row.milestones || '',
+        'KPI (Cuantitativo)': row.kpi || '',
+        Inicio: row.start_date || '',
+        Fin: row.end_date || '',
+        'Riesgos de no ejecutar': row.risks || '',
         Restricciones: row.restrictions || '',
         Soporte: row.support || '',
-        Entregables: row.deliverables || '',
+        Entregable: row.deliverables || '',
         Comité: row.committee || '',
       }))
       const sheet = XLSX.utils.json_to_sheet(exportRows)
-      sheet['!cols'] = [{ wch: 6 }, { wch: 34 }, { wch: 34 }, { wch: 26 }, { wch: 12 }, { wch: 28 }, { wch: 24 }, { wch: 16 }, { wch: 15 }, { wch: 15 }, { wch: 24 }, { wch: 24 }, { wch: 22 }, { wch: 24 }, { wch: 22 }]
+      sheet['!cols'] = [{ wch: 6 }, { wch: 38 }, { wch: 28 }, { wch: 13 }, { wch: 30 }, { wch: 24 }, { wch: 14 }, { wch: 14 }, { wch: 30 }, { wch: 24 }, { wch: 22 }, { wch: 24 }, { wch: 20 }]
       const workbook = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(workbook, sheet, 'Plan de Acción')
       XLSX.writeFile(workbook, `Plan_de_Accion_${unitCode}_${selectedArea?.name || 'Matriz'}_${year}.xlsx`)
@@ -308,6 +306,8 @@ export default function MatrixWorkspace({ periodId, year, unitCode, unitName, ca
       setExporting(false)
     }
   }
+
+  const tableColSpan = canManage ? 14 : 13
 
   return <div className={`matrix-workspace matrix-workspace--${unitAccent[unitCode]} ${page === 'sheet' ? 'matrix-workspace--sheet' : ''}`}>
     {page === 'areas' && <>
@@ -344,9 +344,9 @@ export default function MatrixWorkspace({ periodId, year, unitCode, unitName, ca
       </div>
 
       <div className="matrix-sheet-card">
-        <div className="matrix-sheet-scroll"><table className="matrix-sheet"><thead><tr><th>N°</th><th>Objetivo / Acción</th><th>Plan de acción</th><th>Responsable</th><th>Prioridad</th><th>Hitos</th><th>KPI</th><th>Objetivo KPI</th><th>Fecha inicio</th><th>Fecha fin</th><th>Riesgos</th><th>Restricciones</th><th>Soporte</th><th>Entregables</th><th>Comité</th>{canManage && <th>Acciones</th>}</tr></thead><tbody>
-          {rowFormOpen && <tr className="matrix-edit-row"><td>{editingRowId ? rows.findIndex(row => row.id === editingRowId) + 1 : rows.length + 1}</td><td><textarea value={rowDraft.objective || ''} onChange={e => updateDraft('objective', e.target.value)} /></td><td><textarea value={rowDraft.action_plan || ''} onChange={e => updateDraft('action_plan', e.target.value)} /></td><td><select value={rowDraft.responsible_manager_id || ''} onChange={e => updateDraft('responsible_manager_id', e.target.value || null)}><option value="">Seleccionar</option>{managers.map(manager => <option key={manager.id} value={manager.id}>{manager.name}{manager.directory_group === 'MATRICIAL_HU_VS' ? ' · Matricial' : ''}</option>)}</select></td><td><select value={rowDraft.priority || ''} onChange={e => updateDraft('priority', e.target.value)}><option value="">—</option><option value="Alta">Alta</option><option value="Media">Media</option><option value="Baja">Baja</option></select></td><td><textarea value={rowDraft.milestones || ''} onChange={e => updateDraft('milestones', e.target.value)} /></td><td><textarea value={rowDraft.kpi || ''} onChange={e => updateDraft('kpi', e.target.value)} /></td><td><input value={rowDraft.target || ''} onChange={e => updateDraft('target', e.target.value)} /></td><td><input type="date" value={rowDraft.start_date || ''} onChange={e => updateDraft('start_date', e.target.value)} /></td><td><input type="date" value={rowDraft.end_date || ''} onChange={e => updateDraft('end_date', e.target.value)} /></td><td><textarea value={rowDraft.risks || ''} onChange={e => updateDraft('risks', e.target.value)} /></td><td><textarea value={rowDraft.restrictions || ''} onChange={e => updateDraft('restrictions', e.target.value)} /></td><td><textarea value={rowDraft.support || ''} onChange={e => updateDraft('support', e.target.value)} /></td><td><textarea value={rowDraft.deliverables || ''} onChange={e => updateDraft('deliverables', e.target.value)} /></td><td><textarea value={rowDraft.committee || ''} onChange={e => updateDraft('committee', e.target.value)} /></td><td><div className="matrix-row-actions"><button title="Cancelar" onClick={cancelRowEdit}><X size={14} /></button><button className="save" title="Guardar" onClick={() => void saveRow()} disabled={saving}>{saving ? <LoaderCircle className="spin" size={14} /> : <Check size={14} />}</button></div></td></tr>}
-          {rowsLoading ? <tr><td colSpan={16} className="matrix-table-empty"><LoaderCircle className="spin" size={20} /> Cargando matriz...</td></tr> : rows.length === 0 && !rowFormOpen ? <tr><td colSpan={16} className="matrix-table-empty">La matriz está lista. Presiona “Nueva fila” para comenzar.</td></tr> : rows.map((row, index) => editingRowId === row.id ? null : <tr key={row.id}><td className="matrix-number">{index + 1}</td><td className="matrix-objective-cell">{row.objective || '—'}</td><td>{row.action_plan || '—'}</td><td>{row.responsible_manager_id || row.responsible_text ? <span className="matrix-person-chip">{row.responsible_manager_id ? managerById.get(row.responsible_manager_id)?.name || row.responsible_text || '—' : row.responsible_text || '—'}</span> : '—'}</td><td>{row.priority ? <span className={`matrix-priority matrix-priority--${priorityClass(row.priority)}`}>{row.priority}</span> : '—'}</td><td>{row.milestones || '—'}</td><td>{row.kpi || '—'}</td><td>{row.target || '—'}</td><td>{formatDate(row.start_date)}</td><td>{formatDate(row.end_date)}</td><td>{row.risks || '—'}</td><td>{row.restrictions || '—'}</td><td>{row.support || '—'}</td><td>{row.deliverables || '—'}</td><td>{row.committee || '—'}</td>{canManage && <td><div className="matrix-row-actions"><button title="Editar" onClick={() => startEditRow(row)}><Pencil size={14} /></button><button className="danger" title="Eliminar" onClick={() => void deleteRow(row.id)}><Trash2 size={14} /></button></div></td>}</tr>)}</tbody></table></div>
+        <div className="matrix-sheet-scroll"><table className="matrix-sheet"><thead><tr><th>N°</th><th>Acción</th><th>Responsable</th><th>Prioridad</th><th>Hitos / Fechas</th><th>KPI (Cuantitativo)</th><th>Inicio</th><th>Fin</th><th>Riesgos de no ejecutar</th><th>Restricciones</th><th>Soporte</th><th>Entregable</th><th>Comité</th>{canManage && <th>Acciones</th>}</tr></thead><tbody>
+          {rowFormOpen && <tr className="matrix-edit-row"><td>{editingRowId ? rows.findIndex(row => row.id === editingRowId) + 1 : rows.length + 1}</td><td><textarea value={rowDraft.objective || ''} onChange={e => updateDraft('objective', e.target.value)} placeholder="Escribe la acción" /></td><td><select value={rowDraft.responsible_manager_id || ''} onChange={e => updateDraft('responsible_manager_id', e.target.value || null)}><option value="">Seleccionar responsable</option>{managers.map(manager => <option key={manager.id} value={manager.id}>{manager.name}{manager.directory_group === 'MATRICIAL_HU_VS' ? ' · Matricial' : ''}</option>)}</select></td><td><select value={rowDraft.priority || ''} onChange={e => updateDraft('priority', e.target.value)}><option value="">—</option><option value="Alta">Alta</option><option value="Media">Media</option><option value="Baja">Baja</option></select></td><td><textarea value={rowDraft.milestones || ''} onChange={e => updateDraft('milestones', e.target.value)} placeholder="Hitos y fechas clave" /></td><td><textarea value={rowDraft.kpi || ''} onChange={e => updateDraft('kpi', e.target.value)} placeholder="Indicador cuantitativo" /></td><td><input type="date" value={rowDraft.start_date || ''} onChange={e => updateDraft('start_date', e.target.value)} /></td><td><input type="date" value={rowDraft.end_date || ''} onChange={e => updateDraft('end_date', e.target.value)} /></td><td><textarea value={rowDraft.risks || ''} onChange={e => updateDraft('risks', e.target.value)} /></td><td><textarea value={rowDraft.restrictions || ''} onChange={e => updateDraft('restrictions', e.target.value)} /></td><td><textarea value={rowDraft.support || ''} onChange={e => updateDraft('support', e.target.value)} /></td><td><textarea value={rowDraft.deliverables || ''} onChange={e => updateDraft('deliverables', e.target.value)} /></td><td><textarea value={rowDraft.committee || ''} onChange={e => updateDraft('committee', e.target.value)} /></td>{canManage && <td><div className="matrix-row-actions"><button title="Cancelar" onClick={cancelRowEdit}><X size={14} /></button><button className="save" title="Guardar" onClick={() => void saveRow()} disabled={saving}>{saving ? <LoaderCircle className="spin" size={14} /> : <Check size={14} />}</button></div></td>}</tr>}
+          {rowsLoading ? <tr><td colSpan={tableColSpan} className="matrix-table-empty"><LoaderCircle className="spin" size={20} /> Cargando matriz...</td></tr> : rows.length === 0 && !rowFormOpen ? <tr><td colSpan={tableColSpan} className="matrix-table-empty">La matriz está lista. Presiona “Nueva fila” para comenzar.</td></tr> : rows.map((row, index) => editingRowId === row.id ? null : <tr key={row.id}><td className="matrix-number">{index + 1}</td><td className="matrix-objective-cell">{row.objective || '—'}</td><td>{row.responsible_manager_id || row.responsible_text ? <span className="matrix-person-chip">{row.responsible_manager_id ? managerById.get(row.responsible_manager_id)?.name || row.responsible_text || '—' : row.responsible_text || '—'}</span> : '—'}</td><td>{row.priority ? <span className={`matrix-priority matrix-priority--${priorityClass(row.priority)}`}>{row.priority}</span> : '—'}</td><td>{row.milestones || '—'}</td><td>{row.kpi || '—'}</td><td>{formatDate(row.start_date)}</td><td>{formatDate(row.end_date)}</td><td>{row.risks || '—'}</td><td>{row.restrictions || '—'}</td><td>{row.support || '—'}</td><td>{row.deliverables || '—'}</td><td>{row.committee || '—'}</td>{canManage && <td><div className="matrix-row-actions"><button title="Editar" onClick={() => startEditRow(row)}><Pencil size={14} /></button><button className="danger" title="Eliminar" onClick={() => void deleteRow(row.id)}><Trash2 size={14} /></button></div></td>}</tr>)}</tbody></table></div>
       </div>
 
       <div className="matrix-plan-footer">
