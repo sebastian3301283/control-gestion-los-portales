@@ -1,0 +1,105 @@
+/* Matrix V9: corrige los anchos cuando HU/DEP/VS/HOT no muestran la columna N°. */
+.matrix-v5--hu .matrix-v5-sheet,
+.matrix-v5--dep .matrix-v5-sheet,
+.matrix-v5--vs .matrix-v5-sheet,
+.matrix-v5--hot .matrix-v5-sheet{
+  min-width:1900px;
+  width:max(100%,1900px);
+}
+
+/* En unidades agrupadas, la primera columna es Acción (no N°). */
+.matrix-v5--hu .matrix-v5-sheet th:nth-child(1),
+.matrix-v5--dep .matrix-v5-sheet th:nth-child(1),
+.matrix-v5--vs .matrix-v5-sheet th:nth-child(1),
+.matrix-v5--hot .matrix-v5-sheet th:nth-child(1){width:340px;min-width:340px}
+
+.matrix-v5--hu .matrix-v5-sheet th:nth-child(2),
+.matrix-v5--dep .matrix-v5-sheet th:nth-child(2),
+.matrix-v5--vs .matrix-v5-sheet th:nth-child(2),
+.matrix-v5--hot .matrix-v5-sheet th:nth-child(2){width:230px;min-width:230px}
+
+.matrix-v5--hu .matrix-v5-sheet th:nth-child(3),
+.matrix-v5--dep .matrix-v5-sheet th:nth-child(3),
+.matrix-v5--vs .matrix-v5-sheet th:nth-child(3),
+.matrix-v5--hot .matrix-v5-sheet th:nth-child(3){width:110px;min-width:110px}
+
+.matrix-v5--hu .matrix-v5-sheet th:nth-child(4),
+.matrix-v5--dep .matrix-v5-sheet th:nth-child(4),
+.matrix-v5--vs .matrix-v5-sheet th:nth-child(4),
+.matrix-v5--hot .matrix-v5-sheet th:nth-child(4){width:240px;min-width:240px}
+
+.matrix-v5--hu .matrix-v5-sheet th:nth-child(5),
+.matrix-v5--dep .matrix-v5-sheet th:nth-child(5),
+.matrix-v5--vs .matrix-v5-sheet th:nth-child(5),
+.matrix-v5--hot .matrix-v5-sheet th:nth-child(5){width:200px;min-width:200px}
+
+.matrix-v5--hu .matrix-v5-sheet th:nth-child(6),
+.matrix-v5--dep .matrix-v5-sheet th:nth-child(6),
+.matrix-v5--vs .matrix-v5-sheet th:nth-child(6),
+.matrix-v5--hot .matrix-v5-sheet th:nth-child(6),
+.matrix-v5--hu .matrix-v5-sheet th:nth-child(7),
+.matrix-v5--dep .matrix-v5-sheet th:nth-child(7),
+.matrix-v5--vs .matrix-v5-sheet th:nth-child(7),
+.matrix-v5--hot .matrix-v5-sheet th:nth-child(7){width:125px;min-width:125px}
+
+.matrix-v5--hu .matrix-v5-sheet th:nth-child(8),
+.matrix-v5--dep .matrix-v5-sheet th:nth-child(8),
+.matrix-v5--vs .matrix-v5-sheet th:nth-child(8),
+.matrix-v5--hot .matrix-v5-sheet th:nth-child(8){width:230px;min-width:230px}
+
+.matrix-v5--hu .matrix-v5-sheet th:nth-child(9),
+.matrix-v5--dep .matrix-v5-sheet th:nth-child(9),
+.matrix-v5--vs .matrix-v5-sheet th:nth-child(9),
+.matrix-v5--hot .matrix-v5-sheet th:nth-child(9){width:185px;min-width:185px}
+
+.matrix-v5--hu .matrix-v5-sheet th:nth-child(10),
+.matrix-v5--dep .matrix-v5-sheet th:nth-child(10),
+.matrix-v5--vs .matrix-v5-sheet th:nth-child(10),
+.matrix-v5--hot .matrix-v5-sheet th:nth-child(10){width:175px;min-width:175px}
+
+.matrix-v5--hu .matrix-v5-sheet th:nth-child(11),
+.matrix-v5--dep .matrix-v5-sheet th:nth-child(11),
+.matrix-v5--vs .matrix-v5-sheet th:nth-child(11),
+.matrix-v5--hot .matrix-v5-sheet th:nth-child(11){width:185px;min-width:185px}
+
+.matrix-v5--hu .matrix-v5-sheet th:nth-child(12),
+.matrix-v5--dep .matrix-v5-sheet th:nth-child(12),
+.matrix-v5--vs .matrix-v5-sheet th:nth-child(12),
+.matrix-v5--hot .matrix-v5-sheet th:nth-child(12){width:165px;min-width:165px}
+
+.matrix-v5--hu .matrix-v5-sheet th:nth-child(13),
+.matrix-v5--dep .matrix-v5-sheet th:nth-child(13),
+.matrix-v5--vs .matrix-v5-sheet th:nth-child(13),
+.matrix-v5--hot .matrix-v5-sheet th:nth-child(13){width:90px;min-width:90px}
+
+/* El editor de Acción debe sentirse como una celda grande de Excel. */
+.matrix-v5--hu .matrix-v5-edit-row td:first-child,
+.matrix-v5--dep .matrix-v5-edit-row td:first-child,
+.matrix-v5--vs .matrix-v5-edit-row td:first-child,
+.matrix-v5--hot .matrix-v5-edit-row td:first-child{
+  min-width:340px;
+  width:340px;
+  padding:10px!important;
+}
+.matrix-v5--hu .matrix-v5-action-editor textarea,
+.matrix-v5--dep .matrix-v5-action-editor textarea,
+.matrix-v5--vs .matrix-v5-action-editor textarea,
+.matrix-v5--hot .matrix-v5-action-editor textarea{
+  min-height:120px;
+  width:100%;
+  min-width:0;
+  line-height:1.45;
+  font-size:13px!important;
+}
+.matrix-v5--hu .matrix-v5-objective-picker input,
+.matrix-v5--hu .matrix-v5-objective-picker select,
+.matrix-v5--dep .matrix-v5-objective-picker input,
+.matrix-v5--dep .matrix-v5-objective-picker select,
+.matrix-v5--vs .matrix-v5-objective-picker input,
+.matrix-v5--vs .matrix-v5-objective-picker select,
+.matrix-v5--hot .matrix-v5-objective-picker input,
+.matrix-v5--hot .matrix-v5-objective-picker select{
+  min-width:0;
+  width:100%;
+  font-size:12px!important;
+}
