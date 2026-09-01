@@ -7,7 +7,7 @@ type Period = { id: string; year: number; name: string; status: 'DRAFT' | 'OPEN'
 type Props = { canManage: boolean }
 
 export default function PeriodCatalog({ canManage }: Props) {
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(false)
   const [periods, setPeriods] = useState<Period[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
