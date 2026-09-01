@@ -1,2 +1,1 @@
-import './matrix-workspace-v4.css'
-export { default } from './MatrixWorkspaceV4'
+export { default } from './MatrixWorkspaceV5'
