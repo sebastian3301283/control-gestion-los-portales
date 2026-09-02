@@ -12,19 +12,25 @@ export default function PermissionCatalogV3(props: Props) {
     const root = rootRef.current
     if (!root) return
 
+    let frame = 0
+
     const enhance = () => {
+      frame = 0
       const section = root.querySelector<HTMLElement>('.permission-v2')
       if (!section) return
 
       const eyebrow = section.querySelector<HTMLElement>('.config-accordion-head small')
       const title = section.querySelector<HTMLElement>('.config-accordion-head h2')
       const description = section.querySelector<HTMLElement>('.config-accordion-head p')
-      if (eyebrow) eyebrow.textContent = 'SEGURIDAD Y ACCESO'
-      if (title) title.textContent = 'Panel de Control de Permisos por Rol y Área'
-      if (description) description.textContent = 'Asignación individual y masiva de accesos por usuario, unidad y área.'
+
+      if (eyebrow && eyebrow.textContent !== 'SEGURIDAD Y ACCESO') eyebrow.textContent = 'SEGURIDAD Y ACCESO'
+      if (title && title.textContent !== 'Panel de Control de Permisos por Rol y Área') title.textContent = 'Panel de Control de Permisos por Rol y Área'
+      if (description && description.textContent !== 'Asignación individual y masiva de accesos por usuario, unidad y área.') {
+        description.textContent = 'Asignación individual y masiva de accesos por usuario, unidad y área.'
+      }
 
       const toolbar = section.querySelector<HTMLElement>('.permission-v2-toolbar')
-      if (toolbar && !toolbar.querySelector('.permission-v3-toolbar-label')) {
+      if (toolbar && !section.querySelector('.permission-v3-toolbar-label')) {
         const label = document.createElement('div')
         label.className = 'permission-v3-toolbar-label'
         label.innerHTML = '<strong>Asignación masiva</strong><span>Selecciona usuarios y aplica permisos a un área.</span>'
@@ -40,10 +46,19 @@ export default function PermissionCatalogV3(props: Props) {
       }
     }
 
-    const observer = new MutationObserver(enhance)
+    const scheduleEnhance = () => {
+      if (frame) return
+      frame = window.requestAnimationFrame(enhance)
+    }
+
+    const observer = new MutationObserver(scheduleEnhance)
     observer.observe(root, { childList: true, subtree: true })
-    enhance()
-    return () => observer.disconnect()
+    scheduleEnhance()
+
+    return () => {
+      observer.disconnect()
+      if (frame) window.cancelAnimationFrame(frame)
+    }
   }, [])
 
   return <div ref={rootRef} className="permission-v3-host"><PermissionCatalogV2 {...props} /></div>
