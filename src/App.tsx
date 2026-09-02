@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { ArrowLeft, ArrowRight, Building2, CheckCircle2, HelpCircle, KeyRound, LockKeyhole, Mail, ShieldCheck } from 'lucide-react'
-import Dashboard from './Dashboard'
+import Dashboard from './DashboardRestricted'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 
 type View = 'chooser' | 'corporate' | 'verify' | 'personal'
