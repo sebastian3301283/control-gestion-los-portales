@@ -43,10 +43,12 @@ export default function MatrixWorkspaceV11(props: Props) {
 
     const enhanceHistory = () => {
       enhanceLayout()
-      if (!canRestore) return
+      const articles = Array.from(root.querySelectorAll<HTMLElement>('.matrix-v10-history-list article'))
+      articles.forEach((article, index) => {
+        const actionLabel = article.querySelector<HTMLElement>('strong')
+        if (actionLabel?.textContent?.trim().toLowerCase() === 'restore') actionLabel.textContent = 'Versión restaurada'
+        if (!canRestore || index === 0 || article.dataset.restoreEnhanced === 'true') return
 
-      root.querySelectorAll<HTMLElement>('.matrix-v10-history-list article').forEach(article => {
-        if (article.dataset.restoreEnhanced === 'true') return
         const versionLabel = article.querySelector<HTMLElement>('.matrix-v10-version-number')?.textContent || ''
         const versionNo = Number(versionLabel.replace(/[^0-9]/g, ''))
         if (!Number.isFinite(versionNo) || versionNo <= 0) return
