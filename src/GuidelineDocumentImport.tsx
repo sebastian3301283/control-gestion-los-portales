@@ -1,4 +1,4 @@
-import { FileSpreadsheet, LoaderCircle, Trash2, Upload, X } from 'lucide-react'
+import { FileSpreadsheet, LoaderCircle, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from './lib/supabase'
 import './guideline-document-import.css'
@@ -22,7 +22,38 @@ type Props = {
   onImported: (count: number) => void
 }
 
-const dynamicImport = new Function('url', 'return import(url)') as (url: string) => Promise<any>
+type XlsxApi = {
+  read: (data: ArrayBuffer, options: Record<string, unknown>) => { SheetNames: string[]; Sheets: Record<string, unknown> }
+  utils: {
+    sheet_to_json: (sheet: unknown, options: Record<string, unknown>) => unknown[][]
+  }
+}
+
+let xlsxPromise: Promise<XlsxApi> | null = null
+
+function loadXlsx(): Promise<XlsxApi> {
+  const existing = (window as Window & { XLSX?: XlsxApi }).XLSX
+  if (existing) return Promise.resolve(existing)
+  if (xlsxPromise) return xlsxPromise
+
+  xlsxPromise = new Promise<XlsxApi>((resolve, reject) => {
+    const script = document.createElement('script')
+    script.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'
+    script.async = true
+    script.onload = () => {
+      const api = (window as Window & { XLSX?: XlsxApi }).XLSX
+      if (api) resolve(api)
+      else reject(new Error('No se pudo inicializar el lector de Excel.'))
+    }
+    script.onerror = () => reject(new Error('No se pudo cargar el lector de Excel. Verifica tu conexión e inténtalo nuevamente.'))
+    document.head.appendChild(script)
+  }).catch(error => {
+    xlsxPromise = null
+    throw error
+  })
+
+  return xlsxPromise
+}
 
 function normalize(value: string) {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()
@@ -138,7 +169,7 @@ export default function GuidelineDocumentImport({ unit, periodId, open, onClose,
       if (!/\.(xlsx|xls)$/i.test(file.name)) throw new Error('Solo se permiten archivos Excel .xlsx o .xls.')
       if (file.size > 18 * 1024 * 1024) throw new Error('El archivo supera 18 MB. Usa una versión más liviana.')
 
-      const XLSX = await dynamicImport('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm')
+      const XLSX = await loadXlsx()
       const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' })
       const firstSheet = workbook.SheetNames?.[0]
       if (!firstSheet) throw new Error('El Excel no contiene hojas.')
