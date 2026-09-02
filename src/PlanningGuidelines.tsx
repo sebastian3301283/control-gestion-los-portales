@@ -1,6 +1,7 @@
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Upload } from 'lucide-react'
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import GuidelineCatalogV2 from './GuidelineCatalogV2'
+import GuidelineDocumentImport from './GuidelineDocumentImport'
 import './planning-guidelines.css'
 
 type Unit = { code: string; name: string }
@@ -18,6 +19,9 @@ export default function PlanningGuidelines({ unit, periodId, canManage }: Props)
   const rootRef = useRef<HTMLDivElement>(null)
   const bypassDeleteRef = useRef(false)
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
+  const [catalogRevision, setCatalogRevision] = useState(0)
+  const [importNotice, setImportNotice] = useState('')
 
   useEffect(() => {
     const root = rootRef.current
@@ -51,7 +55,7 @@ export default function PlanningGuidelines({ unit, periodId, canManage }: Props)
       stopped = true
       observer.disconnect()
     }
-  }, [periodId])
+  }, [periodId, catalogRevision])
 
   function handleClickCapture(event: ReactMouseEvent<HTMLDivElement>) {
     const target = event.target as HTMLElement
@@ -89,8 +93,24 @@ export default function PlanningGuidelines({ unit, periodId, canManage }: Props)
   return <div ref={rootRef} className="planning-guidelines-host" onClickCapture={handleClickCapture}>
     <div className="planning-guidelines-heading">
       <div><span>Lineamientos estratégicos</span><h3>Lineamientos de {unit.name}</h3><p>Periodo activo de planificación. Los lineamientos alimentan directamente las matrices de esta unidad.</p></div>
+      {canManage && <button className="planning-guideline-import-button" type="button" onClick={() => { setImportNotice(''); setImportOpen(true) }}><Upload size={17}/> Importar PDF / imagen</button>}
     </div>
-    <GuidelineCatalogV2 units={[unit]} canManage={canManage} />
+
+    {canManage && <div className="planning-guideline-admin-note"><strong>Administración de lineamientos</strong><span>La carga y edición manual están disponibles únicamente para Gestión Estratégica / Control de Gestión.</span></div>}
+    {importNotice && <div className="planning-guideline-import-notice">{importNotice}</div>}
+
+    <GuidelineCatalogV2 key={catalogRevision} units={[unit]} canManage={canManage} />
+
+    <GuidelineDocumentImport
+      unit={unit}
+      periodId={periodId}
+      open={importOpen}
+      onClose={() => setImportOpen(false)}
+      onImported={count => {
+        setCatalogRevision(value => value + 1)
+        setImportNotice(`${count} lineamiento${count === 1 ? '' : 's'} importado${count === 1 ? '' : 's'} correctamente desde el archivo.`)
+      }}
+    />
 
     {pendingDelete && <div className="planning-delete-backdrop" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target) setPendingDelete(null) }}>
       <section className="planning-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="planning-delete-title">
