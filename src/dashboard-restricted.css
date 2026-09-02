@@ -1,0 +1,4 @@
+body.cg-hide-configuration .dashboard-nav > button:nth-of-type(3),
+body.cg-hide-configuration .friendly-action--settings {
+  display: none !important;
+}
