@@ -1,7 +1,8 @@
-import { AlertTriangle, Upload } from 'lucide-react'
+import { AlertTriangle, FileSpreadsheet } from 'lucide-react'
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import GuidelineCatalogV2 from './GuidelineCatalogV2'
 import GuidelineDocumentImport from './GuidelineDocumentImport'
+import GuidelinePptPanel from './GuidelinePptPanel'
 import './planning-guidelines.css'
 
 type Unit = { code: string; name: string }
@@ -92,14 +93,15 @@ export default function PlanningGuidelines({ unit, periodId, canManage }: Props)
 
   return <div ref={rootRef} className="planning-guidelines-host" onClickCapture={handleClickCapture}>
     <div className="planning-guidelines-heading">
-      <div><span>Lineamientos estratégicos</span><h3>Lineamientos de {unit.name}</h3><p>Periodo activo de planificación. Los lineamientos alimentan directamente las matrices de esta unidad.</p></div>
-      {canManage && <button className="planning-guideline-import-button" type="button" onClick={() => { setImportNotice(''); setImportOpen(true) }}><Upload size={17}/> Importar PDF / imagen</button>}
+      <div><span>Lineamientos estratégicos</span><h3>Lineamientos de {unit.name}</h3><p>Los lineamientos y el PPT de soporte quedan reunidos dentro de la planificación de esta unidad.</p></div>
+      {canManage && <button className="planning-guideline-import-button" type="button" onClick={() => { setImportNotice(''); setImportOpen(true) }}><FileSpreadsheet size={17}/> Importar Excel</button>}
     </div>
 
-    {canManage && <div className="planning-guideline-admin-note"><strong>Administración de lineamientos</strong><span>La carga y edición manual están disponibles únicamente para Gestión Estratégica / Control de Gestión.</span></div>}
+    {canManage && <div className="planning-guideline-admin-note"><strong>Administración de lineamientos</strong><span>Importar, editar y eliminar lineamientos está disponible únicamente para Gestión Estratégica / Control de Gestión.</span></div>}
     {importNotice && <div className="planning-guideline-import-notice">{importNotice}</div>}
 
     <GuidelineCatalogV2 key={catalogRevision} units={[unit]} canManage={canManage} />
+    <GuidelinePptPanel unit={unit} periodId={periodId} canManage={canManage} />
 
     <GuidelineDocumentImport
       unit={unit}
@@ -108,7 +110,7 @@ export default function PlanningGuidelines({ unit, periodId, canManage }: Props)
       onClose={() => setImportOpen(false)}
       onImported={count => {
         setCatalogRevision(value => value + 1)
-        setImportNotice(`${count} lineamiento${count === 1 ? '' : 's'} importado${count === 1 ? '' : 's'} correctamente desde el archivo.`)
+        setImportNotice(`${count} lineamiento${count === 1 ? '' : 's'} importado${count === 1 ? '' : 's'} correctamente desde Excel.`)
       }}
     />
 
