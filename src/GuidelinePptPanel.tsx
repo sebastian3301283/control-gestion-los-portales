@@ -1,4 +1,4 @@
-import { Eye, FilePresentation, LoaderCircle, Trash2, Upload } from 'lucide-react'
+import { Eye, FileText, LoaderCircle, Trash2, Upload } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from './lib/supabase'
 import './guideline-ppt-panel.css'
@@ -122,8 +122,8 @@ export default function GuidelinePptPanel({ unit, periodId, canManage }: Props) 
     {error && <div className="guideline-ppt-error">{error}</div>}
 
     <div className="guideline-ppt-list">
-      {loading ? <div className="guideline-ppt-empty"><LoaderCircle className="spin" size={17}/> Cargando presentaciones...</div> : files.length === 0 ? <div className="guideline-ppt-empty"><FilePresentation size={19}/> Aún no hay un PPT guardado para esta planificación.</div> : files.map(file => <article key={file.name} className="guideline-ppt-file">
-        <span className="guideline-ppt-file-icon"><FilePresentation size={21}/></span>
+      {loading ? <div className="guideline-ppt-empty"><LoaderCircle className="spin" size={17}/> Cargando presentaciones...</div> : files.length === 0 ? <div className="guideline-ppt-empty"><FileText size={19}/> Aún no hay un PPT guardado para esta planificación.</div> : files.map(file => <article key={file.name} className="guideline-ppt-file">
+        <span className="guideline-ppt-file-icon"><FileText size={21}/></span>
         <div className="guideline-ppt-file-copy"><strong>{displayName(file.name)}</strong><small>{sizeLabel(file.metadata?.size)}{file.created_at ? `${file.metadata?.size ? ' · ' : ''}${new Date(file.created_at).toLocaleString('es-PE')}` : ''}</small></div>
         <button type="button" className="guideline-ppt-view" onClick={() => void view(file)}><Eye size={15}/> Ver PPT</button>
         {canManage && <button type="button" className="guideline-ppt-delete" title="Eliminar PPT" onClick={() => void remove(file)}><Trash2 size={15}/></button>}
