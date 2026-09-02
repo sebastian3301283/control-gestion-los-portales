@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import CatalogConfigurationLegacy from './CatalogConfigurationLegacy'
 import GuidelineCatalogV2 from './GuidelineCatalogV2'
 import PeriodCatalog from './PeriodCatalog'
+import PermissionCatalog from './PermissionCatalog'
 import './configuration-area-filter.css'
 
 type Unit = { code: string; name: string }
@@ -82,5 +83,6 @@ export default function CatalogConfiguration(props: Props) {
     <PeriodCatalog canManage={props.canManage} />
     <CatalogConfigurationLegacy {...props} />
     <GuidelineCatalogV2 {...props} />
+    <PermissionCatalog {...props} />
   </div>
 }
