@@ -1,0 +1,83 @@
+/* V11: Central sin columna N°, Acción amplia y controles contenidos. */
+.matrix-v11-host .matrix-v10.matrix-v5--central .matrix-v5-sheet thead th:first-child,
+.matrix-v11-host .matrix-v10.matrix-v5--central .matrix-v5-sheet tbody tr:not(.matrix-v5-objective-row) > td:first-child{
+  display:none!important;
+}
+
+.matrix-v11-host .matrix-v10.matrix-v5--central .matrix-v5-sheet th:nth-child(2){
+  width:360px!important;
+  min-width:360px!important;
+}
+.matrix-v11-host .matrix-v10.matrix-v5--central .matrix-v5-edit-row td:nth-child(2){
+  width:360px!important;
+  min-width:360px!important;
+  padding:10px!important;
+}
+.matrix-v11-host .matrix-v10.matrix-v5--central .matrix-v5-action-editor textarea{
+  min-height:125px!important;
+  width:100%!important;
+  min-width:0!important;
+  font-size:13px!important;
+  line-height:1.45!important;
+}
+.matrix-v11-host .matrix-v10.matrix-v5--central .matrix-v5-action-editor select,
+.matrix-v11-host .matrix-v10.matrix-v5--central .matrix-v5-action-editor input{
+  width:100%!important;
+  min-width:0!important;
+}
+
+/* La columna Acciones siempre conserva su propio espacio; no invade Comité al desplazarse. */
+.matrix-v11-host .matrix-v5-sheet.matrix-v11-actions-table th:last-child,
+.matrix-v11-host .matrix-v5-sheet.matrix-v11-actions-table td:last-child{
+  width:110px!important;
+  min-width:110px!important;
+  max-width:110px!important;
+  box-sizing:border-box!important;
+  overflow:hidden!important;
+}
+.matrix-v11-host .matrix-v5-sheet.matrix-v11-actions-table .matrix-v5-row-actions{
+  width:100%!important;
+  display:grid!important;
+  grid-template-columns:repeat(2,34px)!important;
+  justify-content:center!important;
+  align-items:start!important;
+  gap:8px!important;
+  flex-wrap:nowrap!important;
+}
+.matrix-v11-host .matrix-v5-sheet.matrix-v11-actions-table .matrix-v5-row-actions button{
+  width:34px!important;
+  height:34px!important;
+  min-width:34px!important;
+  border-radius:8px!important;
+  box-sizing:border-box!important;
+}
+
+/* Historial: restauración disponible únicamente para Gestión Estratégica (la BD también lo valida). */
+.matrix-v11-host .matrix-v10-history-list article{
+  grid-template-columns:auto minmax(0,1fr) auto!important;
+}
+.matrix-v11-history-actions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  min-width:145px;
+}
+.matrix-v11-restore-button{
+  min-height:32px;
+  padding:0 11px;
+  border:1px solid #b9d0e2;
+  border-radius:8px;
+  background:#f5f9fc;
+  color:#1769aa;
+  font-size:9.5px;
+  font-weight:850;
+  white-space:nowrap;
+  cursor:pointer;
+}
+.matrix-v11-restore-button:hover{background:#eaf3fb;border-color:#1769aa}
+.matrix-v11-restore-button:disabled{opacity:.6;cursor:wait}
+
+@media(max-width:760px){
+  .matrix-v11-host .matrix-v10-history-list article{grid-template-columns:auto minmax(0,1fr)!important}
+  .matrix-v11-history-actions{grid-column:1/-1;justify-content:flex-end;padding-top:4px}
+}
