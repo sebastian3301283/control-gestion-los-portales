@@ -1,3 +1,4 @@
+import { BookOpenText } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import MatrixWorkspaceV10 from './MatrixWorkspaceV10'
 import { supabase } from './lib/supabase'
@@ -12,12 +13,14 @@ type Props = {
   canManage: boolean
   onError: (message: string) => void
   onNotice: (message: string) => void
+  onViewGuidelines?: () => void
 }
 
 export default function MatrixWorkspaceV11(props: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
   const [canRestore, setCanRestore] = useState(false)
   const [revision, setRevision] = useState(0)
+  const { onViewGuidelines, ...workspaceProps } = props
 
   useEffect(() => {
     let active = true
@@ -103,6 +106,7 @@ export default function MatrixWorkspaceV11(props: Props) {
   }, [canRestore, props.periodId, props.unitCode, props.onError, props.onNotice])
 
   return <div ref={rootRef} className="matrix-v11-host">
-    <MatrixWorkspaceV10 key={revision} {...props} />
+    {onViewGuidelines && <div className="matrix-v11-guideline-shortcut"><button type="button" onClick={onViewGuidelines}><BookOpenText size={16}/> Ver lineamientos</button></div>}
+    <MatrixWorkspaceV10 key={revision} {...workspaceProps} />
   </div>
 }
