@@ -1,4 +1,4 @@
-import { FileImage, FileText, LoaderCircle, Trash2, Upload, X } from 'lucide-react'
+import { FileSpreadsheet, LoaderCircle, Trash2, Upload, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from './lib/supabase'
 import './guideline-document-import.css'
@@ -28,123 +28,68 @@ function normalize(value: string) {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()
 }
 
-function looksLikeHeader(value: string) {
-  const text = normalize(value)
-  return !text || /^(n°|nº|no\.?|cant\.?|lineamientos? estrategicos?|gerencia responsable|gerente responsable|acciones?)$/.test(text) || text.includes('lineamientos estrategicos gerencia responsable')
+function asText(value: unknown) {
+  if (value == null) return ''
+  return String(value).replace(/\s+/g, ' ').trim()
 }
 
-function findRightmostCandidate(source: string, candidates: Array<{ id: string; name: string }>) {
-  const normalizedSource = normalize(source)
-  let best: { id: string; name: string; index: number } | null = null
-  for (const candidate of candidates) {
-    const needle = normalize(candidate.name)
-    if (!needle || needle.length < 3) continue
-    const index = normalizedSource.lastIndexOf(needle)
-    if (index < Math.max(0, Math.floor(normalizedSource.length * .35))) continue
-    if (!best || index > best.index) best = { ...candidate, index }
-  }
-  return best
+function findHeaderIndex(row: unknown[], patterns: RegExp[]) {
+  return row.findIndex(cell => patterns.some(pattern => pattern.test(normalize(asText(cell)))))
 }
 
-function parseDraftRows(rawText: string, managements: Management[], managers: Manager[]) {
-  const lines = rawText.split(/\r?\n/).map(line => line.replace(/\s+/g, ' ').trim()).filter(Boolean)
-  const chunks: Array<{ code: string; body: string }> = []
-  let current: { code: string; body: string } | null = null
+function matchCatalog(value: string, candidates: Array<{ id: string; name: string }>) {
+  const source = normalize(value)
+  if (!source) return ''
+  const exact = candidates.find(item => normalize(item.name) === source)
+  if (exact) return exact.id
+  const contained = candidates
+    .filter(item => {
+      const name = normalize(item.name)
+      return name.length >= 3 && (source.includes(name) || name.includes(source))
+    })
+    .sort((a, b) => b.name.length - a.name.length)[0]
+  return contained?.id || ''
+}
 
-  for (const line of lines) {
-    if (looksLikeHeader(line)) continue
-    const numbered = line.match(/^\s*(?:L\s*)?(\d{1,3})\s*(?:[:.)-]|\s)\s*(.+)$/i)
-    const explicit = line.match(/^\s*(L\d{1,3})\s*:\s*(.+)$/i)
-    if (explicit || numbered) {
-      if (current?.body.trim()) chunks.push(current)
-      const code = explicit ? explicit[1].toUpperCase() : `L${numbered![1]}`
-      const body = explicit ? explicit[2] : numbered![2]
-      current = { code, body }
-      continue
-    }
-    if (current) current.body += ` ${line}`
-  }
-  if (current?.body.trim()) chunks.push(current)
+function parseWorkbookRows(matrix: unknown[][], managements: Management[], managers: Manager[]) {
+  if (!matrix.length) return [] as DraftRow[]
 
-  if (!chunks.length) {
-    lines.filter(line => !looksLikeHeader(line) && line.length > 18).forEach((line, index) => chunks.push({ code: `L${index + 1}`, body: line }))
-  }
+  let headerRow = matrix.findIndex(row => row.some(cell => /lineamiento/.test(normalize(asText(cell)))))
+  if (headerRow < 0) headerRow = 0
+  const header = matrix[headerRow] || []
+
+  let numberIndex = findHeaderIndex(header, [/^n[°ºo]?\.?$/, /^numero$/, /^nro\.?$/])
+  let guidelineIndex = findHeaderIndex(header, [/lineamiento/])
+  let managementIndex = findHeaderIndex(header, [/gerencia responsable/, /^gerencia$/, /^area$/, /área/])
+  let managerIndex = findHeaderIndex(header, [/gerente responsable/, /^responsable$/, /responsable principal/])
+
+  if (guidelineIndex < 0) guidelineIndex = header.length >= 4 ? 1 : 0
+  if (numberIndex < 0 && guidelineIndex > 0) numberIndex = guidelineIndex - 1
+  if (managementIndex < 0) managementIndex = guidelineIndex + 1
+  if (managerIndex < 0) managerIndex = managementIndex + 1
 
   const areaCandidates = managements.filter(item => item.active).map(item => ({ id: item.id, name: item.name }))
   const managerCandidates = managers.filter(item => item.active).map(item => ({ id: item.id, name: item.name }))
 
-  return chunks.map((chunk, index): DraftRow => {
-    const managerMatch = findRightmostCandidate(chunk.body, managerCandidates)
-    const areaMatch = findRightmostCandidate(chunk.body, areaCandidates)
-    const cutIndexes = [managerMatch?.index, areaMatch?.index].filter((value): value is number => typeof value === 'number')
-    const cutAt = cutIndexes.length ? Math.min(...cutIndexes) : -1
-    const cleanedText = (cutAt >= 12 ? normalizeSpacingByLength(chunk.body, cutAt) : chunk.body).replace(/^[-–—:;,.\s]+|[-–—:;,.\s]+$/g, '')
-    return {
+  return matrix.slice(headerRow + 1).flatMap((row, index) => {
+    const text = asText(row[guidelineIndex])
+    if (!text || /^lineamientos? estrategicos?$/i.test(text)) return []
+
+    const rawNumber = numberIndex >= 0 ? asText(row[numberIndex]) : ''
+    const numeric = rawNumber.match(/\d{1,3}/)?.[0]
+    const code = /^L\d+/i.test(rawNumber) ? rawNumber.toUpperCase().replace(/\s+/g, '') : numeric ? `L${numeric}` : ''
+    const managementText = managementIndex >= 0 ? asText(row[managementIndex]) : ''
+    const managerText = managerIndex >= 0 ? asText(row[managerIndex]) : ''
+
+    return [{
       id: `${Date.now()}-${index}`,
       enabled: true,
-      code: chunk.code,
-      text: cleanedText || chunk.body,
-      managementId: areaMatch?.id || '',
-      responsibleId: managerMatch?.id || '',
-    }
+      code,
+      text: text.replace(/^\s*L\d+\s*:\s*/i, '').trim(),
+      managementId: matchCatalog(managementText, areaCandidates),
+      responsibleId: matchCatalog(managerText, managerCandidates),
+    }]
   })
-}
-
-function normalizeSpacingByLength(original: string, normalizedIndex: number) {
-  const normalizedTarget = normalize(original).slice(0, normalizedIndex)
-  if (!normalizedTarget) return original
-  let normalizedCount = 0
-  let previousSpace = false
-  for (let index = 0; index < original.length; index += 1) {
-    const char = original[index]
-    const isSpace = /\s/.test(char)
-    if (isSpace) {
-      if (!previousSpace) normalizedCount += 1
-      previousSpace = true
-    } else {
-      normalizedCount += normalize(char).length || 1
-      previousSpace = false
-    }
-    if (normalizedCount >= normalizedTarget.length) return original.slice(0, index + 1)
-  }
-  return original
-}
-
-async function extractPdf(file: File, setProgress: (value: string) => void) {
-  setProgress('Leyendo texto del PDF...')
-  const pdfjs = await dynamicImport('https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs')
-  if (pdfjs.GlobalWorkerOptions) pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs'
-  const document = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise
-  const lines: string[] = []
-  for (let pageNo = 1; pageNo <= document.numPages; pageNo += 1) {
-    setProgress(`Leyendo PDF · página ${pageNo} de ${document.numPages}`)
-    const page = await document.getPage(pageNo)
-    const content = await page.getTextContent()
-    const positioned = (content.items || []).filter((item: any) => typeof item?.str === 'string' && item.str.trim()).map((item: any) => ({ text: item.str.trim(), x: Number(item.transform?.[4] || 0), y: Number(item.transform?.[5] || 0) }))
-    positioned.sort((a: any, b: any) => Math.abs(b.y - a.y) > 3 ? b.y - a.y : a.x - b.x)
-    const groups: Array<{ y: number; parts: Array<{ x: number; text: string }> }> = []
-    for (const item of positioned) {
-      let group = groups.find(entry => Math.abs(entry.y - item.y) <= 3)
-      if (!group) { group = { y: item.y, parts: [] }; groups.push(group) }
-      group.parts.push({ x: item.x, text: item.text })
-    }
-    groups.sort((a, b) => b.y - a.y).forEach(group => lines.push(group.parts.sort((a, b) => a.x - b.x).map(item => item.text).join(' ')))
-  }
-  return lines.join('\n')
-}
-
-async function extractImage(file: File, setProgress: (value: string) => void) {
-  setProgress('Preparando reconocimiento de imagen...')
-  const tesseract = await dynamicImport('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/+esm')
-  const recognize = tesseract.recognize || tesseract.default?.recognize
-  if (!recognize) throw new Error('No se pudo iniciar el lector de imágenes.')
-  const result = await recognize(file, 'spa', {
-    logger: (message: any) => {
-      if (message?.status === 'recognizing text') setProgress(`Leyendo imagen · ${Math.round((message.progress || 0) * 100)}%`)
-      else if (message?.status) setProgress('Procesando imagen...')
-    },
-  })
-  return String(result?.data?.text || '')
 }
 
 export default function GuidelineDocumentImport({ unit, periodId, open, onClose, onImported }: Props) {
@@ -174,27 +119,40 @@ export default function GuidelineDocumentImport({ unit, periodId, open, onClose,
 
   useEffect(() => {
     if (!open) {
-      setRows([]); setFileName(''); setError(''); setProgress(''); setLoading(false); setSaving(false)
+      setRows([])
+      setFileName('')
+      setError('')
+      setProgress('')
+      setLoading(false)
+      setSaving(false)
     }
   }, [open])
 
   async function processFile(file: File) {
-    setError(''); setRows([]); setFileName(file.name); setLoading(true)
+    setError('')
+    setRows([])
+    setFileName(file.name)
+    setLoading(true)
+    setProgress('Leyendo Excel...')
     try {
-      const mime = file.type.toLowerCase()
-      const isPdf = mime === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
-      const isImage = mime.startsWith('image/') || /\.(png|jpe?g)$/i.test(file.name)
-      if (!isPdf && !isImage) throw new Error('Solo se permiten archivos PDF, PNG, JPG o JPEG.')
+      if (!/\.(xlsx|xls)$/i.test(file.name)) throw new Error('Solo se permiten archivos Excel .xlsx o .xls.')
       if (file.size > 18 * 1024 * 1024) throw new Error('El archivo supera 18 MB. Usa una versión más liviana.')
-      const text = isPdf ? await extractPdf(file, setProgress) : await extractImage(file, setProgress)
-      const parsed = parseDraftRows(text, managements, managers)
-      if (!parsed.length) throw new Error('No pudimos identificar filas de lineamientos. Usa una imagen nítida o un PDF con la tabla visible.')
+
+      const XLSX = await dynamicImport('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm')
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' })
+      const firstSheet = workbook.SheetNames?.[0]
+      if (!firstSheet) throw new Error('El Excel no contiene hojas.')
+      const matrix = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], { header: 1, defval: '', raw: false }) as unknown[][]
+      const parsed = parseWorkbookRows(matrix, managements, managers)
+      if (!parsed.length) throw new Error('No pudimos identificar lineamientos en el Excel. Verifica que exista una columna de Lineamientos Estratégicos.')
       setRows(parsed)
-      setProgress(`${parsed.length} fila${parsed.length === 1 ? '' : 's'} detectada${parsed.length === 1 ? '' : 's'}. Revisa antes de importar.`)
+      setProgress(`${parsed.length} lineamiento${parsed.length === 1 ? '' : 's'} detectado${parsed.length === 1 ? '' : 's'}. Revisa la tabla antes de guardar.`)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'No pudimos leer el archivo.')
+      setError(cause instanceof Error ? cause.message : 'No pudimos leer el Excel.')
       setProgress('')
-    } finally { setLoading(false) }
+    } finally {
+      setLoading(false)
+    }
   }
 
   function patchRow(id: string, patch: Partial<DraftRow>) {
@@ -204,10 +162,21 @@ export default function GuidelineDocumentImport({ unit, periodId, open, onClose,
   async function importRows() {
     if (!supabase || !periodId || !activeRows.length) return
     const missingArea = activeRows.find(row => !row.managementId)
-    if (missingArea) { setError('Asigna una Gerencia Responsable a todas las filas que vas a importar.'); return }
-    setSaving(true); setError('')
+    if (missingArea) {
+      setError('Asigna una Gerencia Responsable a todas las filas que vas a importar.')
+      return
+    }
+
+    setSaving(true)
+    setError('')
     try {
-      const { data: existing } = await supabase.from('planning_guidelines').select('guideline_text,code').eq('period_id', periodId).eq('unit_code', unit.code)
+      const { data: existing, error: existingError } = await supabase
+        .from('planning_guidelines')
+        .select('guideline_text,code')
+        .eq('period_id', periodId)
+        .eq('unit_code', unit.code)
+      if (existingError) throw existingError
+
       const existingKeys = new Set((existing || []).map(item => normalize(`${item.code || ''}|${item.guideline_text || ''}`)))
       const baseOrder = (existing || []).length
       const payload = activeRows.map((row, index) => {
@@ -226,15 +195,19 @@ export default function GuidelineDocumentImport({ unit, periodId, open, onClose,
           _key: normalize(`${code}|${fullText}`),
         }
       }).filter(item => !existingKeys.has(item._key))
-      if (!payload.length) throw new Error('Todos los lineamientos detectados ya existen en esta unidad y periodo.')
+
+      if (!payload.length) throw new Error('Todos los lineamientos del Excel ya existen en esta unidad y periodo.')
       const insertPayload = payload.map(({ _key, ...item }) => item)
       const { error: insertError } = await supabase.from('planning_guidelines').insert(insertPayload)
       if (insertError) throw insertError
+
       onImported(insertPayload.length)
       onClose()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'No pudimos importar los lineamientos.')
-    } finally { setSaving(false) }
+    } finally {
+      setSaving(false)
+    }
   }
 
   if (!open) return null
@@ -243,41 +216,41 @@ export default function GuidelineDocumentImport({ unit, periodId, open, onClose,
     <section className="guideline-import-dialog" role="dialog" aria-modal="true">
       <button className="guideline-import-close" type="button" onClick={onClose} disabled={loading || saving}><X size={19}/></button>
       <header className="guideline-import-header">
-        <div className="guideline-import-icon"><Upload size={22}/></div>
-        <div><span>Carga asistida</span><h3>Importar lineamientos desde PDF o imagen</h3><p>El sistema leerá la tabla, detectará los lineamientos y te permitirá revisar cada fila antes de guardarla.</p></div>
+        <div className="guideline-import-icon"><FileSpreadsheet size={22}/></div>
+        <div><span>Carga desde Excel</span><h3>Importar lineamientos</h3><p>Selecciona un Excel, revisa las filas detectadas y confirma antes de guardarlas.</p></div>
       </header>
 
       <div className="guideline-import-context"><strong>{unit.code} · {unit.name}</strong><span>Periodo activo</span></div>
 
-      <input ref={inputRef} type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" hidden onChange={event => { const file = event.target.files?.[0]; if (file) void processFile(file); event.currentTarget.value = '' }} />
+      <input ref={inputRef} type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden onChange={event => { const file = event.target.files?.[0]; if (file) void processFile(file); event.currentTarget.value = '' }} />
       <button className="guideline-import-picker" type="button" onClick={() => inputRef.current?.click()} disabled={loading || saving}>
-        <span>{fileName.toLowerCase().endsWith('.pdf') ? <FileText size={26}/> : <FileImage size={26}/>}</span>
-        <div><strong>{fileName || 'Seleccionar PDF o imagen'}</strong><small>PDF, PNG, JPG o JPEG · máximo 18 MB</small></div>
-        <b>{loading ? <LoaderCircle className="spin" size={18}/> : 'Elegir archivo'}</b>
+        <span><FileSpreadsheet size={26}/></span>
+        <div><strong>{fileName || 'Seleccionar archivo Excel'}</strong><small>XLSX o XLS · máximo 18 MB</small></div>
+        <b>{loading ? <LoaderCircle className="spin" size={18}/> : 'Elegir Excel'}</b>
       </button>
 
       {progress && <div className="guideline-import-progress">{loading && <LoaderCircle className="spin" size={15}/>} {progress}</div>}
       {error && <div className="guideline-import-error">{error}</div>}
 
       {rows.length > 0 && <div className="guideline-import-preview">
-        <div className="guideline-import-preview-head"><div><strong>Vista previa</strong><small>{activeRows.length} seleccionados para importar</small></div><span>Corrige lo necesario antes de guardar.</span></div>
+        <div className="guideline-import-preview-head"><div><strong>Vista previa</strong><small>{activeRows.length} seleccionados para importar</small></div><span>Puedes corregir lo detectado antes de guardar.</span></div>
         <div className="guideline-import-table-wrap"><table>
           <thead><tr><th>Usar</th><th>Código</th><th>Lineamiento estratégico</th><th>Gerencia responsable</th><th>Gerente responsable</th><th></th></tr></thead>
           <tbody>{rows.map(row => <tr key={row.id} className={!row.enabled ? 'disabled' : ''}>
             <td><input type="checkbox" checked={row.enabled} onChange={event => patchRow(row.id, { enabled: event.target.checked })}/></td>
             <td><input className="code" value={row.code} onChange={event => patchRow(row.id, { code: event.target.value })}/></td>
             <td><textarea value={row.text} onChange={event => patchRow(row.id, { text: event.target.value })}/></td>
-            <td><select value={row.managementId} onChange={event => patchRow(row.id, { managementId: event.target.value })}><option value="">Seleccionar gerencia</option>{managements.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></td>
-            <td><select value={row.responsibleId} onChange={event => patchRow(row.id, { responsibleId: event.target.value })}><option value="">Sin asignar</option>{managers.map(item => <option key={item.id} value={item.id}>{item.name}{item.cargo ? ` · ${item.cargo}` : ''}</option>)}</select></td>
-            <td><button className="remove" type="button" title="Quitar fila" onClick={() => setRows(current => current.filter(item => item.id !== row.id))}><Trash2 size={15}/></button></td>
+            <td><select value={row.managementId} onChange={event => patchRow(row.id, { managementId: event.target.value })}><option value="">Seleccionar...</option>{managements.filter(item => item.active).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></td>
+            <td><select value={row.responsibleId} onChange={event => patchRow(row.id, { responsibleId: event.target.value })}><option value="">Sin asignar</option>{managers.filter(item => item.active).map(item => <option key={item.id} value={item.id}>{item.name}{item.cargo ? ` · ${item.cargo}` : ''}</option>)}</select></td>
+            <td><button type="button" className="remove" onClick={() => setRows(current => current.filter(item => item.id !== row.id))}><Trash2 size={15}/></button></td>
           </tr>)}</tbody>
         </table></div>
       </div>}
 
-      <footer className="guideline-import-actions">
+      <div className="guideline-import-actions">
         <button type="button" className="secondary" onClick={onClose} disabled={loading || saving}>Cancelar</button>
-        <button type="button" className="primary" onClick={() => void importRows()} disabled={loading || saving || !activeRows.length}>{saving && <LoaderCircle className="spin" size={16}/>} Importar {activeRows.length || ''} a la tabla</button>
-      </footer>
+        <button type="button" className="primary" onClick={() => void importRows()} disabled={loading || saving || !activeRows.length}>{saving && <LoaderCircle className="spin" size={15}/>} Importar {activeRows.length || ''}</button>
+      </div>
     </section>
   </div>
 }
