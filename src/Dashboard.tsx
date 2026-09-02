@@ -134,7 +134,7 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
   const [profileOpen, setProfileOpen] = useState(false)
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
   const [logoutBusy, setLogoutBusy] = useState(false)
-  const [selectedUnit, setSelectedUnit] = useState<string>('TODAS')
+  const [selectedUnit, setSelectedUnitState] = useState<string>('TODAS')
   const [periods, setPeriods] = useState<PlanningPeriod[]>([])
   const [selectedHomeYear, setSelectedHomeYear] = useState(2026)
   const [planningEntry, setPlanningEntry] = useState<PlanningEntry>(null)
@@ -166,10 +166,14 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
     setProfileOpen(false)
   }
 
+  function selectHomeUnit(unitCode: string) {
+    setSelectedUnitState(unitCode)
+  }
+
   function openPlanning(unitCode: UnitAccess['code']) {
     setPlanningEntry({ year: selectedHomeYear, unitCode, token: Date.now() })
     setSection('planificacion')
-    setSelectedUnit(unitCode)
+    setSelectedUnitState(unitCode)
   }
 
   async function confirmSignOut() {
@@ -208,7 +212,7 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
         </header>
 
         <main className="dashboard-content">
-          {section === 'inicio' ? <HomeView access={access} displayName={displayName} today={today} units={units} selectedUnit={selectedUnit} selectedHomeUnit={selectedHomeUnit} setSelectedUnit={setSelectedUnit} periods={periods} selectedYear={selectedHomeYear} setSelectedYear={setSelectedHomeYear} openPlanning={openPlanning} /> : <>
+          {section === 'inicio' ? <HomeView access={access} displayName={displayName} today={today} units={units} selectedUnit={selectedUnit} selectedHomeUnit={selectedHomeUnit} onSelectUnit={selectHomeUnit} periods={periods} selectedYear={selectedHomeYear} setSelectedYear={setSelectedHomeYear} openPlanning={openPlanning} /> : <>
             <div className="page-heading compact-heading"><div><span className="page-kicker">{sectionLabels[section]}</span><h1>{sectionLabels[section]}</h1><p>{sectionDescription(section)}</p></div></div>
             {section === 'planificacion' && <PlanningView key={planningEntry ? `${planningEntry.year}-${planningEntry.unitCode}-${planningEntry.token}` : 'planning-default'} access={access} units={units} initialYear={planningEntry?.year} initialUnitCode={planningEntry?.unitCode} />}
             {section === 'configuracion' && <CatalogConfiguration units={units.map(unit => ({ code: unit.code, name: unit.name }))} canManage={access.global_role === 'GESTION_ESTRATEGICA'} />}
@@ -222,14 +226,14 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
   )
 }
 
-function HomeView({ access, displayName, today, units, selectedUnit, selectedHomeUnit, setSelectedUnit, periods, selectedYear, setSelectedYear, openPlanning }: {
+function HomeView({ access, displayName, today, units, selectedUnit, selectedHomeUnit, onSelectUnit, periods, selectedYear, setSelectedYear, openPlanning }: {
   access: DashboardAccess
   displayName: string
   today: string
   units: UnitAccess[]
   selectedUnit: string
   selectedHomeUnit: UnitAccess | null
-  setSelectedUnit: (unit: string) => void
+  onSelectUnit: (unit: string) => void
   periods: PlanningPeriod[]
   selectedYear: number
   setSelectedYear: (year: number) => void
@@ -242,8 +246,8 @@ function HomeView({ access, displayName, today, units, selectedUnit, selectedHom
     </section>
 
     <section className="dashboard-section">
-      <div className="section-title-row"><div><span>Unidades</span><h2>¿Dónde quieres entrar?</h2></div>{selectedUnit !== 'TODAS' && <button className="text-action" onClick={() => setSelectedUnit('TODAS')}>Ver todas <ArrowRight size={16}/></button>}</div>
-      <div className="unit-grid friendly-unit-grid">{units.map(unit => <button key={unit.code} className={`unit-card unit-card--${unit.code.toLowerCase()} ${selectedUnit === unit.code ? 'selected' : ''}`} onClick={() => setSelectedUnit(unit.code)}><div className="unit-card__top"><span className="unit-code">{unit.code}</span></div><div className="unit-icon"><Building2 size={26}/></div><h3>{unit.name}</h3><p>{unit.unit_role === 'GLOBAL' ? 'Acceso completo' : unit.unit_role === 'GERENTE_UNIDAD' ? 'Gerente de Unidad' : 'Equipo encargado'}</p><span className="unit-link">Entrar <ArrowRight size={16}/></span></button>)}</div>
+      <div className="section-title-row"><div><span>Unidades</span><h2>¿Dónde quieres entrar?</h2></div>{selectedUnit !== 'TODAS' && <button className="text-action" onClick={() => onSelectUnit('TODAS')}>Ver todas <ArrowRight size={16}/></button>}</div>
+      <div className="unit-grid friendly-unit-grid">{units.map(unit => <button key={unit.code} className={`unit-card unit-card--${unit.code.toLowerCase()} ${selectedUnit === unit.code ? 'selected' : ''}`} onClick={() => onSelectUnit(unit.code)}><div className="unit-card__top"><span className="unit-code">{unit.code}</span></div><div className="unit-icon"><Building2 size={26}/></div><h3>{unit.name}</h3><p>{unit.unit_role === 'GLOBAL' ? 'Acceso completo' : unit.unit_role === 'GERENTE_UNIDAD' ? 'Gerente de Unidad' : 'Equipo encargado'}</p><span className="unit-link">Entrar <ArrowRight size={16}/></span></button>)}</div>
     </section>
 
     {selectedHomeUnit && <section className="dashboard-section unit-module-section"><div className="section-title-row"><div><span>{selectedHomeUnit.name}</span><h2>¿Qué quieres revisar?</h2></div></div><div className="unit-module-grid"><button className={`unit-module-card unit-module-card--${selectedHomeUnit.code.toLowerCase()}`} onClick={() => openPlanning(selectedHomeUnit.code)}><span className="unit-module-icon"><ClipboardList size={28}/></span><div><small>Periodo {selectedYear}</small><strong>Planificación</strong><p>Lineamientos, PPT y matrices de gestión.</p></div><ArrowRight size={20}/></button></div></section>}
