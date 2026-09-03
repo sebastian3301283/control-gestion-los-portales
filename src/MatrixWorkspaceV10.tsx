@@ -471,15 +471,26 @@ export default function MatrixWorkspaceV10({ periodId, year, unitCode, unitName,
   function renderCentralInlineEditor(rowNumber: number, editorKey: string) {
     const rowSpan = centralSubpointDrafts.length
     return <Fragment key={editorKey}>
-      {centralSubpointDrafts.map((detail, detailIndex) => <tr className="matrix-v5-edit-row matrix-v10-central-inline-editor-row" key={`${editorKey}-${detail.id || 'new'}-${detailIndex}`}>
-        {detailIndex === 0 && <td className="matrix-v5-number" rowSpan={rowSpan}>{rowNumber}</td>}
-        {detailIndex === 0 && <td className="matrix-v10-central-inline-objective" rowSpan={rowSpan}><div className="matrix-v10-inline-objective-editor">
+      <tr className="matrix-v5-edit-row matrix-v10-central-inline-header-row">
+        <td className="matrix-v5-number" rowSpan={rowSpan + 1}>{rowNumber}</td>
+        <td className="matrix-v10-central-inline-objective" colSpan={2}><div className="matrix-v10-inline-objective-editor">
+          <div className="matrix-v10-inline-objective-head">
+            <small>Objetivo general</small>
+            <div className="matrix-v10-inline-top-actions">
+              <button type="button" className="cancel" title="Cancelar" onClick={cancelRowEdit}><X size={14}/> Cancelar</button>
+              <button type="button" className="save" title="Guardar" onClick={() => void saveRow()} disabled={saving}>{saving ? <LoaderCircle className="spin" size={14}/> : <Check size={14}/>} {saving ? 'Guardando...' : 'Guardar'}</button>
+            </div>
+          </div>
           <small>Lineamiento</small>
           <select value={rowDraft.objective_group || ''} onChange={event => updateDraft('objective_group', event.target.value)}><option value="">Selecciona un lineamiento</option>{centralGuidelineGroups.map(lineamiento => <option key={lineamiento} value={lineamiento}>{lineamiento}</option>)}</select>
+          <small>Objetivo general</small>
           <textarea value={rowDraft.objective || ''} onChange={event => updateDraft('objective', event.target.value)} placeholder="Escribe el objetivo general"/>
           <button type="button" className="matrix-v10-add-subpoint" onClick={event => { event.stopPropagation(); setCentralSubpointDrafts(current => [...current, emptyCentralSubpoint()]) }}><Plus size={14}/> Añadir subpunto</button>
-        </div></td>}
-        <td><div className="matrix-v10-inline-subpoint"><span className="matrix-v10-subpoint-badge">S{detailIndex + 1}</span><textarea value={detail.text} onChange={event => updateCentralSubpoint(detailIndex, 'text', event.target.value)} placeholder={`Subpunto ${detailIndex + 1}`}/><button type="button" title="Eliminar subpunto" disabled={centralSubpointDrafts.length === 1} onClick={event => { event.stopPropagation(); setCentralSubpointDrafts(current => current.length === 1 ? current : current.filter((_, index) => index !== detailIndex)) }}><Trash2 size={13}/></button></div></td>
+        </div></td>
+        <td className="matrix-v10-central-inline-header-fill" colSpan={tableColSpan - 3}/>
+      </tr>
+      {centralSubpointDrafts.map((detail, detailIndex) => <tr className="matrix-v5-edit-row matrix-v10-central-inline-editor-row" key={`${editorKey}-${detail.id || 'new'}-${detailIndex}`}>
+        <td className="matrix-v10-central-inline-subpoint-cell" colSpan={2}><div className="matrix-v10-inline-subpoint"><span className="matrix-v10-subpoint-badge">S{detailIndex + 1}</span><textarea value={detail.text} onChange={event => updateCentralSubpoint(detailIndex, 'text', event.target.value)} placeholder={`Subpunto ${detailIndex + 1}`}/><button type="button" title="Eliminar subpunto" disabled={centralSubpointDrafts.length === 1} onClick={event => { event.stopPropagation(); setCentralSubpointDrafts(current => current.length === 1 ? current : current.filter((_, index) => index !== detailIndex)) }}><Trash2 size={13}/></button></div></td>
         {detailIndex === 0 && <td rowSpan={rowSpan}><select value={rowDraft.responsible_manager_id || ''} onChange={event => updateDraft('responsible_manager_id', event.target.value || null)}><option value="">Seleccionar responsable</option>{managers.map(manager => <option key={manager.id} value={manager.id}>{manager.name}{manager.directory_group === 'MATRICIAL_HU_VS' ? ' · Matricial' : ''}</option>)}</select></td>}
         {detailIndex === 0 && <td rowSpan={rowSpan}><select value={rowDraft.priority || ''} onChange={event => updateDraft('priority', event.target.value)}><option value="">—</option><option>Alta</option><option>Media</option><option>Baja</option></select></td>}
         <td><textarea value={detail.milestones} onChange={event => updateCentralSubpoint(detailIndex, 'milestones', event.target.value)} placeholder="Hito o fecha"/></td>
@@ -491,7 +502,7 @@ export default function MatrixWorkspaceV10({ periodId, year, unitCode, unitName,
         {detailIndex === 0 && <td rowSpan={rowSpan}><textarea value={rowDraft.support || ''} onChange={event => updateDraft('support', event.target.value)} placeholder="Soporte"/></td>}
         {detailIndex === 0 && <td rowSpan={rowSpan}><textarea value={rowDraft.deliverables || ''} onChange={event => updateDraft('deliverables', event.target.value)} placeholder="Entregable"/></td>}
         {detailIndex === 0 && <td rowSpan={rowSpan}><textarea value={rowDraft.committee || ''} onChange={event => updateDraft('committee', event.target.value)} placeholder="Comité"/></td>}
-        {detailIndex === 0 && effectiveCanManage && <td rowSpan={rowSpan}><div className="matrix-v5-row-actions"><button type="button" title="Cancelar" onClick={cancelRowEdit}><X size={14}/></button><button type="button" title="Guardar" className="save" onClick={() => void saveRow()} disabled={saving}>{saving ? <LoaderCircle className="spin" size={14}/> : <Check size={14}/>}</button></div></td>}
+        {detailIndex === 0 && effectiveCanManage && <td className="matrix-v10-central-inline-actions-spacer" rowSpan={rowSpan}/>} 
       </tr>)}
     </Fragment>
   }

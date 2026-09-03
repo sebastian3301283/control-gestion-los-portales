@@ -17,3 +17,18 @@
 .matrix-v10-inline-subpoint>button{width:28px;height:28px;display:grid;place-items:center;border:1px solid #efcaca;border-radius:6px;background:#fff7f7;color:#b74848}
 .matrix-v10-inline-subpoint>button:disabled{opacity:.35;cursor:not-allowed}
 .matrix-v10-central-inline-editor-row td[rowspan]{background:#fff!important}
+
+.matrix-v10-central-inline-header-row td{background:#f8fbfe!important;vertical-align:top}
+.matrix-v10-central-inline-header-row .matrix-v10-central-inline-objective{padding:10px!important}
+.matrix-v10-central-inline-header-fill{background:#f8fbfe!important}
+.matrix-v10-inline-objective-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:2px}
+.matrix-v10-inline-objective-head>small{margin:0;color:#1769aa;font-size:9px;font-weight:900;letter-spacing:.05em;text-transform:uppercase}
+.matrix-v10-inline-top-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.matrix-v10-inline-top-actions button{min-height:30px;display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:0 10px;border-radius:6px;font-size:9px;font-weight:850;white-space:nowrap}
+.matrix-v10-inline-top-actions button.cancel{border:1px solid #cfd9e1;background:#fff;color:#526b7d}
+.matrix-v10-inline-top-actions button.save{border:1px solid #1769aa;background:#1769aa;color:#fff}
+.matrix-v10-inline-top-actions button:disabled{opacity:.6;cursor:not-allowed}
+.matrix-v10-central-inline-subpoint-cell{padding-left:10px!important;background:#fff!important}
+.matrix-v10-central-inline-subpoint-cell .matrix-v10-inline-subpoint{max-width:100%}
+.matrix-v10-central-inline-editor-row:first-of-type .matrix-v10-central-inline-subpoint-cell{border-top:2px solid #dbeaf5}
+.matrix-v10-central-inline-actions-spacer{background:#fff!important}
