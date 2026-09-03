@@ -32,3 +32,10 @@
 .matrix-v10-central-inline-subpoint-cell .matrix-v10-inline-subpoint{max-width:100%}
 .matrix-v10-central-inline-editor-row:first-of-type .matrix-v10-central-inline-subpoint-cell{border-top:2px solid #dbeaf5}
 .matrix-v10-central-inline-actions-spacer{background:#fff!important}
+
+
+.matrix-v10-central-inline-owner,.matrix-v10-central-inline-priority{vertical-align:top!important;padding-top:10px!important}
+.matrix-v10-central-inline-detail-placeholder{background:#f8fbfe!important}
+.matrix-v10-central-inline-header-row td[rowspan]{vertical-align:top}
+.matrix-v10-central-objective-stack{display:grid;gap:8px}
+.matrix-v10-central-objective-stack>strong{display:block;margin-bottom:2px}
