@@ -1,4 +1,4 @@
-import { ChangeEvent, CSSProperties, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { ChangeEvent, CSSProperties, Fragment, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, ArrowRight, Building2, Check, Download, History, LoaderCircle, Maximize2, Minimize2, Plus, RotateCcw, Trash2, Upload, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { supabase } from './lib/supabase'
 import './matrix-workspace-v5.css'
@@ -485,10 +485,10 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
           const currentGroup = textValue(row.objective_group)
           const previousGroup = index > 0 ? textValue(rows[index - 1].objective_group) : ''
           const showGroup = Boolean(currentGroup && currentGroup !== previousGroup)
-          if (editingRowId === row.id) return <tbody key={row.id}>{renderEditRows(`edit-${row.id}`)}</tbody>
+          if (editingRowId === row.id) return <Fragment key={row.id}>{renderEditRows(`edit-${row.id}`)}</Fragment>
           const responsibleIds = centralResponsibleIdsByRow[row.id] || (row.responsible_manager_id ? [row.responsible_manager_id] : [])
           const responsibleNames = responsibleIds.map(id => managerById.get(id)?.name).filter(Boolean)
-          return <tbody key={row.id}>
+          return <Fragment key={row.id}>
             {showGroup && <tr className="matrix-v5-objective-row matrix-central-objective-group"><td colSpan={tableColSpan}>{currentGroup}</td></tr>}
             <tr data-matrix-row-id={row.id} className={`matrix-v10-central-excel-row ${effectiveCanManage ? 'matrix-v10-central-excel-row--editable' : ''}`} onClick={() => startEditRow(row)}>
               <td className="matrix-v5-action-cell">{row.objective || '—'}</td>
@@ -498,7 +498,7 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
               <td>{row.risks || '—'}</td><td>{row.restrictions || '—'}</td><td>{row.support || '—'}</td><td>{row.deliverables || '—'}</td><td>{row.committee || '—'}</td>
               {effectiveCanManage && <td><div className="matrix-v5-row-actions"><button type="button" title="Eliminar acción" className="danger" onClick={event => { event.stopPropagation(); void deleteRow(row.id) }}><Trash2 size={14}/></button></div></td>}
             </tr>
-          </tbody>
+          </Fragment>
         })}
         {rowFormOpen && !editingRowId && renderEditRows('new-central-action')}
       </tbody></table></div></div>
