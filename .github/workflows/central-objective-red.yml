@@ -1,0 +1,16 @@
+name: Focused Central regression
+
+on:
+  push:
+    branches:
+      - fix/central-objective-fields-realtime
+    paths:
+      - tests/central-objective-fields-realtime.test.mjs
+      - .github/workflows/central-objective-red.yml
+
+jobs:
+  focused-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: node --test tests/central-objective-fields-realtime.test.mjs
