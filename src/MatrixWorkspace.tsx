@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import MatrixWorkspaceV11 from './MatrixWorkspaceV11'
+import MatrixWorkspaceV13 from './MatrixWorkspaceV13'
 import { supabase } from './lib/supabase'
 import './matrix-workspace-v6.css'
 import './matrix-workspace-v9.css'
@@ -76,5 +76,5 @@ export default function MatrixWorkspace(props: Props) {
     }
   }, [props.periodId, props.unitCode])
 
-  return <div ref={hostRef}><MatrixWorkspaceV11 {...props}/></div>
+  return <div ref={hostRef}><MatrixWorkspaceV13 {...props}/></div>
 }
