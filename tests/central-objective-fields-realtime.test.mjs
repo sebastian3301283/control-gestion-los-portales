@@ -30,6 +30,15 @@ test('Central guarda el detalle del objetivo general separado del detalle de sus
   assert.match(save, /end_date:\s*rowDraft\.end_date\s*\|\|\s*null/)
 })
 
+test('la vista normal de Central muestra una fila propia del objetivo antes de sus subpuntos', () => {
+  const display = between(v10, 'const centralRows = centralRowsFor(row)', "{unitCode === 'CENTRAL' && rowFormOpen")
+  assert.match(display, /matrix-v10-central-objective-row/)
+  assert.match(display, /row\.milestones/)
+  assert.match(display, /row\.kpi/)
+  assert.match(display, /formatDate\(row\.start_date\)/)
+  assert.match(display, /formatDate\(row\.end_date\)/)
+})
+
 test('los cambios remotos actualizan las filas sin desmontar el editor local', () => {
   assert.match(realtime, /matrix-realtime-data-change/)
   assert.match(v10, /addEventListener\(['"]matrix-realtime-data-change['"]/)
