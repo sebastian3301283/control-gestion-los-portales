@@ -32,17 +32,20 @@ test('Central supports selecting several responsible managers on one action', as
 })
 
 test('Central workspace is an action matrix, not the old subpoint editor', async () => {
-  const source = await readFile(new URL('../src/MatrixWorkspaceV10.tsx', import.meta.url), 'utf8')
+  const source = await readFile(new URL('../src/CentralExcelWorkspace.tsx', import.meta.url), 'utf8')
+  const v11 = await readFile(new URL('../src/MatrixWorkspaceV11.tsx', import.meta.url), 'utf8')
   assert.match(source, /manager_managements/)
   assert.match(source, /matrix_row_responsibles/)
   assert.match(source, /centralResponsibleIdsByRow/)
-  assert.match(source, /unitCode === 'CENTRAL' \? 'Acción'/)
+  assert.match(source, /<th>Acción<\/th>/)
   assert.match(source, /matrix-v10-central-excel-row/)
-  assert.doesNotMatch(source, /renderCentralInlineEditor\(/)
+  assert.doesNotMatch(source, /Subpunto|renderCentralInlineEditor/)
+  assert.match(v11, /CentralExcelWorkspace/)
+  assert.match(v11, /props\.unitCode === 'CENTRAL'/)
 })
 
 test('Central Excel layout keeps the table header visible and cells compact', async () => {
-  const css = await readFile(new URL('../src/matrix-subpoints.css', import.meta.url), 'utf8')
+  const css = await readFile(new URL('../src/central-excel-workspace.css', import.meta.url), 'utf8')
   assert.match(css, /\.matrix-v10-central-excel[^{]*\{[^}]*border-collapse:separate/)
   assert.match(css, /\.matrix-v10-central-excel thead th[^{]*\{[^}]*position:sticky/)
   assert.match(css, /\.matrix-v10-central-excel-row[^{]*\{[^}]*cursor:cell/)
