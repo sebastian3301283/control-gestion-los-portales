@@ -62,9 +62,12 @@ test('Central spreadsheet keeps native keyboard flow and realtime refresh withou
 
 test('Central Excel layout keeps the table header visible and spreadsheet cells compact', async () => {
   const css = await readFile(new URL('../src/central-excel-workspace.css', import.meta.url), 'utf8')
+  const v11Css = await readFile(new URL('../src/matrix-workspace-v11.css', import.meta.url), 'utf8')
   assert.match(css, /\.matrix-v10-central-excel[^{]*\{[^}]*border-collapse:separate/)
   assert.match(css, /\.matrix-v10-central-excel thead th[^{]*\{[^}]*position:sticky/)
   assert.match(css, /\.matrix-v10-central-excel-row[^{]*\{[^}]*cursor:cell/)
   assert.match(css, /\.matrix-central-sheet-cell[^{]*\{[^}]*padding:0/)
   assert.match(css, /\.matrix-central-sheet-cell[^}]*:focus-within/)
+  assert.doesNotMatch(v11Css, /matrix-v5--central \.matrix-v5-sheet thead th:first-child[^}]*display:none/s)
+  assert.doesNotMatch(v11Css, /matrix-v5--central \.matrix-v5-sheet th:nth-child\(2\)/)
 })
