@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
 const v10 = await readFile(new URL('../src/MatrixWorkspaceV10.tsx', import.meta.url), 'utf8')
+const v11 = await readFile(new URL('../src/MatrixWorkspaceV11.tsx', import.meta.url), 'utf8')
 const realtime = await readFile(new URL('../src/MatrixRealtimeLayer.tsx', import.meta.url), 'utf8')
 
 function between(source, startText, endText) {
@@ -39,9 +40,10 @@ test('la vista normal de Central muestra una fila propia del objetivo antes de s
   assert.match(display, /formatDate\(row\.end_date\)/)
 })
 
-test('los cambios remotos actualizan las filas sin desmontar el editor local', () => {
+test('los cambios remotos actualizan filas e índices de bloqueo sin desmontar el editor local', () => {
   assert.match(realtime, /matrix-realtime-data-change/)
   assert.match(v10, /addEventListener\(['"]matrix-realtime-data-change['"]/)
+  assert.match(v11, /addEventListener\(['"]matrix-realtime-data-change['"]/)
   assert.doesNotMatch(realtime, /pendingRefreshRef/)
   assert.doesNotMatch(realtime, /key=\{refreshRevision\}/)
 })
