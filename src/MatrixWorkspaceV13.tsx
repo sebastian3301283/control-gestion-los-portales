@@ -15,5 +15,5 @@ type Props = {
 }
 
 export default function MatrixWorkspaceV13(props: Props) {
-  return <MatrixRealtimeLayer>{props.unitCode === 'CENTRAL' ? <MatrixWorkspaceV14 {...props} /> : <MatrixWorkspaceV11 {...props} />}</MatrixRealtimeLayer>
+  return <MatrixRealtimeLayer periodId={props.periodId} unitCode={props.unitCode}>{props.unitCode === 'CENTRAL' ? <MatrixWorkspaceV14 {...props} /> : <MatrixWorkspaceV11 {...props} />}</MatrixRealtimeLayer>
 }
