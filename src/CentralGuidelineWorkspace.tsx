@@ -16,6 +16,7 @@ type Guideline = {
   sort_order: number
 }
 type Management = { id: string; name: string }
+type GuidelineAreaLink = { management_id: string }
 type Props = {
   periodId: string
   canManage: boolean
@@ -59,30 +60,42 @@ export default function CentralGuidelineWorkspace({ periodId, canManage, onAreaC
     if (!supabase) return
     setLoading(true)
     setError('')
-    const [guidelineResult, managementResult] = await Promise.all([
+    const [guidelineResult, catalogResult, managementResult] = await Promise.all([
       supabase.from('planning_guidelines').select('id,period_id,unit_code,management_id,category,code,guideline_text,responsible_manager_id,active,sort_order').eq('period_id', periodId).eq('unit_code', 'CENTRAL').order('sort_order').order('created_at'),
-      supabase.from('managements_global').select('id,name').eq('unit_code', 'CENTRAL').eq('active', true).order('name'),
+      supabase.from('guideline_unit_area_catalog').select('management_id').eq('unit_code', 'CENTRAL').order('created_at'),
+      supabase.from('managements_global').select('id,name').eq('active', true).order('name'),
     ])
-    if (guidelineResult.error || managementResult.error) {
+    if (guidelineResult.error || catalogResult.error || managementResult.error) {
       setLoading(false)
       setError('No pudimos cargar los lineamientos de Central.')
       return
     }
 
     const nextGuidelines = (guidelineResult.data || []) as Guideline[]
-    const allCentralAreas = (managementResult.data || []) as Management[]
-    let visibleAreas = allCentralAreas
+    const allAreas = (managementResult.data || []) as Management[]
+    const allAreaById = new Map(allAreas.map(area => [area.id, area]))
+    const configuredIds = ((catalogResult.data || []) as GuidelineAreaLink[]).map(item => item.management_id)
+    let configuredAreas = configuredIds.map(id => allAreaById.get(id)).filter((item): item is Management => Boolean(item))
 
+    if (!configuredAreas.length) configuredAreas = allAreas.filter(area => nextGuidelines.some(item => item.management_id === area.id))
+
+    let visibleAreas = configuredAreas
     if (!canManage) {
-      const permissionChecks = await Promise.all(allCentralAreas.map(async area => {
+      const permissionChecks = await Promise.all(configuredAreas.map(async area => {
         const { data } = await supabase.rpc('can_access_management', { management_id_input: area.id, unit_code_input: 'CENTRAL' })
         return data ? area : null
       }))
       visibleAreas = permissionChecks.filter((item): item is Management => Boolean(item))
     }
 
+    const uniqueVisibleAreas = new Map<string, Management>()
+    visibleAreas.forEach(area => {
+      const key = area.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
+      if (!uniqueVisibleAreas.has(key)) uniqueVisibleAreas.set(key, area)
+    })
+
     setGuidelines(nextGuidelines)
-    setManagements(visibleAreas)
+    setManagements([...uniqueVisibleAreas.values()])
     setLoading(false)
   }
 
