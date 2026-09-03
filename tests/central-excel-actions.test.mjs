@@ -55,7 +55,7 @@ test('Central spreadsheet edits rows in-place instead of rendering a detached fo
 
 test('Central spreadsheet keeps native keyboard flow and realtime refresh without replacing the local draft', async () => {
   const source = await readFile(new URL('../src/CentralExcelWorkspace.tsx', import.meta.url), 'utf8')
-  assert.match(source, /event\.key === 'Enter' && \(event\.ctrlKey \|\| event\.metaKey\)/)
+  assert.match(source, /\(event\.ctrlKey \|\| event\.metaKey\) && event\.key === 'Enter'/)
   assert.match(source, /loadRows\(selectedMatrixId, true\)/)
   assert.match(source, /keepEditor/)
 })
