@@ -1,0 +1,18 @@
+import MatrixWorkspaceV11 from './MatrixWorkspaceV11'
+import MatrixWorkspaceV12 from './MatrixWorkspaceV12'
+
+type UnitCode = 'HU' | 'DEP' | 'VS' | 'HOT' | 'CENTRAL'
+type Props = {
+  periodId: string
+  year: number
+  unitCode: UnitCode
+  unitName: string
+  canManage: boolean
+  onError: (message: string) => void
+  onNotice: (message: string) => void
+  onViewGuidelines?: () => void
+}
+
+export default function MatrixWorkspaceV13(props: Props) {
+  return props.unitCode === 'CENTRAL' ? <MatrixWorkspaceV12 {...props} /> : <MatrixWorkspaceV11 {...props} />
+}
