@@ -119,7 +119,7 @@ export default function PlanningGuidelines({ unit, periodId, canManage }: Props)
       </div>
     </div>
 
-    {canManage && <div className="planning-guideline-admin-note"><strong>Administración de lineamientos</strong><span>Importar, editar y eliminar lineamientos está disponible únicamente para Gestión Estratégica / Control de Gestión.</span></div>}
+    {canManage && <div className="planning-guideline-admin-note"><strong>Administración de lineamientos</strong><span>Crear, importar, editar y eliminar lineamientos está disponible únicamente para Gestión Estratégica / Control de Gestión.</span></div>}
     {importNotice && <div className="planning-guideline-import-notice">{importNotice}</div>}
 
     {isCentral ? <CentralGuidelineWorkspace key={catalogRevision} periodId={periodId} canManage={canManage} onAreaChange={setSelectedArea} /> : <GuidelineCatalogV2 key={catalogRevision} units={[unit]} canManage={canManage} />}
@@ -130,6 +130,7 @@ export default function PlanningGuidelines({ unit, periodId, canManage }: Props)
       unit={unit}
       periodId={periodId}
       open={importOpen}
+      defaultManagementId={isCentral ? selectedArea?.id : null}
       onClose={() => setImportOpen(false)}
       onImported={count => {
         setCatalogRevision(value => value + 1)
