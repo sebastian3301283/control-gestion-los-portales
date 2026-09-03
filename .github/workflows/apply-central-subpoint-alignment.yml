@@ -4,13 +4,14 @@ on:
   push:
     branches:
       - fix/central-subpoint-row-alignment
+    paths:
+      - .github/workflows/apply-central-subpoint-alignment.yml
 
 permissions:
   contents: write
 
 jobs:
   apply:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -72,8 +73,7 @@ jobs:
 
           css_path = Path('src/matrix-subpoints.css')
           css = css_path.read_text()
-          marker = '.matrix-v10-central-inline-owner'
-          if marker not in css:
+          if '.matrix-v10-central-inline-owner' not in css:
               css += r'''
 
 .matrix-v10-central-inline-owner,.matrix-v10-central-inline-priority{vertical-align:top!important;padding-top:10px!important}
@@ -81,7 +81,7 @@ jobs:
 .matrix-v10-central-inline-header-row td[rowspan]{vertical-align:top}
 .matrix-v10-central-inline-editor-row .matrix-v10-central-inline-subpoint-cell{vertical-align:top}
 '''
-          css_path.write_text(css)
+              css_path.write_text(css)
           PY
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
