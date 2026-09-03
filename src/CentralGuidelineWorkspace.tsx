@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { BookOpenText, Check, LoaderCircle, Pencil, Search, Trash2, X } from 'lucide-react'
+import { Check, LoaderCircle, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { supabase } from './lib/supabase'
 import './central-guideline-workspace.css'
 
@@ -8,6 +8,7 @@ type Guideline = {
   period_id: string
   unit_code: string
   management_id: string
+  category: string | null
   code: string | null
   guideline_text: string
   responsible_manager_id: string | null
@@ -15,25 +16,10 @@ type Guideline = {
   sort_order: number
 }
 type Management = { id: string; name: string }
-type Manager = { id: string; name: string; cargo: string | null }
 type Props = {
   periodId: string
   canManage: boolean
   onAreaChange?: (area: { id: string; name: string } | null) => void
-}
-
-function normalize(value: string) {
-  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
-}
-
-function splitGuideline(value: string, explicitCode?: string | null) {
-  const code = (explicitCode || '').trim()
-  if (code) {
-    const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    return { code, text: value.replace(new RegExp(`^${escaped}\\s*:\\s*`, 'i'), '').trim() }
-  }
-  const match = value.match(/^\s*(L\d+)\s*:\s*(.*)$/i)
-  return match ? { code: match[1].toUpperCase(), text: match[2].trim() } : { code: '', text: value.trim() }
 }
 
 export default function CentralGuidelineWorkspace({ periodId, canManage, onAreaChange }: Props) {
@@ -43,40 +29,20 @@ export default function CentralGuidelineWorkspace({ periodId, canManage, onAreaC
   const [notice, setNotice] = useState('')
   const [guidelines, setGuidelines] = useState<Guideline[]>([])
   const [managements, setManagements] = useState<Management[]>([])
-  const [managers, setManagers] = useState<Manager[]>([])
   const [selectedAreaId, setSelectedAreaId] = useState('')
-  const [search, setSearch] = useState('')
-  const [areaSearch, setAreaSearch] = useState('')
   const [editing, setEditing] = useState<Guideline | null>(null)
-  const [editCode, setEditCode] = useState('')
-  const [editText, setEditText] = useState('')
-  const [editManagerId, setEditManagerId] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [formCategory, setFormCategory] = useState('')
+  const [formCode, setFormCode] = useState('')
+  const [formText, setFormText] = useState('')
   const [pendingDelete, setPendingDelete] = useState<Guideline | null>(null)
 
-  const managementById = useMemo(() => new Map(managements.map(item => [item.id, item])), [managements])
-  const managerById = useMemo(() => new Map(managers.map(item => [item.id, item])), [managers])
-
-  const areas = useMemo(() => {
-    const counts = new Map<string, number>()
-    guidelines.forEach(item => counts.set(item.management_id, (counts.get(item.management_id) || 0) + 1))
-    return managements
-      .map(item => ({ ...item, count: counts.get(item.id) || 0 }))
-      .sort((a, b) => a.name.localeCompare(b.name, 'es'))
-  }, [guidelines, managements])
-
-  const filteredAreas = useMemo(() => {
-    const query = normalize(areaSearch)
-    return query ? areas.filter(item => normalize(item.name).includes(query)) : areas
-  }, [areas, areaSearch])
-
+  const areas = useMemo(() => [...managements].sort((a, b) => a.name.localeCompare(b.name, 'es')), [managements])
   const selectedArea = useMemo(() => areas.find(item => item.id === selectedAreaId) || null, [areas, selectedAreaId])
-
-  const visibleGuidelines = useMemo(() => {
-    return guidelines
-      .filter(item => item.management_id === selectedAreaId)
-      .filter(item => !search.trim() || normalize(item.guideline_text).includes(normalize(search)))
-      .sort((a, b) => a.sort_order - b.sort_order || a.guideline_text.localeCompare(b.guideline_text, 'es'))
-  }, [guidelines, selectedAreaId, search])
+  const visibleGuidelines = useMemo(() => guidelines
+    .filter(item => item.management_id === selectedAreaId)
+    .sort((a, b) => a.sort_order - b.sort_order || (a.code || '').localeCompare(b.code || '', 'es')),
+  [guidelines, selectedAreaId])
 
   useEffect(() => { void load() }, [periodId, canManage])
 
@@ -93,12 +59,11 @@ export default function CentralGuidelineWorkspace({ periodId, canManage, onAreaC
     if (!supabase) return
     setLoading(true)
     setError('')
-    const [guidelineResult, managementResult, managerResult] = await Promise.all([
-      supabase.from('planning_guidelines').select('id,period_id,unit_code,management_id,code,guideline_text,responsible_manager_id,active,sort_order').eq('period_id', periodId).eq('unit_code', 'CENTRAL').order('sort_order').order('created_at'),
+    const [guidelineResult, managementResult] = await Promise.all([
+      supabase.from('planning_guidelines').select('id,period_id,unit_code,management_id,category,code,guideline_text,responsible_manager_id,active,sort_order').eq('period_id', periodId).eq('unit_code', 'CENTRAL').order('sort_order').order('created_at'),
       supabase.from('managements_global').select('id,name').eq('unit_code', 'CENTRAL').eq('active', true).order('name'),
-      supabase.from('managers').select('id,name,cargo').eq('active', true).order('name'),
     ])
-    if (guidelineResult.error || managementResult.error || managerResult.error) {
+    if (guidelineResult.error || managementResult.error) {
       setLoading(false)
       setError('No pudimos cargar los lineamientos de Central.')
       return
@@ -118,32 +83,84 @@ export default function CentralGuidelineWorkspace({ periodId, canManage, onAreaC
 
     setGuidelines(nextGuidelines)
     setManagements(visibleAreas)
-    setManagers((managerResult.data || []) as Manager[])
     setLoading(false)
   }
 
-  function beginEdit(item: Guideline) {
-    const parsed = splitGuideline(item.guideline_text, item.code)
-    setEditing(item)
-    setEditCode(parsed.code)
-    setEditText(parsed.text)
-    setEditManagerId(item.responsible_manager_id || '')
+  function openCreate() {
+    if (!selectedAreaId) {
+      setError('Selecciona un área antes de crear un lineamiento.')
+      return
+    }
+    setCreating(true)
+    setEditing(null)
+    setFormCategory('')
+    setFormCode('')
+    setFormText('')
     setError('')
     setNotice('')
   }
 
-  async function saveEdit() {
-    if (!supabase || !canManage || !editing) return
-    const text = editText.trim().replace(/\s+/g, ' ')
-    if (!text) { setError('El lineamiento no puede estar vacío.'); return }
-    const code = editCode.trim().toUpperCase().replace(/\s+/g, '')
-    const guidelineText = code ? `${code}: ${text}` : text
+  function beginEdit(item: Guideline) {
+    setCreating(false)
+    setEditing(item)
+    setFormCategory(item.category || '')
+    setFormCode(item.code || '')
+    setFormText(item.guideline_text || '')
+    setError('')
+    setNotice('')
+  }
+
+  function closeForm() {
+    if (saving) return
+    setCreating(false)
+    setEditing(null)
+  }
+
+  async function saveForm() {
+    if (!supabase || !canManage || !selectedAreaId) return
     setSaving(true)
     setError('')
-    const update = await supabase.from('planning_guidelines').update({ code: code || null, guideline_text: guidelineText, responsible_manager_id: editManagerId || null }).eq('id', editing.id)
-    if (!update.error) await supabase.from('matrices').update({ guideline_text: guidelineText }).eq('guideline_id', editing.id)
+
+    const payload = {
+      category: formCategory.trim() || null,
+      code: formCode.trim() || null,
+      guideline_text: formText.trim(),
+    }
+
+    if (creating) {
+      const nextSort = visibleGuidelines.reduce((max, item) => Math.max(max, item.sort_order || 0), 0) + 1
+      const result = await supabase.from('planning_guidelines').insert({
+        period_id: periodId,
+        unit_code: 'CENTRAL',
+        management_id: selectedAreaId,
+        ...payload,
+        responsible_manager_id: null,
+        active: true,
+        sort_order: nextSort,
+      })
+      setSaving(false)
+      if (result.error) {
+        setError(`No pudimos crear el lineamiento: ${result.error.message}`)
+        return
+      }
+      setCreating(false)
+      setNotice('Lineamiento creado correctamente.')
+      await load()
+      return
+    }
+
+    if (!editing) {
+      setSaving(false)
+      return
+    }
+
+    const update = await supabase.from('planning_guidelines').update(payload).eq('id', editing.id)
+    if (!update.error) await supabase.from('matrices').update({ guideline_text: payload.guideline_text }).eq('guideline_id', editing.id)
     setSaving(false)
-    if (update.error) { setError('No pudimos actualizar el lineamiento.'); return }
+    if (update.error) {
+      setError(`No pudimos actualizar el lineamiento: ${update.error.message}`)
+      return
+    }
     setEditing(null)
     setNotice('Lineamiento actualizado correctamente.')
     await load()
@@ -155,7 +172,10 @@ export default function CentralGuidelineWorkspace({ periodId, canManage, onAreaC
     const clear = await supabase.from('matrices').update({ guideline_id: null, guideline_text: null }).eq('guideline_id', pendingDelete.id)
     const result = clear.error ? clear : await supabase.from('planning_guidelines').delete().eq('id', pendingDelete.id)
     setSaving(false)
-    if (result.error) { setError('No pudimos eliminar el lineamiento.'); return }
+    if (result.error) {
+      setError('No pudimos eliminar el lineamiento.')
+      return
+    }
     setPendingDelete(null)
     setNotice('Lineamiento eliminado.')
     await load()
@@ -163,51 +183,33 @@ export default function CentralGuidelineWorkspace({ periodId, canManage, onAreaC
 
   if (loading) return <div className="central-guideline-loading"><LoaderCircle className="spin" size={22}/> Cargando áreas y lineamientos de Central...</div>
 
-  return <div className="central-guideline-workspace">
+  return <div className="central-guideline-workspace central-guideline-workspace--simple">
     {error && <div className="central-guideline-message error">{error}</div>}
     {notice && <div className="central-guideline-message success"><Check size={15}/>{notice}</div>}
 
-    <div className="central-guideline-filters">
+    <div className="central-guideline-filters central-guideline-filters--simple">
       <label className="central-guideline-area-select"><span>Área</span><select value={selectedAreaId} onChange={event => setSelectedAreaId(event.target.value)}><option value="">Selecciona un área</option>{areas.map(area => <option key={area.id} value={area.id}>{area.name}</option>)}</select></label>
-      <label className="central-guideline-search"><Search size={17}/><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar lineamiento por palabra clave..."/></label>
-      <button type="button" className="central-guideline-clear" onClick={() => { setSearch(''); setAreaSearch('') }}>Limpiar filtros</button>
+      {canManage && <button type="button" className="central-guideline-create" onClick={openCreate}><Plus size={16}/> Nuevo lineamiento</button>}
     </div>
 
-    <div className="central-guideline-layout">
-      <aside className="central-guideline-sidebar">
-        <div className="central-guideline-sidebar-title"><span>Áreas de Central</span><strong>{areas.length}</strong></div>
-        <label className="central-guideline-sidebar-search"><Search size={15}/><input value={areaSearch} placeholder="Buscar área..." onChange={event => setAreaSearch(event.target.value)}/></label>
-        <div className="central-guideline-area-list">
-          {filteredAreas.map(area => <button key={area.id} type="button" className={selectedAreaId === area.id ? 'active' : ''} onClick={() => setSelectedAreaId(area.id)}><BookOpenText size={17}/><span>{area.name}</span><strong>{area.count}</strong></button>)}
-        </div>
-      </aside>
+    <section className="central-guideline-main central-guideline-main--full">
+      <div className="central-guideline-main-heading"><div><span>Lineamientos de Central</span><h3>{selectedArea?.name || 'Selecciona un área'}</h3></div><small>{visibleGuidelines.length} lineamiento{visibleGuidelines.length === 1 ? '' : 's'}</small></div>
+      <div className="central-guideline-table-wrap">
+        <table className="central-guideline-table central-guideline-table--simple">
+          <thead><tr><th>Categoría</th><th>N°</th><th>Lineamientos</th></tr></thead>
+          <tbody>
+            {visibleGuidelines.length === 0 ? <tr><td colSpan={3} className="central-guideline-empty">No hay lineamientos para esta área.</td></tr> : visibleGuidelines.map(item => <tr key={item.id}>
+              <td className="central-guideline-category">{item.category || ''}</td>
+              <td className="central-guideline-number">{item.code || ''}</td>
+              <td className="central-guideline-text central-guideline-text-with-actions"><span>{item.guideline_text || ''}</span>{canManage && <div className="central-guideline-inline-actions"><button type="button" title="Editar" onClick={() => beginEdit(item)}><Pencil size={15}/></button><button type="button" className="danger" title="Eliminar" onClick={() => setPendingDelete(item)}><Trash2 size={15}/></button></div>}</td>
+            </tr>)}
+          </tbody>
+        </table>
+      </div>
+    </section>
 
-      <section className="central-guideline-main">
-        <div className="central-guideline-main-heading"><div><span>Lineamientos de Central</span><h3>{selectedArea?.name || 'Selecciona un área'}</h3></div><small>{visibleGuidelines.length} lineamiento{visibleGuidelines.length === 1 ? '' : 's'}</small></div>
-        <div className="central-guideline-table-wrap">
-          <table className="central-guideline-table">
-            <thead><tr><th>N°</th><th>Lineamiento estratégico</th><th>Gerencia responsable</th><th>Gerente responsable</th><th>Estado</th>{canManage && <th>Acciones</th>}</tr></thead>
-            <tbody>
-              {visibleGuidelines.length === 0 ? <tr><td colSpan={canManage ? 6 : 5} className="central-guideline-empty">No hay lineamientos para esta área.</td></tr> : visibleGuidelines.map((item, index) => {
-                const parsed = splitGuideline(item.guideline_text, item.code)
-                const manager = item.responsible_manager_id ? managerById.get(item.responsible_manager_id) : null
-                return <tr key={item.id}>
-                  <td className="central-guideline-number">{String(index + 1).padStart(2, '0')}</td>
-                  <td className="central-guideline-text"><strong>{parsed.code ? `${parsed.code}: ` : ''}</strong>{parsed.text}</td>
-                  <td>{managementById.get(item.management_id)?.name || selectedArea?.name || 'Sin área'}</td>
-                  <td>{manager?.name || 'Sin asignar'}</td>
-                  <td><span className={`central-guideline-status ${item.active ? 'active' : 'inactive'}`}>{item.active ? 'Activo' : 'Inactivo'}</span></td>
-                  {canManage && <td><div className="central-guideline-actions"><button type="button" title="Editar" onClick={() => beginEdit(item)}><Pencil size={15}/></button><button type="button" className="danger" title="Eliminar" onClick={() => setPendingDelete(item)}><Trash2 size={15}/></button></div></td>}
-                </tr>
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </div>
+    {(creating || editing) && <div className="central-guideline-modal-backdrop" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target) closeForm() }}><section className="central-guideline-modal" role="dialog" aria-modal="true"><button className="central-guideline-modal-close" type="button" onClick={closeForm}><X size={18}/></button><span>{creating ? 'Nuevo lineamiento' : 'Editar lineamiento'}</span><h3>{selectedArea?.name}</h3><p className="central-guideline-form-help">Puedes dejar cualquier campo en blanco y guardar igualmente.</p><label>Categoría<input value={formCategory} onChange={event => setFormCategory(event.target.value)} placeholder="Ej. Estratégico"/></label><label>N°<input value={formCode} onChange={event => setFormCode(event.target.value)} placeholder="Ej. 1 o L1"/></label><label>Lineamiento<textarea value={formText} onChange={event => setFormText(event.target.value)} rows={5} placeholder="Escribe el lineamiento..."/></label><div className="central-guideline-modal-actions"><button type="button" onClick={closeForm}>Cancelar</button><button type="button" className="primary" onClick={() => void saveForm()} disabled={saving}>{saving && <LoaderCircle className="spin" size={15}/>} Guardar</button></div></section></div>}
 
-    {editing && <div className="central-guideline-modal-backdrop" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target && !saving) setEditing(null) }}><section className="central-guideline-modal" role="dialog" aria-modal="true"><button className="central-guideline-modal-close" type="button" onClick={() => setEditing(null)}><X size={18}/></button><span>Editar lineamiento</span><h3>{selectedArea?.name}</h3><label>Código<input value={editCode} onChange={event => setEditCode(event.target.value)} placeholder="L1"/></label><label>Lineamiento<textarea value={editText} onChange={event => setEditText(event.target.value)} rows={5}/></label><label>Gerente responsable<select value={editManagerId} onChange={event => setEditManagerId(event.target.value)}><option value="">Sin asignar</option>{managers.map(manager => <option key={manager.id} value={manager.id}>{manager.name}{manager.cargo ? ` · ${manager.cargo}` : ''}</option>)}</select></label><div className="central-guideline-modal-actions"><button type="button" onClick={() => setEditing(null)}>Cancelar</button><button type="button" className="primary" onClick={() => void saveEdit()} disabled={saving}>{saving && <LoaderCircle className="spin" size={15}/>} Guardar cambios</button></div></section></div>}
-
-    {pendingDelete && <div className="central-guideline-modal-backdrop" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target && !saving) setPendingDelete(null) }}><section className="central-guideline-confirm" role="dialog" aria-modal="true"><h3>¿Eliminar este lineamiento?</h3><p>{pendingDelete.guideline_text}</p><div className="central-guideline-modal-actions"><button type="button" onClick={() => setPendingDelete(null)}>Cancelar</button><button type="button" className="danger-solid" onClick={() => void confirmDelete()} disabled={saving}>Sí, eliminar</button></div></section></div>}
+    {pendingDelete && <div className="central-guideline-modal-backdrop" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target && !saving) setPendingDelete(null) }}><section className="central-guideline-confirm" role="dialog" aria-modal="true"><h3>¿Eliminar este lineamiento?</h3><p>{pendingDelete.guideline_text || 'Lineamiento sin texto'}</p><div className="central-guideline-modal-actions"><button type="button" onClick={() => setPendingDelete(null)}>Cancelar</button><button type="button" className="danger-solid" onClick={() => void confirmDelete()} disabled={saving}>Sí, eliminar</button></div></section></div>}
   </div>
 }
