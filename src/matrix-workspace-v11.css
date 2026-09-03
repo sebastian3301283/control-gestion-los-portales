@@ -1,6 +1,7 @@
 /* V11: Central sin columna N°, Acción amplia y controles contenidos. */
 .matrix-v11-host .matrix-v10.matrix-v5--central .matrix-v5-sheet thead th:first-child,
-.matrix-v11-host .matrix-v10.matrix-v5--central .matrix-v5-sheet tbody tr:not(.matrix-v5-objective-row) > td:first-child{
+.matrix-v11-host .matrix-v10.matrix-v5--central .matrix-v5-sheet tbody td.matrix-v5-number,
+.matrix-v11-host .matrix-v10.matrix-v5--central .matrix-v5-sheet tbody tr.matrix-v5-edit-row > td:first-child{
   display:none!important;
 }
 

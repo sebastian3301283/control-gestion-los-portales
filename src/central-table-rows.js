@@ -3,7 +3,8 @@ function clean(value) {
 }
 
 export function buildCentralTableRows(input = {}) {
-  const subpoints = Array.isArray(input.subpoints) ? input.subpoints : []
+  const records = Array.isArray(input.subpointRecords) ? input.subpointRecords : null
+  const subpoints = records || (Array.isArray(input.subpoints) ? input.subpoints : [])
   const milestones = Array.isArray(input.milestones) ? input.milestones : []
   const kpis = Array.isArray(input.kpis) ? input.kpis : []
   const startDates = Array.isArray(input.startDates) ? input.startDates : []
@@ -13,10 +14,10 @@ export function buildCentralTableRows(input = {}) {
     index,
     label: `S${index + 1}`,
     objective: clean(input.objective),
-    subpoint: clean(subpoint) || '—',
-    milestones: clean(milestones[index]) || '—',
-    kpi: clean(kpis[index]) || '—',
-    startDate: clean(startDates[index]) || '—',
-    endDate: clean(endDates[index]) || '—',
+    subpoint: clean(records ? subpoint?.text : subpoint) || '—',
+    milestones: clean(records ? subpoint?.milestones : milestones[index]) || '—',
+    kpi: clean(records ? subpoint?.kpi : kpis[index]) || '—',
+    startDate: clean(records ? subpoint?.start_date : startDates[index]) || '—',
+    endDate: clean(records ? subpoint?.end_date : endDates[index]) || '—',
   }))
 }

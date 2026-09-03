@@ -1,5 +1,12 @@
 export type CentralTableRowsInput = {
   objective?: unknown
+  subpointRecords?: Array<{
+    text?: unknown
+    milestones?: unknown
+    kpi?: unknown
+    start_date?: unknown
+    end_date?: unknown
+  }>
   subpoints?: unknown[]
   milestones?: unknown[]
   kpis?: unknown[]

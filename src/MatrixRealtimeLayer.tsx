@@ -42,7 +42,7 @@ function locationFromTarget(target: HTMLElement): CollaborationLocation | null {
   if (cell && row && table) {
     const header = table.querySelectorAll<HTMLTableCellElement>('thead th')[cell.cellIndex]?.textContent?.trim() || 'Campo'
     const rowNumber = row.cells[0]?.textContent?.trim() || ''
-    const subpoint = row.querySelector<HTMLElement>('.matrix-v14-subpoint-line small')?.textContent?.trim() || ''
+    const subpoint = row.querySelector<HTMLElement>('.matrix-v10-subpoint-badge,.matrix-v14-subpoint-line small')?.textContent?.trim() || ''
     return { field: header, ...(subpoint ? { subpoint } : {}), ...(rowNumber ? { row: rowNumber } : {}) }
   }
 

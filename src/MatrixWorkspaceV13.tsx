@@ -1,6 +1,6 @@
 import MatrixRealtimeLayer from './MatrixRealtimeLayer'
 import MatrixWorkspaceV11 from './MatrixWorkspaceV11'
-import MatrixWorkspaceV14 from './MatrixWorkspaceV14'
+import MatrixWorkspaceV12 from './MatrixWorkspaceV12'
 
 type UnitCode = 'HU' | 'DEP' | 'VS' | 'HOT' | 'CENTRAL'
 type Props = {
@@ -15,5 +15,5 @@ type Props = {
 }
 
 export default function MatrixWorkspaceV13(props: Props) {
-  return <MatrixRealtimeLayer periodId={props.periodId} unitCode={props.unitCode}>{props.unitCode === 'CENTRAL' ? <MatrixWorkspaceV14 {...props} /> : <MatrixWorkspaceV11 {...props} />}</MatrixRealtimeLayer>
+  return <MatrixRealtimeLayer periodId={props.periodId} unitCode={props.unitCode}>{props.unitCode === 'CENTRAL' ? <MatrixWorkspaceV12 {...props} /> : <MatrixWorkspaceV11 {...props} />}</MatrixRealtimeLayer>
 }

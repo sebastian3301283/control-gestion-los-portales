@@ -24,3 +24,27 @@ test('crea una fila real por subpunto y conserva alineados hitos, KPI, inicio y 
     endDate: '30/09/2026',
   })
 })
+
+test('crea filas desde los registros reales de matrix_row_subpoints', () => {
+  const rows = buildCentralTableRows({
+    objective: 'Optimizar la operación',
+    subpointRecords: [
+      { text: 'Automatizar alertas', milestones: 'Piloto', kpi: '10 alertas', start_date: '2026-09-01', end_date: '2026-09-10' },
+      { text: 'Medir resultados', milestones: 'Informe', kpi: '95% cobertura', start_date: '2026-09-11', end_date: '2026-09-30' },
+    ],
+  })
+
+  assert.equal(rows.length, 2)
+  assert.deepEqual(rows[0], {
+    index: 0,
+    label: 'S1',
+    objective: 'Optimizar la operación',
+    subpoint: 'Automatizar alertas',
+    milestones: 'Piloto',
+    kpi: '10 alertas',
+    startDate: '2026-09-01',
+    endDate: '2026-09-10',
+  })
+  assert.equal(rows[1].subpoint, 'Medir resultados')
+  assert.equal(rows[1].kpi, '95% cobertura')
+})

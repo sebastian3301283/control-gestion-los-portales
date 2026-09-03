@@ -68,12 +68,6 @@ const emptyForm: FormState = {
 }
 const emptySubpoint = (): CentralSubpointDraft => ({ id: null, text: '', milestones: '', kpi: '', start_date: '', end_date: '' })
 
-function formatDate(value: string | null | undefined) {
-  if (!value) return '—'
-  const [year, month, day] = value.split('-')
-  return year && month && day ? `${day}/${month}/${year}` : value
-}
-
 export default function MatrixWorkspaceV12(props: Props) {
   if (props.unitCode !== 'CENTRAL') return <MatrixWorkspaceV11 {...props} />
 
@@ -326,57 +320,6 @@ export default function MatrixWorkspaceV12(props: Props) {
     if (!rowId) return
     event.preventDefault(); event.stopPropagation(); void openEditEditor(rowId)
   }
-
-  useEffect(() => {
-    const root = hostRef.current
-    if (!root) return
-    const enhance = () => {
-      const dataRows = Array.from(root.querySelectorAll<HTMLTableRowElement>('.matrix-v5-sheet tbody > tr')).filter(item =>
-        !item.classList.contains('matrix-v5-objective-row') && !item.classList.contains('matrix-v5-edit-row') && Boolean(item.querySelector('.matrix-v5-row-actions')),
-      )
-      dataRows.forEach((tr, index) => {
-        const row = rows[index]
-        if (!row) return
-        const details = buildCentralSubpointDrafts(subpointsByRow[row.id] || [], row)
-        const signature = JSON.stringify([row.objective, details.map(item => [item.text,item.milestones,item.kpi,item.start_date,item.end_date])])
-        if (tr.dataset.v12Signature === signature && tr.querySelector('.matrix-v12-objective-stack')) return
-        tr.dataset.v12Signature = signature
-        const cells = Array.from(tr.cells)
-        if (cells.length < 8) return
-
-        const objectiveCell = cells[1]
-        objectiveCell.textContent = ''
-        const objectiveWrap = document.createElement('div'); objectiveWrap.className = 'matrix-v12-objective-stack'
-        const objective = document.createElement('strong'); objective.textContent = row.objective || '—'; objectiveWrap.appendChild(objective)
-        if (details.length) {
-          const list = document.createElement('ol')
-          details.forEach(item => { const li = document.createElement('li'); li.textContent = item.text; list.appendChild(li) })
-          objectiveWrap.appendChild(list)
-        }
-        objectiveCell.appendChild(objectiveWrap)
-
-        const renderStack = (cell: HTMLTableCellElement, key: 'milestones'|'kpi'|'start_date'|'end_date') => {
-          cell.textContent = ''
-          const stack = document.createElement('div'); stack.className = 'matrix-v12-detail-stack'
-          const source = details.length ? details : [emptySubpoint()]
-          source.forEach((item, detailIndex) => {
-            const line = document.createElement('div')
-            const label = document.createElement('small'); label.textContent = `S${detailIndex + 1}`
-            const value = document.createElement('span')
-            const raw = item[key]
-            value.textContent = key === 'start_date' || key === 'end_date' ? formatDate(String(raw || '')) : String(raw || '—')
-            line.append(label, value); stack.appendChild(line)
-          })
-          cell.appendChild(stack)
-        }
-        renderStack(cells[4], 'milestones'); renderStack(cells[5], 'kpi'); renderStack(cells[6], 'start_date'); renderStack(cells[7], 'end_date')
-      })
-    }
-    const observer = new MutationObserver(enhance)
-    observer.observe(root, { childList: true, subtree: true })
-    enhance()
-    return () => observer.disconnect()
-  }, [rows, subpointsByRow, revision])
 
   return <div ref={hostRef} className={`matrix-v12-host ${editorOpen ? 'matrix-v12-host--editing' : ''}`} onClickCapture={handleCapture}>
     {editorOpen && <section className="matrix-v12-editor">
