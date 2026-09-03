@@ -54,22 +54,13 @@ export default function MatrixRealtimeLayer({ children, periodId, unitCode }: Pr
   const channelRef = useRef<ReturnType<NonNullable<typeof supabase>['channel']> | null>(null)
   const identityRef = useRef<{ user_id: string; name: string; email: string } | null>(null)
   const clearLocationTimerRef = useRef<number | null>(null)
-  const pendingRefreshRef = useRef(false)
   const [matrixId, setMatrixId] = useState('')
   const [users, setUsers] = useState<MatrixPresenceUser[]>([])
   const [currentUserId, setCurrentUserId] = useState('')
   const [connected, setConnected] = useState(false)
-  const [refreshRevision, setRefreshRevision] = useState(0)
-
-  function localEditorOpen() {
-    const root = rootRef.current
-    return Boolean(root?.querySelector('.matrix-v12-editor,.matrix-v5-edit-row'))
-  }
 
   function requestRefresh() {
-    if (localEditorOpen()) { pendingRefreshRef.current = true; return }
-    pendingRefreshRef.current = false
-    setRefreshRevision(value => value + 1)
+    window.dispatchEvent(new CustomEvent('matrix-realtime-data-change', { detail: { matrixId } }))
   }
 
   useEffect(() => {
@@ -100,14 +91,8 @@ export default function MatrixRealtimeLayer({ children, periodId, unitCode }: Pr
     void resolveMatrix()
     const timer = window.setInterval(() => void resolveMatrix(), 1200)
     return () => { stopped = true; window.clearInterval(timer) }
-  }, [periodId, unitCode, refreshRevision])
+  }, [periodId, unitCode])
 
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (pendingRefreshRef.current && !localEditorOpen()) requestRefresh()
-    }, 250)
-    return () => window.clearInterval(timer)
-  }, [])
 
   useEffect(() => {
     if (!supabase || !matrixId) { setUsers([]); setConnected(false); return }
@@ -218,6 +203,6 @@ export default function MatrixRealtimeLayer({ children, periodId, unitCode }: Pr
         })}
       </div>
     </div>}
-    <div className="matrix-realtime-content" key={refreshRevision}>{children}</div>
+    <div className="matrix-realtime-content">{children}</div>
   </div>
 }
