@@ -51,23 +51,25 @@ export default function GuidelinePptPanel({ unit, periodId, canManage, managemen
   const [viewerPdf, setViewerPdf] = useState(false)
   const [areaCanEdit, setAreaCanEdit] = useState(false)
 
-  const effectiveManagementId = managementId || localAreaId || ''
+  const centralUsesParentArea = unit.code === 'CENTRAL'
+  const effectiveManagementId = centralUsesParentArea ? (managementId || '') : (managementId || localAreaId || '')
   const effectiveArea = useMemo(() => {
     if (managementId) return { id: managementId, name: managementName || 'Área seleccionada' }
+    if (centralUsesParentArea) return null
     return areas.find(area => area.id === localAreaId) || null
-  }, [managementId, managementName, areas, localAreaId])
+  }, [managementId, managementName, areas, localAreaId, centralUsesParentArea])
   const folder = effectiveManagementId ? `${unit.code}/${periodId}/${effectiveManagementId}` : ''
   const canUpload = canManage || areaCanEdit
 
   useEffect(() => {
-    if (!managementId) void loadAreas()
-  }, [unit.code, managementId, canManage])
+    if (!centralUsesParentArea && !managementId) void loadAreas()
+  }, [unit.code, managementId, canManage, centralUsesParentArea])
 
   useEffect(() => {
-    if (managementId) return
+    if (centralUsesParentArea || managementId) return
     if (!localAreaId && areas.length) setLocalAreaId(areas[0].id)
     if (localAreaId && !areas.some(area => area.id === localAreaId)) setLocalAreaId(areas[0]?.id || '')
-  }, [areas, localAreaId, managementId])
+  }, [areas, localAreaId, managementId, centralUsesParentArea])
 
   useEffect(() => {
     void loadPermission()
@@ -201,9 +203,9 @@ export default function GuidelinePptPanel({ unit, periodId, canManage, managemen
 
   return <section className="guideline-ppt-panel">
     <div className="guideline-ppt-head">
-      <div><span>Documentos de soporte{effectiveArea ? ` · ${effectiveArea.name}` : ''}</span><h4>PowerPoint y PDF de la planificación</h4><p>{effectiveArea ? `Los archivos de ${effectiveArea.name} solo se muestran a usuarios con acceso a esta área.` : 'Selecciona un área para ver sus documentos de soporte.'}</p></div>
+      <div><span>Documentos de soporte{effectiveArea ? ` · ${effectiveArea.name}` : ''}</span><h4>PowerPoint y PDF de la planificación</h4><p>{effectiveArea ? `Los archivos de ${effectiveArea.name} solo se muestran a usuarios con acceso a esta área.` : centralUsesParentArea ? 'Los documentos corresponden al área seleccionada arriba.' : 'Selecciona un área para ver sus documentos de soporte.'}</p></div>
       <div className="guideline-ppt-head-actions">
-        {!managementId && <label className="guideline-ppt-area-select"><span>Área</span><select value={localAreaId} onChange={event => setLocalAreaId(event.target.value)} disabled={loadingAreas || areas.length === 0}><option value="">{loadingAreas ? 'Cargando áreas...' : areas.length ? 'Selecciona un área' : 'Sin áreas disponibles'}</option>{areas.map(area => <option key={area.id} value={area.id}>{area.name}</option>)}</select></label>}
+        {!centralUsesParentArea && !managementId && <label className="guideline-ppt-area-select"><span>Área</span><select value={localAreaId} onChange={event => setLocalAreaId(event.target.value)} disabled={loadingAreas || areas.length === 0}><option value="">{loadingAreas ? 'Cargando áreas...' : areas.length ? 'Selecciona un área' : 'Sin áreas disponibles'}</option>{areas.map(area => <option key={area.id} value={area.id}>{area.name}</option>)}</select></label>}
         {canUpload && effectiveManagementId && <>
           <input ref={inputRef} type="file" accept=".ppt,.pptx,.pdf,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation" hidden onChange={event => { const file = event.target.files?.[0]; if (file) void upload(file); event.currentTarget.value = '' }}/>
           <button type="button" className="guideline-ppt-upload" onClick={() => inputRef.current?.click()} disabled={uploading}>{uploading ? <LoaderCircle className="spin" size={16}/> : <Upload size={16}/>} Guardar PPT / PDF</button>
@@ -214,7 +216,7 @@ export default function GuidelinePptPanel({ unit, periodId, canManage, managemen
     {error && <div className="guideline-ppt-error">{error}</div>}
 
     <div className="guideline-ppt-list">
-      {!effectiveManagementId ? <div className="guideline-ppt-empty"><FileText size={19}/> {loadingAreas ? 'Cargando áreas disponibles...' : 'Selecciona un área para ver sus documentos.'}</div> : loading ? <div className="guideline-ppt-empty"><LoaderCircle className="spin" size={17}/> Cargando documentos...</div> : files.length === 0 ? <div className="guideline-ppt-empty"><FileText size={19}/> Aún no hay un PPT o PDF guardado para esta área.</div> : files.map(file => <article key={file.name} className="guideline-ppt-file">
+      {!effectiveManagementId ? <div className="guideline-ppt-empty"><FileText size={19}/> {centralUsesParentArea ? 'Selecciona un área arriba para ver sus documentos.' : loadingAreas ? 'Cargando áreas disponibles...' : 'Selecciona un área para ver sus documentos.'}</div> : loading ? <div className="guideline-ppt-empty"><LoaderCircle className="spin" size={17}/> Cargando documentos...</div> : files.length === 0 ? <div className="guideline-ppt-empty"><FileText size={19}/> Aún no hay un PPT o PDF guardado para esta área.</div> : files.map(file => <article key={file.name} className="guideline-ppt-file">
         <span className="guideline-ppt-file-icon"><FileText size={21}/></span>
         <div className="guideline-ppt-file-copy"><strong>{displayName(file.name)}</strong><small>{isPdf(file.name) ? 'PDF' : 'PowerPoint'}{file.metadata?.size ? ` · ${sizeLabel(file.metadata.size)}` : ''}{file.created_at ? ` · ${new Date(file.created_at).toLocaleString('es-PE')}` : ''}</small></div>
         <button type="button" className="guideline-ppt-view" onClick={() => void view(file)}><Eye size={15}/> Ver</button>
