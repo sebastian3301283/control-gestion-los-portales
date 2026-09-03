@@ -35,3 +35,5 @@ test('Central permite guardar parcialmente sin exigir lineamiento objetivo o sub
   assert.doesNotMatch(save, /Añade al menos un subpunto antes de guardar/)
   assert.match(save, /if \(detailRows\.length\)/)
 })
+
+// Mantiene el caso de regresión ligado al layout aprobado por el usuario.
