@@ -124,6 +124,7 @@ export default function MatrixRealtimeLayer({ children, periodId, unitCode }: Pr
       const name = String(profile?.full_name || email.split('@')[0] || 'Usuario')
       identityRef.current = { user_id: user.id, name, email }
       setCurrentUserId(user.id)
+      await supabase.realtime.setAuth()
 
       const sessionKey = `${user.id}:${typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : Date.now()}`
       channel = supabase.channel(`matrix-collab:${matrixId}`, { config: { private: true, presence: { key: sessionKey } } })
