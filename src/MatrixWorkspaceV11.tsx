@@ -215,14 +215,15 @@ export default function MatrixWorkspaceV11(props: Props) {
   function handleRootClickCapture(event: ReactMouseEvent<HTMLDivElement>) {
     const target = event.target as HTMLElement
     const button = target.closest<HTMLButtonElement>('.matrix-v5-row-actions button')
-    if (!button) return
+    const centralRow = target.closest<HTMLTableRowElement>('tr[data-matrix-row-id]')
+    if (!button && !centralRow) return
 
     if (bypassClickRef.current) {
       bypassClickRef.current = false
       return
     }
 
-    const editingRow = button.closest('tr.matrix-v5-edit-row')
+    const editingRow = button?.closest('tr.matrix-v5-edit-row')
     if (editingRow) {
       const rowId = lockedRowIdRef.current
       if (rowId) releaseWhenEditorCloses(rowId)
@@ -236,7 +237,7 @@ export default function MatrixWorkspaceV11(props: Props) {
       return
     }
 
-    const rowId = rowIdForButton(button)
+    const rowId = centralRow?.dataset.matrixRowId || (button ? rowIdForButton(button) : '')
     if (!rowId) return
     const existing = locksRef.current.find(lock => lock.row_id === rowId)
     if (existing && existing.user_id !== currentUserIdRef.current) {
@@ -248,12 +249,13 @@ export default function MatrixWorkspaceV11(props: Props) {
 
     event.preventDefault()
     event.stopPropagation()
-    const deleting = button.classList.contains('danger')
+    const deleting = Boolean(button?.classList.contains('danger'))
     void (async () => {
       const ok = await acquireLock(rowId)
       if (!ok) return
       bypassClickRef.current = true
-      button.click()
+      if (button) button.click()
+      else centralRow?.click()
       if (deleting) window.setTimeout(() => void releaseLock(rowId), 1200)
     })()
   }
