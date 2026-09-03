@@ -42,6 +42,7 @@ export default function GuidelinePptPanel({ unit, periodId, canManage, managemen
   const [files, setFiles] = useState<StoredDocument[]>([])
   const [areas, setAreas] = useState<AreaOption[]>([])
   const [localAreaId, setLocalAreaId] = useState('')
+  const [loadingAreas, setLoadingAreas] = useState(false)
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
@@ -60,7 +61,7 @@ export default function GuidelinePptPanel({ unit, periodId, canManage, managemen
 
   useEffect(() => {
     if (!managementId) void loadAreas()
-  }, [unit.code, periodId, managementId])
+  }, [unit.code, managementId, canManage])
 
   useEffect(() => {
     if (managementId) return
@@ -75,14 +76,43 @@ export default function GuidelinePptPanel({ unit, periodId, canManage, managemen
 
   async function loadAreas() {
     if (!supabase) return
-    const [guidelineResult, managementResult] = await Promise.all([
-      supabase.from('planning_guidelines').select('management_id').eq('period_id', periodId).eq('unit_code', unit.code),
-      supabase.from('managements_global').select('id,name').eq('active', true).order('name'),
-    ])
-    if (guidelineResult.error || managementResult.error) return
-    const permittedIds = new Set((guidelineResult.data || []).map(item => String(item.management_id)))
-    const next = ((managementResult.data || []) as AreaOption[]).filter(area => permittedIds.has(area.id))
-    setAreas(next)
+    setLoadingAreas(true)
+    setError('')
+
+    const { data, error: areaError } = await supabase
+      .from('managements_global')
+      .select('id,name')
+      .eq('unit_code', unit.code)
+      .eq('active', true)
+      .order('name')
+
+    if (areaError) {
+      setLoadingAreas(false)
+      setAreas([])
+      setError('No pudimos cargar las áreas de esta unidad.')
+      return
+    }
+
+    const unitAreas = (data || []) as AreaOption[]
+
+    if (canManage) {
+      setAreas(unitAreas)
+      setLoadingAreas(false)
+      return
+    }
+
+    const permissionResults = await Promise.all(
+      unitAreas.map(async area => {
+        const { data: allowed, error: permissionError } = await supabase.rpc('can_access_management', {
+          management_id_input: area.id,
+          unit_code_input: unit.code,
+        })
+        return !permissionError && Boolean(allowed) ? area : null
+      }),
+    )
+
+    setAreas(permissionResults.filter((area): area is AreaOption => Boolean(area)))
+    setLoadingAreas(false)
   }
 
   async function loadPermission() {
@@ -173,7 +203,7 @@ export default function GuidelinePptPanel({ unit, periodId, canManage, managemen
     <div className="guideline-ppt-head">
       <div><span>Documentos de soporte{effectiveArea ? ` · ${effectiveArea.name}` : ''}</span><h4>PowerPoint y PDF de la planificación</h4><p>{effectiveArea ? `Los archivos de ${effectiveArea.name} solo se muestran a usuarios con acceso a esta área.` : 'Selecciona un área para ver sus documentos de soporte.'}</p></div>
       <div className="guideline-ppt-head-actions">
-        {!managementId && areas.length > 0 && <label className="guideline-ppt-area-select"><span>Área</span><select value={localAreaId} onChange={event => setLocalAreaId(event.target.value)}>{areas.map(area => <option key={area.id} value={area.id}>{area.name}</option>)}</select></label>}
+        {!managementId && <label className="guideline-ppt-area-select"><span>Área</span><select value={localAreaId} onChange={event => setLocalAreaId(event.target.value)} disabled={loadingAreas || areas.length === 0}><option value="">{loadingAreas ? 'Cargando áreas...' : areas.length ? 'Selecciona un área' : 'Sin áreas disponibles'}</option>{areas.map(area => <option key={area.id} value={area.id}>{area.name}</option>)}</select></label>}
         {canUpload && effectiveManagementId && <>
           <input ref={inputRef} type="file" accept=".ppt,.pptx,.pdf,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation" hidden onChange={event => { const file = event.target.files?.[0]; if (file) void upload(file); event.currentTarget.value = '' }}/>
           <button type="button" className="guideline-ppt-upload" onClick={() => inputRef.current?.click()} disabled={uploading}>{uploading ? <LoaderCircle className="spin" size={16}/> : <Upload size={16}/>} Guardar PPT / PDF</button>
@@ -184,7 +214,7 @@ export default function GuidelinePptPanel({ unit, periodId, canManage, managemen
     {error && <div className="guideline-ppt-error">{error}</div>}
 
     <div className="guideline-ppt-list">
-      {!effectiveManagementId ? <div className="guideline-ppt-empty"><FileText size={19}/> No hay un área disponible para estos documentos.</div> : loading ? <div className="guideline-ppt-empty"><LoaderCircle className="spin" size={17}/> Cargando documentos...</div> : files.length === 0 ? <div className="guideline-ppt-empty"><FileText size={19}/> Aún no hay un PPT o PDF guardado para esta área.</div> : files.map(file => <article key={file.name} className="guideline-ppt-file">
+      {!effectiveManagementId ? <div className="guideline-ppt-empty"><FileText size={19}/> {loadingAreas ? 'Cargando áreas disponibles...' : 'Selecciona un área para ver sus documentos.'}</div> : loading ? <div className="guideline-ppt-empty"><LoaderCircle className="spin" size={17}/> Cargando documentos...</div> : files.length === 0 ? <div className="guideline-ppt-empty"><FileText size={19}/> Aún no hay un PPT o PDF guardado para esta área.</div> : files.map(file => <article key={file.name} className="guideline-ppt-file">
         <span className="guideline-ppt-file-icon"><FileText size={21}/></span>
         <div className="guideline-ppt-file-copy"><strong>{displayName(file.name)}</strong><small>{isPdf(file.name) ? 'PDF' : 'PowerPoint'}{file.metadata?.size ? ` · ${sizeLabel(file.metadata.size)}` : ''}{file.created_at ? ` · ${new Date(file.created_at).toLocaleString('es-PE')}` : ''}</small></div>
         <button type="button" className="guideline-ppt-view" onClick={() => void view(file)}><Eye size={15}/> Ver</button>
