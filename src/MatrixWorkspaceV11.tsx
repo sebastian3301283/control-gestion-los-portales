@@ -164,6 +164,18 @@ export default function MatrixWorkspaceV11(props: Props) {
     if (matrixIdRef.current) await loadRowsAndLocks(matrixIdRef.current)
   }
 
+  useEffect(() => {
+    const handleRealtimeDataChange = (event: Event) => {
+      const detail = (event as CustomEvent<{ matrixId?: string }>).detail
+      const changedMatrixId = String(detail?.matrixId || '')
+      const currentMatrixId = matrixIdRef.current
+      if (!currentMatrixId || (changedMatrixId && changedMatrixId !== currentMatrixId)) return
+      void loadRowsAndLocks(currentMatrixId)
+    }
+    window.addEventListener('matrix-realtime-data-change', handleRealtimeDataChange)
+    return () => window.removeEventListener('matrix-realtime-data-change', handleRealtimeDataChange)
+  }, [])
+
   async function acquireLock(rowId: string) {
     if (!supabase) return false
     const { data, error } = await supabase.rpc('try_lock_matrix_row', { row_id_input: rowId })

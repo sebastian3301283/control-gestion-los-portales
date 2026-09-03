@@ -172,6 +172,16 @@ export default function MatrixWorkspaceV10({ periodId, year, unitCode, unitName,
     setPage('areas'); setSelectedAreaId(''); setSelectedMatrixId(''); setRows([]); setCentralSubpointsByRow({}); setExpanded(false); setZoom(1); setAreaCanEdit(false); void loadWorkspace()
   }, [periodId, unitCode])
   useEffect(() => { if (!selectedMatrixId) { setRows([]); setCentralSubpointsByRow({}) } else void loadRows(selectedMatrixId) }, [selectedMatrixId])
+  useEffect(() => {
+    const handleRealtimeDataChange = (event: Event) => {
+      const detail = (event as CustomEvent<{ matrixId?: string }>).detail
+      const changedMatrixId = String(detail?.matrixId || '')
+      if (!selectedMatrixId || (changedMatrixId && changedMatrixId !== selectedMatrixId)) return
+      void loadRows(selectedMatrixId)
+    }
+    window.addEventListener('matrix-realtime-data-change', handleRealtimeDataChange)
+    return () => window.removeEventListener('matrix-realtime-data-change', handleRealtimeDataChange)
+  }, [selectedMatrixId])
   useEffect(() => { if (!selectedAreaId) { setAreaCanEdit(false); return }; void loadAreaEditPermission(selectedAreaId) }, [selectedAreaId, unitCode])
   useEffect(() => {
     if (!expanded) return
@@ -297,10 +307,7 @@ export default function MatrixWorkspaceV10({ periodId, year, unitCode, unitName,
 
   function centralRowsFor(row: MatrixRow): CentralTableRow[] {
     const details = buildCentralSubpointDrafts(centralSubpointsByRow[row.id] || [], row)
-    const displayDetails = details.length ? details : [{
-      text: '—', milestones: row.milestones || '', kpi: row.kpi || '', start_date: row.start_date || '', end_date: row.end_date || '',
-    }]
-    return buildCentralTableRows({ objective: row.objective, subpointRecords: displayDetails })
+    return details.length ? buildCentralTableRows({ objective: row.objective, subpointRecords: details }) : []
   }
 
   async function saveCentralRow() {
@@ -309,7 +316,6 @@ export default function MatrixWorkspaceV10({ periodId, year, unitCode, unitName,
 
     setSaving(true); onError(''); onNotice('')
     const manager = rowDraft.responsible_manager_id ? managerById.get(rowDraft.responsible_manager_id) : null
-    const firstDetail = detailRows[0]
     const payload = {
       matrix_id: selectedMatrix.id,
       objective_group: String(rowDraft.objective_group || '').trim(),
@@ -318,11 +324,11 @@ export default function MatrixWorkspaceV10({ periodId, year, unitCode, unitName,
       responsible_manager_id: rowDraft.responsible_manager_id || null,
       responsible_text: manager?.name || rowDraft.responsible_text || null,
       priority: rowDraft.priority || null,
-      milestones: firstDetail?.milestones || null,
-      kpi: firstDetail?.kpi || null,
+      milestones: rowDraft.milestones || null,
+      kpi: rowDraft.kpi || null,
       target: null,
-      start_date: firstDetail?.start_date || null,
-      end_date: firstDetail?.end_date || null,
+      start_date: rowDraft.start_date || null,
+      end_date: rowDraft.end_date || null,
       risks: rowDraft.risks || null,
       restrictions: rowDraft.restrictions || null,
       support: rowDraft.support || null,
@@ -489,10 +495,10 @@ export default function MatrixWorkspaceV10({ periodId, year, unitCode, unitName,
         </div></td>
         <td className="matrix-v10-central-inline-owner" rowSpan={totalRowSpan}><select value={rowDraft.responsible_manager_id || ''} onChange={event => updateDraft('responsible_manager_id', event.target.value || null)}><option value="">Seleccionar responsable</option>{managers.map(manager => <option key={manager.id} value={manager.id}>{manager.name}{manager.directory_group === 'MATRICIAL_HU_VS' ? ' · Matricial' : ''}</option>)}</select></td>
         <td className="matrix-v10-central-inline-priority" rowSpan={totalRowSpan}><select value={rowDraft.priority || ''} onChange={event => updateDraft('priority', event.target.value)}><option value="">—</option><option>Alta</option><option>Media</option><option>Baja</option></select></td>
-        <td className="matrix-v10-central-inline-detail-placeholder"/>
-        <td className="matrix-v10-central-inline-detail-placeholder"/>
-        <td className="matrix-v10-central-inline-detail-placeholder"/>
-        <td className="matrix-v10-central-inline-detail-placeholder"/>
+        <td><textarea value={rowDraft.milestones || ''} onChange={event => updateDraft('milestones', event.target.value)} placeholder="Hito o fecha"/></td>
+        <td><textarea value={rowDraft.kpi || ''} onChange={event => updateDraft('kpi', event.target.value)} placeholder="KPI"/></td>
+        <td><input type="date" value={rowDraft.start_date || ''} onChange={event => updateDraft('start_date', event.target.value)}/></td>
+        <td><input type="date" value={rowDraft.end_date || ''} onChange={event => updateDraft('end_date', event.target.value)}/></td>
         <td rowSpan={totalRowSpan}><textarea value={rowDraft.risks || ''} onChange={event => updateDraft('risks', event.target.value)} placeholder="Riesgos"/></td>
         <td rowSpan={totalRowSpan}><textarea value={rowDraft.restrictions || ''} onChange={event => updateDraft('restrictions', event.target.value)} placeholder="Restricciones"/></td>
         <td rowSpan={totalRowSpan}><textarea value={rowDraft.support || ''} onChange={event => updateDraft('support', event.target.value)} placeholder="Soporte"/></td>
@@ -566,21 +572,25 @@ export default function MatrixWorkspaceV10({ periodId, year, unitCode, unitName,
           </Fragment>
 
           const centralRows = centralRowsFor(row)
-          const rowSpan = centralRows.length
+          const rowSpan = centralRows.length + 1
           return <Fragment key={row.id}>
             {show && <tr className="matrix-v5-objective-row matrix-v10-lineamiento-row"><td colSpan={tableColSpan}><strong>Lineamiento</strong><span>{current}</span></td></tr>}
+            <tr data-matrix-row-id={row.id} onClick={() => startEditRow(row)} className={`matrix-v10-central-objective-row matrix-v10-central-subpoint-row ${effectiveCanManage ? 'matrix-v10-central-subpoint-row--editable' : ''}`}>
+              <td className="matrix-v5-number" rowSpan={rowSpan}>{index + 1}</td>
+              <td className="matrix-v5-action-cell matrix-v10-central-objective"><div className="matrix-v10-central-objective-stack"><strong>{row.objective || '—'}</strong></div></td>
+              <td rowSpan={rowSpan}>{row.responsible_manager_id || row.responsible_text ? <span className="matrix-v5-person-chip">{responsible}</span> : '—'}</td>
+              <td rowSpan={rowSpan}>{row.priority ? <span className={`matrix-v5-priority matrix-v5-priority--${priorityClass(row.priority)}`}>{row.priority}</span> : '—'}</td>
+              <td>{row.milestones || '—'}</td><td>{row.kpi || '—'}</td><td>{formatDate(row.start_date)}</td><td>{formatDate(row.end_date)}</td>
+              <td rowSpan={rowSpan}>{row.risks || '—'}</td>
+              <td rowSpan={rowSpan}>{row.restrictions || '—'}</td>
+              <td rowSpan={rowSpan}>{row.support || '—'}</td>
+              <td rowSpan={rowSpan}>{row.deliverables || '—'}</td>
+              <td rowSpan={rowSpan}>{row.committee || '—'}</td>
+              {effectiveCanManage && <td rowSpan={rowSpan}><div className="matrix-v5-row-actions"><button type="button" title="Eliminar fila" className="danger" onClick={event => { event.stopPropagation(); void deleteRow(row.id) }}><Trash2 size={14}/></button></div></td>}
+            </tr>
             {centralRows.map((detail, detailIndex) => <tr data-matrix-row-id={row.id} onClick={() => startEditRow(row)} className={`matrix-v10-central-subpoint-row ${effectiveCanManage ? 'matrix-v10-central-subpoint-row--editable' : ''} ${detailIndex === 0 ? 'matrix-v10-central-subpoint-row--first' : ''}`} key={`${row.id}-${detail.index}`}>
-              {detailIndex === 0 && <td className="matrix-v5-number" rowSpan={rowSpan}>{index + 1}</td>}
-              <td className="matrix-v5-action-cell matrix-v10-central-objective"><div className="matrix-v10-central-objective-stack">{detailIndex === 0 && <strong>{row.objective || '—'}</strong>}<div className="matrix-v10-central-subpoint"><span className="matrix-v10-subpoint-badge">{detail.label}</span><span>{detail.subpoint}</span></div></div></td>
-              {detailIndex === 0 && <td rowSpan={rowSpan}>{row.responsible_manager_id || row.responsible_text ? <span className="matrix-v5-person-chip">{responsible}</span> : '—'}</td>}
-              {detailIndex === 0 && <td rowSpan={rowSpan}>{row.priority ? <span className={`matrix-v5-priority matrix-v5-priority--${priorityClass(row.priority)}`}>{row.priority}</span> : '—'}</td>}
+              <td className="matrix-v5-action-cell matrix-v10-central-objective"><div className="matrix-v10-central-objective-stack"><div className="matrix-v10-central-subpoint"><span className="matrix-v10-subpoint-badge">{detail.label}</span><span>{detail.subpoint}</span></div></div></td>
               <td>{detail.milestones}</td><td>{detail.kpi}</td><td>{formatDate(detail.startDate)}</td><td>{formatDate(detail.endDate)}</td>
-              {detailIndex === 0 && <td rowSpan={rowSpan}>{row.risks || '—'}</td>}
-              {detailIndex === 0 && <td rowSpan={rowSpan}>{row.restrictions || '—'}</td>}
-              {detailIndex === 0 && <td rowSpan={rowSpan}>{row.support || '—'}</td>}
-              {detailIndex === 0 && <td rowSpan={rowSpan}>{row.deliverables || '—'}</td>}
-              {detailIndex === 0 && <td rowSpan={rowSpan}>{row.committee || '—'}</td>}
-              {detailIndex === 0 && effectiveCanManage && <td rowSpan={rowSpan}><div className="matrix-v5-row-actions"><button type="button" title="Eliminar fila" className="danger" onClick={event => { event.stopPropagation(); void deleteRow(row.id) }}><Trash2 size={14}/></button></div></td>}
             </tr>)}
           </Fragment>
         })}
