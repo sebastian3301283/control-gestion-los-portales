@@ -1,6 +1,7 @@
 from pathlib import Path
 import re
 
+# Rerun after tightening the focused regression assertion.
 
 def replace_once(text: str, old: str, new: str, label: str) -> str:
     if old not in text:
