@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 
 import GuidelineCatalogV2 from './GuidelineCatalogV2'
 import GuidelineDocumentImport from './GuidelineDocumentImport'
 import GuidelinePptPanel from './GuidelinePptPanel'
+import CentralGuidelineWorkspace from './CentralGuidelineWorkspace'
 import './planning-guidelines.css'
 
 type Unit = { code: string; name: string }
@@ -15,6 +16,7 @@ type PendingDelete = {
   button: HTMLButtonElement
   text: string
 }
+type SelectedArea = { id: string; name: string } | null
 
 export default function PlanningGuidelines({ unit, periodId, canManage }: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
@@ -23,8 +25,12 @@ export default function PlanningGuidelines({ unit, periodId, canManage }: Props)
   const [importOpen, setImportOpen] = useState(false)
   const [catalogRevision, setCatalogRevision] = useState(0)
   const [importNotice, setImportNotice] = useState('')
+  const [fullscreen, setFullscreen] = useState(false)
+  const [selectedArea, setSelectedArea] = useState<SelectedArea>(null)
+  const isCentral = unit.code === 'CENTRAL'
 
   useEffect(() => {
+    if (isCentral) return
     const root = rootRef.current
     if (!root) return
 
@@ -56,9 +62,22 @@ export default function PlanningGuidelines({ unit, periodId, canManage }: Props)
       stopped = true
       observer.disconnect()
     }
-  }, [periodId, catalogRevision])
+  }, [periodId, catalogRevision, isCentral])
+
+  useEffect(() => {
+    if (!fullscreen) return
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setFullscreen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.body.style.overflow = previous
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [fullscreen])
 
   function handleClickCapture(event: ReactMouseEvent<HTMLDivElement>) {
+    if (isCentral) return
     const target = event.target as HTMLElement
     const button = target.closest<HTMLButtonElement>('.guideline-actions .danger')
     if (!button) return
@@ -91,17 +110,21 @@ export default function PlanningGuidelines({ unit, periodId, canManage }: Props)
     }
   }
 
-  return <div ref={rootRef} className="planning-guidelines-host" onClickCapture={handleClickCapture}>
+  return <div ref={rootRef} className={`planning-guidelines-host ${fullscreen ? 'planning-guidelines-host--fullscreen' : ''} ${isCentral ? 'planning-guidelines-host--central' : ''}`} onClickCapture={handleClickCapture}>
     <div className="planning-guidelines-heading">
-      <div><span>Lineamientos estratégicos</span><h3>Lineamientos de {unit.name}</h3><p>Los lineamientos y el PPT de soporte quedan reunidos dentro de la planificación de esta unidad.</p></div>
-      {canManage && <button className="planning-guideline-import-button" type="button" onClick={() => { setImportNotice(''); setImportOpen(true) }}><FileSpreadsheet size={17}/> Importar Excel</button>}
+      <div><span>Lineamientos estratégicos</span><h3>Lineamientos de {unit.name}</h3><p>{isCentral ? 'Selecciona un área de Central para revisar sus lineamientos y documentos de soporte.' : 'Los lineamientos y documentos de soporte quedan reunidos dentro de la planificación de esta unidad.'}</p></div>
+      <div className="planning-guidelines-heading-actions">
+        {isCentral && <button className="planning-guideline-fullscreen-button" type="button" onClick={() => setFullscreen(value => !value)}><span aria-hidden="true">{fullscreen ? '↙' : '↗'}</span>{fullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}</button>}
+        {canManage && <button className="planning-guideline-import-button" type="button" onClick={() => { setImportNotice(''); setImportOpen(true) }}><FileSpreadsheet size={17}/> Importar Excel</button>}
+      </div>
     </div>
 
     {canManage && <div className="planning-guideline-admin-note"><strong>Administración de lineamientos</strong><span>Importar, editar y eliminar lineamientos está disponible únicamente para Gestión Estratégica / Control de Gestión.</span></div>}
     {importNotice && <div className="planning-guideline-import-notice">{importNotice}</div>}
 
-    <GuidelineCatalogV2 key={catalogRevision} units={[unit]} canManage={canManage} />
-    <GuidelinePptPanel unit={unit} periodId={periodId} canManage={canManage} />
+    {isCentral ? <CentralGuidelineWorkspace key={catalogRevision} periodId={periodId} canManage={canManage} onAreaChange={setSelectedArea} /> : <GuidelineCatalogV2 key={catalogRevision} units={[unit]} canManage={canManage} />}
+
+    <GuidelinePptPanel unit={unit} periodId={periodId} canManage={canManage} managementId={isCentral ? selectedArea?.id : null} managementName={isCentral ? selectedArea?.name : null} />
 
     <GuidelineDocumentImport
       unit={unit}
