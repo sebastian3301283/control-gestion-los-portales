@@ -15,3 +15,11 @@ export function splitSubpoints(value) {
 export function normalizeSubpoints(value) {
   return splitSubpoints(value).join('\n')
 }
+
+export function prepareCentralMatrixFields(lineamiento, objective, subpoints) {
+  return {
+    objective_group: String(lineamiento ?? '').trim(),
+    objective: String(objective ?? '').trim(),
+    action_plan: normalizeSubpoints(subpoints),
+  }
+}
