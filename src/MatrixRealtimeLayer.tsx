@@ -4,7 +4,8 @@ import { supabase } from './lib/supabase'
 import { collaborationLocationLabel, flattenPresenceState, type CollaborationLocation, type MatrixPresenceUser } from './matrix-realtime-presence.js'
 import './matrix-realtime-layer.css'
 
-type Props = { children: ReactNode }
+type UnitCode = 'HU' | 'DEP' | 'VS' | 'HOT' | 'CENTRAL'
+type Props = { children: ReactNode; periodId: string; unitCode: UnitCode }
 type PresencePayload = MatrixPresenceUser & { online_at: string }
 
 function initials(value: string) {
@@ -48,27 +49,64 @@ function locationFromTarget(target: HTMLElement): CollaborationLocation | null {
   return { field: editable.getAttribute('aria-label') || editable.getAttribute('placeholder') || 'Campo' }
 }
 
-export default function MatrixRealtimeLayer({ children }: Props) {
+export default function MatrixRealtimeLayer({ children, periodId, unitCode }: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
   const channelRef = useRef<ReturnType<NonNullable<typeof supabase>['channel']> | null>(null)
   const identityRef = useRef<{ user_id: string; name: string; email: string } | null>(null)
   const clearLocationTimerRef = useRef<number | null>(null)
+  const pendingRefreshRef = useRef(false)
   const [matrixId, setMatrixId] = useState('')
   const [users, setUsers] = useState<MatrixPresenceUser[]>([])
   const [currentUserId, setCurrentUserId] = useState('')
   const [connected, setConnected] = useState(false)
+  const [refreshRevision, setRefreshRevision] = useState(0)
+
+  function localEditorOpen() {
+    const root = rootRef.current
+    return Boolean(root?.querySelector('.matrix-v12-editor,.matrix-v5-edit-row'))
+  }
+
+  function requestRefresh() {
+    if (localEditorOpen()) { pendingRefreshRef.current = true; return }
+    pendingRefreshRef.current = false
+    setRefreshRevision(value => value + 1)
+  }
 
   useEffect(() => {
+    if (!supabase) return
     const root = rootRef.current
     if (!root) return
-    const syncMatrix = () => {
-      const id = root.querySelector<HTMLElement>('.matrix-v11-host[data-matrix-id]')?.dataset.matrixId || ''
-      setMatrixId(current => current === id ? current : id)
+    let stopped = false
+    let running = false
+
+    const resolveMatrix = async () => {
+      if (stopped || running) return
+      const areaName = root.querySelector<HTMLElement>('.matrix-v5-summary > div:first-child strong')?.textContent?.trim() || ''
+      if (!areaName) { setMatrixId(''); return }
+      running = true
+      try {
+        const { data: managementData } = await supabase.from('managements_global').select('id').eq('unit_code', unitCode).eq('active', true).ilike('name', areaName)
+        const managementIds = (managementData || []).map(item => String(item.id))
+        if (!managementIds.length) return
+        const { data: processData } = await supabase.from('processes').select('id').eq('unit_code', unitCode).eq('active', true).in('management_id', managementIds)
+        const processIds = (processData || []).map(item => String(item.id))
+        if (!processIds.length) return
+        const { data: matrixData } = await supabase.from('matrices').select('id').eq('period_id', periodId).eq('unit_code', unitCode).eq('active', true).in('process_id', processIds).limit(1).maybeSingle()
+        const next = matrixData?.id ? String(matrixData.id) : ''
+        setMatrixId(current => current === next ? current : next)
+      } finally { running = false }
     }
-    const observer = new MutationObserver(syncMatrix)
-    observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-matrix-id'] })
-    syncMatrix()
-    return () => observer.disconnect()
+
+    void resolveMatrix()
+    const timer = window.setInterval(() => void resolveMatrix(), 1200)
+    return () => { stopped = true; window.clearInterval(timer) }
+  }, [periodId, unitCode, refreshRevision])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (pendingRefreshRef.current && !localEditorOpen()) requestRefresh()
+    }, 250)
+    return () => window.clearInterval(timer)
   }, [])
 
   useEffect(() => {
@@ -101,14 +139,17 @@ export default function MatrixRealtimeLayer({ children }: Props) {
           if (!incoming.user_id) return
           setUsers(current => current.map(item => item.user_id === incoming.user_id ? { ...item, location: incoming.location || null } : item))
         })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'matrix_rows', filter: `matrix_id=eq.${matrixId}` }, payload => {
-          window.dispatchEvent(new CustomEvent('matrix-realtime-data-change', { detail: { matrixId, table: 'matrix_rows', eventType: payload.eventType } }))
-        })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'matrix_row_edit_locks', filter: `matrix_id=eq.${matrixId}` }, payload => {
-          window.dispatchEvent(new CustomEvent('matrix-realtime-data-change', { detail: { matrixId, table: 'matrix_row_edit_locks', eventType: payload.eventType } }))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'matrix_rows', filter: `matrix_id=eq.${matrixId}` }, () => requestRefresh())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'matrix_row_edit_locks', filter: `matrix_id=eq.${matrixId}` }, () => {
+          window.dispatchEvent(new CustomEvent('matrix-realtime-lock-change', { detail: { matrixId } }))
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'matrix_row_subpoints' }, payload => {
-          window.dispatchEvent(new CustomEvent('matrix-realtime-data-change', { detail: { matrixId, table: 'matrix_row_subpoints', eventType: payload.eventType } }))
+          const record = (payload.new && Object.keys(payload.new).length ? payload.new : payload.old) as Record<string, unknown>
+          const rowId = String(record?.matrix_row_id || '')
+          if (!rowId) { requestRefresh(); return }
+          void supabase.from('matrix_rows').select('matrix_id').eq('id', rowId).maybeSingle().then(({ data }) => {
+            if (String(data?.matrix_id || '') === matrixId) requestRefresh()
+          })
         })
         .subscribe(async status => {
           if (cancelled || !channel) return
@@ -170,6 +211,6 @@ export default function MatrixRealtimeLayer({ children }: Props) {
         })}
       </div>
     </div>}
-    {children}
+    <div className="matrix-realtime-content" key={refreshRevision}>{children}</div>
   </div>
 }
