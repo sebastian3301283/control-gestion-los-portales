@@ -9,6 +9,10 @@ function date(value) {
   return normalized || null
 }
 
+function hasSubpointData(item) {
+  return Boolean(item.text || item.milestones || item.kpi || item.start_date || item.end_date)
+}
+
 export function buildCentralSubpointDrafts(records, legacyRow = {}) {
   const ordered = [...(records || [])]
     .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0))
@@ -20,7 +24,7 @@ export function buildCentralSubpointDrafts(records, legacyRow = {}) {
       start_date: text(item.start_date),
       end_date: text(item.end_date),
     }))
-    .filter(item => item.text)
+    .filter(hasSubpointData)
 
   if (ordered.length) return ordered
 
@@ -43,7 +47,7 @@ export function normalizeCentralSubpointRows(drafts) {
       start_date: date(item.start_date),
       end_date: date(item.end_date),
     }))
-    .filter(item => item.text)
+    .filter(hasSubpointData)
     .map((item, sort_order) => ({ ...item, sort_order }))
 }
 
