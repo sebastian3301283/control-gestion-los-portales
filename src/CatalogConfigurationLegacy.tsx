@@ -297,7 +297,7 @@ export default function CatalogConfiguration({ units, canManage }: Props) {
       const XLSX = await import(/* @vite-ignore */ XLSX_MODULE_URL)
       const workbook = XLSX.read(await file.arrayBuffer(), { type:'array' })
       const rows: Record<string, unknown>[] = []
-      workbook.SheetNames.forEach(sheetName => rows.push(...recordsFromDetectedHeader(XLSX, workbook.Sheets[sheetName]).map(row => ({ ...row, __sheetName: sheetName }))))
+      workbook.SheetNames.forEach((sheetName: string) => rows.push(...recordsFromDetectedHeader(XLSX, workbook.Sheets[sheetName]).map(row => ({ ...row, __sheetName: sheetName }))))
       if (!rows.length) throw new Error('FORMAT_NOT_FOUND')
 
       const parsed = rows.map((row,index) => {

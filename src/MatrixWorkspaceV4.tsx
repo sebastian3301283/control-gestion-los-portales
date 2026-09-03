@@ -385,7 +385,7 @@ export default function MatrixWorkspaceV4({ periodId, year, unitCode, unitName, 
       const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true })
       const firstSheetName = workbook.SheetNames[0]
       if (!firstSheetName) throw new Error('NO_SHEET')
-      const grid = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[firstSheetName], { header: 1, defval: '', raw: true }) as unknown[][]
+      const grid = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheetName], { header: 1, defval: '', raw: true }) as unknown[][]
       const headerIndex = grid.findIndex(row => {
         const normalized = row.map(normalizeText)
         return normalized.some(value => value === 'accion' || value.includes('accion')) && normalized.some(value => value.includes('responsable'))

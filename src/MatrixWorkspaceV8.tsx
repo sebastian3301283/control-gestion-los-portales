@@ -227,7 +227,7 @@ export default function MatrixWorkspaceV8({ periodId, year, unitCode, unitName, 
       const XLSX = await import(/* @vite-ignore */ XLSX_MODULE_URL)
       const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true }); const sheetName = workbook.SheetNames[0]
       if (!sheetName) throw new Error('NO_SHEET')
-      const grid = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[sheetName], { header: 1, defval: '', raw: true }) as unknown[][]
+      const grid = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: '', raw: true }) as unknown[][]
       const headerIndex = grid.findIndex(row => { const n = row.map(normalizeText); return n.some(v => v.includes('accion')) && n.some(v => v.includes('responsable')) })
       if (headerIndex < 0) { onError('No encontramos la fila de encabezados. El Excel debe contener al menos Acción y Responsable.'); return }
       const headers = grid[headerIndex].map(normalizeText); const findCol = (items: string[]) => headers.findIndex(h => items.some(i => h === i || h.includes(i)))
