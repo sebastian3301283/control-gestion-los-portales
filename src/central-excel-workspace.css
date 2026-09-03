@@ -1,0 +1,46 @@
+.matrix-v10-central-excel{border-collapse:separate;border-spacing:0;min-width:1940px;width:max(100%,1940px);table-layout:fixed}
+.matrix-v10-central-excel thead th{position:sticky;top:0;z-index:6;background:#1f6fae;color:#fff;border-right:1px solid rgba(255,255,255,.35);white-space:normal;text-align:center;font-size:12px;font-weight:850;padding:12px 9px}
+.matrix-v10-central-excel thead th:nth-child(1){width:470px}
+.matrix-v10-central-excel thead th:nth-child(2){width:230px}
+.matrix-v10-central-excel thead th:nth-child(3){width:120px}
+.matrix-v10-central-excel thead th:nth-child(4){width:220px}
+.matrix-v10-central-excel thead th:nth-child(5){width:220px}
+.matrix-v10-central-excel thead th:nth-child(6),.matrix-v10-central-excel thead th:nth-child(7){width:135px}
+.matrix-v10-central-excel thead th:nth-child(8){width:240px}
+.matrix-v10-central-excel thead th:nth-child(9){width:210px}
+.matrix-v10-central-excel thead th:nth-child(10){width:210px}
+.matrix-v10-central-excel thead th:nth-child(11){width:200px}
+.matrix-v10-central-excel thead th:nth-child(12){width:190px}
+.matrix-v10-central-excel thead th:last-child{width:82px}
+.matrix-v10-central-excel td{padding:8px 9px;border-right:1px solid #c7d4df;border-bottom:1px solid #c7d4df;background:#fff;vertical-align:top;line-height:1.35;font-size:12px;white-space:normal;overflow-wrap:anywhere}
+.matrix-v10-central-excel-row{cursor:cell}
+.matrix-v10-central-excel-row--editable:hover td{background:#f6fbff}
+.matrix-v10-central-excel-row--editing td{padding:5px;background:#f9fcff}
+.matrix-v10-central-excel-row--editing textarea,.matrix-v10-central-excel-row--editing input,.matrix-v10-central-excel-row--editing select{width:100%;min-width:0;border:1px solid #b8cad8;border-radius:3px;background:#fff;padding:8px;font:inherit;color:#17324a;box-sizing:border-box;outline:none}
+.matrix-v10-central-excel-row--editing textarea{min-height:84px;resize:vertical}
+.matrix-v10-central-excel-row--editing input[type=date]{min-height:38px}
+.matrix-v10-central-excel-row--editing textarea:focus,.matrix-v10-central-excel-row--editing input:focus,.matrix-v10-central-excel-row--editing select:focus{border-color:#1f6fae;box-shadow:inset 0 0 0 1px #1f6fae}
+.matrix-central-objective-group td{padding:8px 10px!important;background:#dbeaf6!important;color:#0d2d48!important;font-size:12px!important;font-weight:900!important;border-bottom:1px solid #aebfcd!important;letter-spacing:0!important;text-transform:none!important}
+.matrix-central-objective-edit-row td{padding:7px 9px!important;background:#dbeaf6!important;border-bottom:1px solid #aebfcd!important}
+.matrix-central-objective-edit{display:flex;align-items:center;gap:9px;width:100%}
+.matrix-central-objective-edit>strong{font-size:10px;letter-spacing:.05em;color:#175c92;white-space:nowrap}
+.matrix-central-objective-edit input,.matrix-central-objective-edit select{min-width:260px;max-width:100%;flex:1;border:1px solid #9fbfd7;border-radius:3px;background:#fff;padding:8px 9px;font:inherit;color:#17324a}
+.matrix-central-objective-edit button{min-height:34px;border:1px solid #9fbfd7;border-radius:4px;background:#fff;color:#175c92;font-size:11px;font-weight:800;padding:0 12px;white-space:nowrap}
+.matrix-central-responsible-chips{display:flex;flex-wrap:wrap;gap:4px}
+.matrix-central-responsible-chips span,.matrix-central-summary-chips i{display:inline-flex;align-items:center;padding:3px 6px;border-radius:3px;background:#e8f3eb;color:#1e6e3b;font-size:10px;font-weight:800;font-style:normal;line-height:1.25}
+.matrix-central-responsible-picker{position:relative;width:100%}
+.matrix-central-responsible-picker>summary{list-style:none;min-height:38px;display:flex;align-items:center;border:1px solid #b8cad8;border-radius:3px;background:#fff;padding:6px 8px;cursor:pointer;color:#17324a}
+.matrix-central-responsible-picker>summary::-webkit-details-marker{display:none}
+.matrix-central-summary-chips{display:flex;flex-wrap:wrap;gap:4px}
+.matrix-central-responsible-menu{position:absolute;left:0;top:calc(100% + 4px);z-index:20;width:max(280px,100%);max-height:260px;overflow:auto;border:1px solid #b8cad8;border-radius:5px;background:#fff;box-shadow:0 12px 28px rgba(15,45,70,.16);padding:6px}
+.matrix-central-responsible-menu label{display:flex;align-items:flex-start;gap:8px;padding:7px 6px;border-radius:4px;cursor:pointer}
+.matrix-central-responsible-menu label:hover{background:#f1f7fb}
+.matrix-central-responsible-menu input{width:15px!important;height:15px;margin-top:2px;box-shadow:none!important}
+.matrix-central-responsible-menu label span{display:grid;gap:2px}
+.matrix-central-responsible-menu label strong{font-size:11px;color:#17324a}
+.matrix-central-responsible-menu label small{font-size:9px;color:#71869a}
+.matrix-central-edit-actions{display:flex;align-items:center;gap:5px;justify-content:center}
+.matrix-central-edit-actions button{width:31px;height:31px;border:1px solid #c7d4df;border-radius:4px;background:#fff;display:grid;place-items:center;color:#516b80}
+.matrix-central-edit-actions button.save{background:#1f6fae;border-color:#1f6fae;color:#fff}
+.matrix-v5--expanded .matrix-v10-central-excel thead th{top:0}
+@media(max-width:900px){.matrix-central-objective-edit{align-items:stretch;flex-direction:column}.matrix-central-objective-edit input,.matrix-central-objective-edit select{min-width:0;width:100%}.matrix-central-responsible-menu{width:280px}}
