@@ -19,13 +19,13 @@ test('Central mantiene Guardar y Cancelar arriba del objetivo', () => {
   assert.match(editor, /title="Guardar"/)
 })
 
-test('V11 coloca Responsable, Prioridad y campos generales en la fila principal sin sacar los subpuntos de su fila', () => {
-  assert.match(v11, /enhanceCentralInlineLayout/)
-  assert.match(v11, /matrix-v10-central-inline-header-fill/)
-  assert.match(v11, /matrix-v11-inline-original-hidden/)
-  assert.match(v11, /matrix-v11-inline-detail-placeholder/)
-  assert.match(v11Css, /\.matrix-v11-inline-original-hidden/)
-  assert.doesNotMatch(v11Css, /matrix-v5-edit-row td:nth-child\(2\)/)
+test('Central alinea Responsable y Prioridad de forma nativa sin clonar controles en V11', () => {
+  const editor = centralEditorSource()
+  assert.match(editor, /matrix-v10-central-inline-owner/)
+  assert.match(editor, /matrix-v10-central-inline-priority/)
+  assert.doesNotMatch(v11, /enhanceCentralInlineLayout/)
+  assert.doesNotMatch(v11, /cloneInlineFieldCell/)
+  assert.doesNotMatch(v11Css, /matrix-v5-edit-row > td:first-child/)
 })
 
 test('cada subpunto conserva Hito, KPI, Inicio y Fin en su misma fila', () => {
