@@ -46,6 +46,7 @@ export default function CentralGuidelineWorkspace({ periodId, canManage, onAreaC
   const [managers, setManagers] = useState<Manager[]>([])
   const [selectedAreaId, setSelectedAreaId] = useState('')
   const [search, setSearch] = useState('')
+  const [areaSearch, setAreaSearch] = useState('')
   const [editing, setEditing] = useState<Guideline | null>(null)
   const [editCode, setEditCode] = useState('')
   const [editText, setEditText] = useState('')
@@ -59,10 +60,14 @@ export default function CentralGuidelineWorkspace({ periodId, canManage, onAreaC
     const counts = new Map<string, number>()
     guidelines.forEach(item => counts.set(item.management_id, (counts.get(item.management_id) || 0) + 1))
     return managements
-      .filter(item => counts.has(item.id))
       .map(item => ({ ...item, count: counts.get(item.id) || 0 }))
       .sort((a, b) => a.name.localeCompare(b.name, 'es'))
   }, [guidelines, managements])
+
+  const filteredAreas = useMemo(() => {
+    const query = normalize(areaSearch)
+    return query ? areas.filter(item => normalize(item.name).includes(query)) : areas
+  }, [areas, areaSearch])
 
   const selectedArea = useMemo(() => areas.find(item => item.id === selectedAreaId) || null, [areas, selectedAreaId])
 
@@ -73,7 +78,7 @@ export default function CentralGuidelineWorkspace({ periodId, canManage, onAreaC
       .sort((a, b) => a.sort_order - b.sort_order || a.guideline_text.localeCompare(b.guideline_text, 'es'))
   }, [guidelines, selectedAreaId, search])
 
-  useEffect(() => { void load() }, [periodId])
+  useEffect(() => { void load() }, [periodId, canManage])
 
   useEffect(() => {
     if (!selectedAreaId && areas.length) setSelectedAreaId(areas[0].id)
@@ -90,19 +95,31 @@ export default function CentralGuidelineWorkspace({ periodId, canManage, onAreaC
     setError('')
     const [guidelineResult, managementResult, managerResult] = await Promise.all([
       supabase.from('planning_guidelines').select('id,period_id,unit_code,management_id,code,guideline_text,responsible_manager_id,active,sort_order').eq('period_id', periodId).eq('unit_code', 'CENTRAL').order('sort_order').order('created_at'),
-      supabase.from('managements_global').select('id,name').eq('active', true).order('name'),
+      supabase.from('managements_global').select('id,name').eq('unit_code', 'CENTRAL').eq('active', true).order('name'),
       supabase.from('managers').select('id,name,cargo').eq('active', true).order('name'),
     ])
-    setLoading(false)
     if (guidelineResult.error || managementResult.error || managerResult.error) {
+      setLoading(false)
       setError('No pudimos cargar los lineamientos de Central.')
       return
     }
+
     const nextGuidelines = (guidelineResult.data || []) as Guideline[]
-    const permittedIds = new Set(nextGuidelines.map(item => item.management_id))
+    const allCentralAreas = (managementResult.data || []) as Management[]
+    let visibleAreas = allCentralAreas
+
+    if (!canManage) {
+      const permissionChecks = await Promise.all(allCentralAreas.map(async area => {
+        const { data } = await supabase.rpc('can_access_management', { management_id_input: area.id, unit_code_input: 'CENTRAL' })
+        return data ? area : null
+      }))
+      visibleAreas = permissionChecks.filter((item): item is Management => Boolean(item))
+    }
+
     setGuidelines(nextGuidelines)
-    setManagements(((managementResult.data || []) as Management[]).filter(item => permittedIds.has(item.id)))
+    setManagements(visibleAreas)
     setManagers((managerResult.data || []) as Manager[])
+    setLoading(false)
   }
 
   function beginEdit(item: Guideline) {
@@ -144,7 +161,7 @@ export default function CentralGuidelineWorkspace({ periodId, canManage, onAreaC
     await load()
   }
 
-  if (loading) return <div className="central-guideline-loading"><LoaderCircle className="spin" size={22}/> Cargando lineamientos de Central...</div>
+  if (loading) return <div className="central-guideline-loading"><LoaderCircle className="spin" size={22}/> Cargando áreas y lineamientos de Central...</div>
 
   return <div className="central-guideline-workspace">
     {error && <div className="central-guideline-message error">{error}</div>}
@@ -153,20 +170,15 @@ export default function CentralGuidelineWorkspace({ periodId, canManage, onAreaC
     <div className="central-guideline-filters">
       <label className="central-guideline-area-select"><span>Área</span><select value={selectedAreaId} onChange={event => setSelectedAreaId(event.target.value)}><option value="">Selecciona un área</option>{areas.map(area => <option key={area.id} value={area.id}>{area.name}</option>)}</select></label>
       <label className="central-guideline-search"><Search size={17}/><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar lineamiento por palabra clave..."/></label>
-      <button type="button" className="central-guideline-clear" onClick={() => setSearch('')}>Limpiar filtros</button>
+      <button type="button" className="central-guideline-clear" onClick={() => { setSearch(''); setAreaSearch('') }}>Limpiar filtros</button>
     </div>
 
     <div className="central-guideline-layout">
       <aside className="central-guideline-sidebar">
         <div className="central-guideline-sidebar-title"><span>Áreas de Central</span><strong>{areas.length}</strong></div>
-        <label className="central-guideline-sidebar-search"><Search size={15}/><input placeholder="Buscar área..." onChange={event => {
-          const query = normalize(event.target.value)
-          document.querySelectorAll<HTMLElement>('[data-central-area-name]').forEach(node => {
-            node.hidden = Boolean(query) && !normalize(node.dataset.centralAreaName || '').includes(query)
-          })
-        }}/></label>
+        <label className="central-guideline-sidebar-search"><Search size={15}/><input value={areaSearch} placeholder="Buscar área..." onChange={event => setAreaSearch(event.target.value)}/></label>
         <div className="central-guideline-area-list">
-          {areas.map(area => <button key={area.id} type="button" data-central-area-name={area.name} className={selectedAreaId === area.id ? 'active' : ''} onClick={() => setSelectedAreaId(area.id)}><BookOpenText size={17}/><span>{area.name}</span><strong>{area.count}</strong></button>)}
+          {filteredAreas.map(area => <button key={area.id} type="button" className={selectedAreaId === area.id ? 'active' : ''} onClick={() => setSelectedAreaId(area.id)}><BookOpenText size={17}/><span>{area.name}</span><strong>{area.count}</strong></button>)}
         </div>
       </aside>
 
