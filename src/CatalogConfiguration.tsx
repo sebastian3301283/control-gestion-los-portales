@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import CatalogConfigurationLegacy from './CatalogConfigurationLegacy'
 import PeriodCatalog from './PeriodCatalog'
 import PermissionCatalogV4 from './PermissionCatalogV4'
+import GuidelineAreaCatalog from './GuidelineAreaCatalog'
 import './configuration-area-filter.css'
 
 type Unit = { code: string; name: string }
@@ -43,8 +44,13 @@ export default function CatalogConfiguration(props: Props) {
 
     let currentFilter = 'ALL'
 
+    const getMatrixAreaSection = () => [...root.querySelectorAll<HTMLElement>('.config-accordion')]
+      .find(section => section.querySelector('h2')?.textContent?.trim() === 'Activar áreas por unidad') || null
+
     const applyStatusFilter = () => {
-      root.querySelectorAll<HTMLElement>('.matrix-area-source-card').forEach(card => {
+      const section = getMatrixAreaSection()
+      if (!section) return
+      section.querySelectorAll<HTMLElement>('.matrix-area-source-card').forEach(card => {
         const active = Boolean(card.querySelector('.matrix-area-visibility.on'))
         const visible = currentFilter === 'ALL' || (currentFilter === 'ACTIVE' && active) || (currentFilter === 'INACTIVE' && !active)
         card.style.display = visible ? '' : 'none'
@@ -52,7 +58,8 @@ export default function CatalogConfiguration(props: Props) {
     }
 
     const ensureStatusFilter = () => {
-      const toolbar = root.querySelector<HTMLElement>('.area-editor-toolbar')
+      const section = getMatrixAreaSection()
+      const toolbar = section?.querySelector<HTMLElement>('.area-editor-toolbar')
       if (!toolbar) return
 
       let select = toolbar.querySelector<HTMLSelectElement>('.matrix-area-status-filter')
@@ -81,6 +88,7 @@ export default function CatalogConfiguration(props: Props) {
   return <div ref={rootRef} className="configuration-catalog-stack" style={{ display: 'grid', gap: 16 }}>
     <PeriodCatalog canManage={props.canManage} />
     <CatalogConfigurationLegacy {...props} />
+    <GuidelineAreaCatalog {...props} />
     <PermissionCatalogV4 {...props} />
   </div>
 }
