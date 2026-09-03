@@ -5,18 +5,34 @@ import { readFile } from 'node:fs/promises'
 const source = await readFile(new URL('../src/MatrixWorkspaceV10.tsx', import.meta.url), 'utf8')
 const css = await readFile(new URL('../src/matrix-subpoints.css', import.meta.url), 'utf8')
 
-test('Central coloca lineamiento y objetivo arriba y los subpuntos debajo en la misma zona de edición', () => {
-  assert.match(source, /matrix-v10-central-inline-header-row/)
-  assert.match(source, /matrix-v10-central-inline-subpoint-cell/)
-  assert.match(source, /colSpan=\{2\}/)
-  assert.match(css, /\.matrix-v10-central-inline-header-row/)
-})
-
-test('Central muestra Guardar y Cancelar arriba de la edición y no dentro de la columna Acciones', () => {
-  assert.match(source, /matrix-v10-inline-top-actions/)
-  assert.match(css, /\.matrix-v10-inline-top-actions/)
+function centralEditorSource() {
   const start = source.indexOf('function renderCentralInlineEditor')
   const end = source.indexOf('return <div className=', start)
-  const editor = source.slice(start, end)
-  assert.doesNotMatch(editor, /matrix-v5-row-actions/)
+  return source.slice(start, end)
+}
+
+test('Central mantiene Guardar y Cancelar arriba y Responsable/Prioridad en la fila principal', () => {
+  const editor = centralEditorSource()
+  const detailStart = editor.indexOf('centralSubpointDrafts.map')
+  const header = editor.slice(0, detailStart)
+
+  assert.match(header, /matrix-v10-inline-top-actions/)
+  assert.match(header, /responsible_manager_id/)
+  assert.match(header, /rowDraft\.priority/)
+  assert.match(css, /\.matrix-v10-inline-top-actions/)
+})
+
+test('cada subpunto queda debajo del objetivo y al lado de Hito, KPI, Inicio y Fin', () => {
+  const editor = centralEditorSource()
+  const detailStart = editor.indexOf('centralSubpointDrafts.map')
+  const detailRows = editor.slice(detailStart)
+
+  assert.match(detailRows, /matrix-v10-central-inline-subpoint-cell/)
+  assert.match(detailRows, /detail\.text/)
+  assert.match(detailRows, /detail\.milestones/)
+  assert.match(detailRows, /detail\.kpi/)
+  assert.match(detailRows, /detail\.start_date/)
+  assert.match(detailRows, /detail\.end_date/)
+  assert.doesNotMatch(detailRows, /responsible_manager_id/)
+  assert.doesNotMatch(detailRows, /rowDraft\.priority/)
 })
