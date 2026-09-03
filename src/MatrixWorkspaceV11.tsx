@@ -1,6 +1,7 @@
 import { BookOpenText, Users } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import MatrixWorkspaceV10 from './MatrixWorkspaceV10'
+import CentralExcelWorkspace from './CentralExcelWorkspace'
 import { supabase } from './lib/supabase'
 import './matrix-workspace-v11.css'
 import './matrix-collaboration.css'
@@ -355,6 +356,6 @@ export default function MatrixWorkspaceV11(props: Props) {
       {activeEditors.length > 0 && <div className="matrix-collab-editors">{activeEditors.map(editor => <span className="matrix-collab-user" key={editor.user_id} title={editor.email}><i>{initials(editor.name)}</i><b>{editor.name}{editor.user_id === currentUserIdRef.current ? ' (tú)' : ''}</b></span>)}</div>}
     </div>}
     {onViewGuidelines && <div className="matrix-v11-guideline-shortcut"><button type="button" onClick={onViewGuidelines}><BookOpenText size={16}/> Ver lineamientos</button></div>}
-    <MatrixWorkspaceV10 key={revision} {...workspaceProps} />
+    {props.unitCode === 'CENTRAL' ? <CentralExcelWorkspace key={revision} {...workspaceProps} unitCode="CENTRAL" /> : <MatrixWorkspaceV10 key={revision} {...workspaceProps} />}
   </div>
 }
