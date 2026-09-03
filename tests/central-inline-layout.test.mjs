@@ -2,21 +2,41 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
-const source = await readFile(new URL('../src/MatrixWorkspaceV10.tsx', import.meta.url), 'utf8')
-const css = await readFile(new URL('../src/matrix-subpoints.css', import.meta.url), 'utf8')
+const v10 = await readFile(new URL('../src/MatrixWorkspaceV10.tsx', import.meta.url), 'utf8')
+const v11 = await readFile(new URL('../src/MatrixWorkspaceV11.tsx', import.meta.url), 'utf8')
+const v11Css = await readFile(new URL('../src/matrix-workspace-v11.css', import.meta.url), 'utf8')
 
-test('Central coloca lineamiento y objetivo arriba y los subpuntos debajo en la misma zona de edición', () => {
-  assert.match(source, /matrix-v10-central-inline-header-row/)
-  assert.match(source, /matrix-v10-central-inline-subpoint-cell/)
-  assert.match(source, /colSpan=\{2\}/)
-  assert.match(css, /\.matrix-v10-central-inline-header-row/)
+function centralEditorSource() {
+  const start = v10.indexOf('function renderCentralInlineEditor')
+  const end = v10.indexOf('return <div className=', start)
+  return v10.slice(start, end)
+}
+
+test('Central mantiene Guardar y Cancelar arriba del objetivo', () => {
+  const editor = centralEditorSource()
+  assert.match(editor, /matrix-v10-inline-top-actions/)
+  assert.match(editor, /title="Cancelar"/)
+  assert.match(editor, /title="Guardar"/)
 })
 
-test('Central muestra Guardar y Cancelar arriba de la edición y no dentro de la columna Acciones', () => {
-  assert.match(source, /matrix-v10-inline-top-actions/)
-  assert.match(css, /\.matrix-v10-inline-top-actions/)
-  const start = source.indexOf('function renderCentralInlineEditor')
-  const end = source.indexOf('return <div className=', start)
-  const editor = source.slice(start, end)
-  assert.doesNotMatch(editor, /matrix-v5-row-actions/)
+test('V11 coloca Responsable, Prioridad y campos generales en la fila principal sin sacar los subpuntos de su fila', () => {
+  assert.match(v11, /enhanceCentralInlineLayout/)
+  assert.match(v11, /matrix-v10-central-inline-header-fill/)
+  assert.match(v11, /matrix-v11-inline-original-hidden/)
+  assert.match(v11, /matrix-v11-inline-detail-placeholder/)
+  assert.match(v11Css, /\.matrix-v11-inline-original-hidden/)
+  assert.doesNotMatch(v11Css, /matrix-v5-edit-row td:nth-child\(2\)/)
+})
+
+test('cada subpunto conserva Hito, KPI, Inicio y Fin en su misma fila', () => {
+  const editor = centralEditorSource()
+  const detailStart = editor.indexOf('centralSubpointDrafts.map')
+  const detailRows = editor.slice(detailStart)
+
+  assert.match(detailRows, /matrix-v10-central-inline-subpoint-cell/)
+  assert.match(detailRows, /detail\.text/)
+  assert.match(detailRows, /detail\.milestones/)
+  assert.match(detailRows, /detail\.kpi/)
+  assert.match(detailRows, /detail\.start_date/)
+  assert.match(detailRows, /detail\.end_date/)
 })
