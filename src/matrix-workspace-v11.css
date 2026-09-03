@@ -2,8 +2,7 @@
 
 /* V11: Central sin columna N°, Acción amplia y controles contenidos. */
 .matrix-v11-host .matrix-v10.matrix-v5--central .matrix-v5-sheet thead th:first-child,
-.matrix-v11-host .matrix-v10.matrix-v5--central .matrix-v5-sheet tbody td.matrix-v5-number,
-.matrix-v11-host .matrix-v10.matrix-v5--central .matrix-v5-sheet tbody tr.matrix-v5-edit-row > td:first-child{
+.matrix-v11-host .matrix-v10.matrix-v5--central .matrix-v5-sheet tbody td.matrix-v5-number{
   display:none!important;
 }
 
@@ -27,14 +26,6 @@
   width:100%!important;
   min-width:0!important;
 }
-
-.matrix-v11-central-subpoint-header-hidden{display:none!important}
-.matrix-v11-inline-original-hidden{visibility:hidden!important;pointer-events:none!important}
-.matrix-v11-inline-proxy{vertical-align:top!important;background:#f8fbfe!important}
-.matrix-v11-inline-detail-placeholder{background:#f8fbfe!important}
-.matrix-v11-inline-responsible select,.matrix-v11-inline-priority select{margin-top:0!important}
-.matrix-v11-inline-general-field textarea{min-height:118px!important}
-.matrix-v11-host .matrix-v10.matrix-v5--central .matrix-v10-central-inline-editor-row .matrix-v10-central-inline-subpoint-cell textarea{min-height:86px!important}
 
 .matrix-v11-guideline-shortcut{display:flex;justify-content:flex-end;margin:0 0 10px}.matrix-v11-guideline-shortcut button{display:inline-flex;align-items:center;gap:7px;min-height:38px;padding:0 14px;border:1px solid #cbdbe7;border-radius:9px;background:#fff;color:#1769aa;font-size:11px;font-weight:850;cursor:pointer}.matrix-v11-guideline-shortcut button:hover{background:#eef7fd;border-color:#8ab9d8}
 
