@@ -13,8 +13,10 @@ test('Central conserva la toolbar completa de MatrixWorkspaceV11', () => {
   assert.match(v12, /<MatrixWorkspaceV11/)
 })
 
-test('Central renderiza una columna y filas React reales por subpunto sin manipular el DOM', () => {
-  assert.match(v10, /<th>Subpunto<\/th>/)
+test('Central coloca los subpuntos debajo de Objetivo general y mantiene filas React reales sin columna separada', () => {
+  assert.doesNotMatch(v10, /<th>Subpunto<\/th>/)
+  assert.match(v10, /matrix-v10-central-inline-subpoint-cell/)
+  assert.match(v10, /matrix-v10-central-objective-stack/)
   assert.match(v10, /matrix-v10-central-subpoint-row/)
   assert.doesNotMatch(v12, /MutationObserver|document\.createElement/)
 })
@@ -22,4 +24,5 @@ test('Central renderiza una columna y filas React reales por subpunto sin manipu
 test('el CSS oculta únicamente la celda de número y no el primer subpunto de filas posteriores', () => {
   assert.match(v11Css, /td\.matrix-v5-number/)
   assert.doesNotMatch(v11Css, /tr:not\(\.matrix-v5-objective-row\)\s*>\s*td:first-child/)
+  assert.doesNotMatch(v11Css, /matrix-v5-edit-row\s*>\s*td:first-child/)
 })
