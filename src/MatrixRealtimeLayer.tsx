@@ -126,7 +126,7 @@ export default function MatrixRealtimeLayer({ children, periodId, unitCode }: Pr
       setCurrentUserId(user.id)
 
       const sessionKey = `${user.id}:${typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : Date.now()}`
-      channel = supabase.channel(`matrix-collab:${matrixId}`, { config: { presence: { key: sessionKey } } })
+      channel = supabase.channel(`matrix-collab:${matrixId}`, { config: { private: true, presence: { key: sessionKey } } })
       channelRef.current = channel
 
       channel
@@ -139,9 +139,15 @@ export default function MatrixRealtimeLayer({ children, periodId, unitCode }: Pr
           if (!incoming.user_id) return
           setUsers(current => current.map(item => item.user_id === incoming.user_id ? { ...item, location: incoming.location || null } : item))
         })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'matrix_rows', filter: `matrix_id=eq.${matrixId}` }, () => requestRefresh())
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'matrix_row_edit_locks', filter: `matrix_id=eq.${matrixId}` }, () => {
-          window.dispatchEvent(new CustomEvent('matrix-realtime-lock-change', { detail: { matrixId } }))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'matrix_rows' }, payload => {
+          const record = (payload.new && Object.keys(payload.new).length ? payload.new : payload.old) as Record<string, unknown>
+          const changedMatrix = String(record?.matrix_id || '')
+          if (!changedMatrix || changedMatrix === matrixId) requestRefresh()
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'matrix_row_edit_locks' }, payload => {
+          const record = (payload.new && Object.keys(payload.new).length ? payload.new : payload.old) as Record<string, unknown>
+          const changedMatrix = String(record?.matrix_id || '')
+          if (!changedMatrix || changedMatrix === matrixId) window.dispatchEvent(new CustomEvent('matrix-realtime-lock-change', { detail: { matrixId } }))
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'matrix_row_subpoints' }, payload => {
           const record = (payload.new && Object.keys(payload.new).length ? payload.new : payload.old) as Record<string, unknown>
