@@ -1,5 +1,5 @@
 import { Eye, FileText, LoaderCircle, Trash2, Upload } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from './lib/supabase'
 import './guideline-ppt-panel.css'
 
@@ -10,6 +10,7 @@ type StoredDocument = {
   updated_at?: string | null
   metadata?: { size?: number } | null
 }
+type AreaOption = { id: string; name: string }
 type Props = {
   unit: Unit
   periodId: string
@@ -39,6 +40,8 @@ function isPdf(name: string) {
 export default function GuidelinePptPanel({ unit, periodId, canManage, managementId, managementName }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [files, setFiles] = useState<StoredDocument[]>([])
+  const [areas, setAreas] = useState<AreaOption[]>([])
+  const [localAreaId, setLocalAreaId] = useState('')
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
@@ -47,24 +50,50 @@ export default function GuidelinePptPanel({ unit, periodId, canManage, managemen
   const [viewerPdf, setViewerPdf] = useState(false)
   const [areaCanEdit, setAreaCanEdit] = useState(false)
 
-  const folder = managementId ? `${unit.code}/${periodId}/${managementId}` : `${unit.code}/${periodId}`
-  const areaRequired = unit.code === 'CENTRAL'
+  const effectiveManagementId = managementId || localAreaId || ''
+  const effectiveArea = useMemo(() => {
+    if (managementId) return { id: managementId, name: managementName || 'Área seleccionada' }
+    return areas.find(area => area.id === localAreaId) || null
+  }, [managementId, managementName, areas, localAreaId])
+  const folder = effectiveManagementId ? `${unit.code}/${periodId}/${effectiveManagementId}` : ''
   const canUpload = canManage || areaCanEdit
+
+  useEffect(() => {
+    if (!managementId) void loadAreas()
+  }, [unit.code, periodId, managementId])
+
+  useEffect(() => {
+    if (managementId) return
+    if (!localAreaId && areas.length) setLocalAreaId(areas[0].id)
+    if (localAreaId && !areas.some(area => area.id === localAreaId)) setLocalAreaId(areas[0]?.id || '')
+  }, [areas, localAreaId, managementId])
 
   useEffect(() => {
     void loadPermission()
     void loadFiles()
-  }, [unit.code, periodId, managementId])
+  }, [unit.code, periodId, effectiveManagementId])
+
+  async function loadAreas() {
+    if (!supabase) return
+    const [guidelineResult, managementResult] = await Promise.all([
+      supabase.from('planning_guidelines').select('management_id').eq('period_id', periodId).eq('unit_code', unit.code),
+      supabase.from('managements_global').select('id,name').eq('active', true).order('name'),
+    ])
+    if (guidelineResult.error || managementResult.error) return
+    const permittedIds = new Set((guidelineResult.data || []).map(item => String(item.management_id)))
+    const next = ((managementResult.data || []) as AreaOption[]).filter(area => permittedIds.has(area.id))
+    setAreas(next)
+  }
 
   async function loadPermission() {
-    if (!supabase || !managementId || canManage) { setAreaCanEdit(false); return }
-    const { data } = await supabase.rpc('can_edit_management', { management_id_input: managementId, unit_code_input: unit.code })
+    if (!supabase || !effectiveManagementId || canManage) { setAreaCanEdit(false); return }
+    const { data } = await supabase.rpc('can_edit_management', { management_id_input: effectiveManagementId, unit_code_input: unit.code })
     setAreaCanEdit(Boolean(data))
   }
 
   async function loadFiles() {
     if (!supabase) return
-    if (areaRequired && !managementId) {
+    if (!effectiveManagementId) {
       setFiles([])
       setLoading(false)
       setError('')
@@ -85,11 +114,7 @@ export default function GuidelinePptPanel({ unit, periodId, canManage, managemen
   }
 
   async function upload(file: File) {
-    if (!supabase || !canUpload) return
-    if (areaRequired && !managementId) {
-      setError('Selecciona primero un área de Central.')
-      return
-    }
+    if (!supabase || !canUpload || !effectiveManagementId) return
     if (!/\.(pptx?|pdf)$/i.test(file.name)) {
       setError('Solo se permiten archivos PowerPoint (.ppt/.pptx) o PDF (.pdf).')
       return
@@ -120,7 +145,7 @@ export default function GuidelinePptPanel({ unit, periodId, canManage, managemen
   }
 
   async function view(file: StoredDocument) {
-    if (!supabase) return
+    if (!supabase || !effectiveManagementId) return
     setError('')
     const { data, error: signedError } = await supabase.storage.from('planning-ppts').createSignedUrl(`${folder}/${file.name}`, 60 * 30)
     if (signedError || !data?.signedUrl) {
@@ -133,7 +158,7 @@ export default function GuidelinePptPanel({ unit, periodId, canManage, managemen
   }
 
   async function remove(file: StoredDocument) {
-    if (!supabase || !canUpload) return
+    if (!supabase || !canUpload || !effectiveManagementId) return
     const accepted = window.confirm(`¿Eliminar el documento “${displayName(file.name)}”?`)
     if (!accepted) return
     const { error: removeError } = await supabase.storage.from('planning-ppts').remove([`${folder}/${file.name}`])
@@ -146,17 +171,20 @@ export default function GuidelinePptPanel({ unit, periodId, canManage, managemen
 
   return <section className="guideline-ppt-panel">
     <div className="guideline-ppt-head">
-      <div><span>Documentos de soporte{managementName ? ` · ${managementName}` : ''}</span><h4>PowerPoint y PDF de la planificación</h4><p>{managementName ? `Los archivos de ${managementName} solo se muestran a usuarios con acceso a esta área.` : 'Guarda y consulta los documentos de soporte de esta planificación.'}</p></div>
-      {canUpload && (!areaRequired || managementId) && <>
-        <input ref={inputRef} type="file" accept=".ppt,.pptx,.pdf,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation" hidden onChange={event => { const file = event.target.files?.[0]; if (file) void upload(file); event.currentTarget.value = '' }}/>
-        <button type="button" className="guideline-ppt-upload" onClick={() => inputRef.current?.click()} disabled={uploading}>{uploading ? <LoaderCircle className="spin" size={16}/> : <Upload size={16}/>} Guardar PPT / PDF</button>
-      </>}
+      <div><span>Documentos de soporte{effectiveArea ? ` · ${effectiveArea.name}` : ''}</span><h4>PowerPoint y PDF de la planificación</h4><p>{effectiveArea ? `Los archivos de ${effectiveArea.name} solo se muestran a usuarios con acceso a esta área.` : 'Selecciona un área para ver sus documentos de soporte.'}</p></div>
+      <div className="guideline-ppt-head-actions">
+        {!managementId && areas.length > 0 && <label className="guideline-ppt-area-select"><span>Área</span><select value={localAreaId} onChange={event => setLocalAreaId(event.target.value)}>{areas.map(area => <option key={area.id} value={area.id}>{area.name}</option>)}</select></label>}
+        {canUpload && effectiveManagementId && <>
+          <input ref={inputRef} type="file" accept=".ppt,.pptx,.pdf,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation" hidden onChange={event => { const file = event.target.files?.[0]; if (file) void upload(file); event.currentTarget.value = '' }}/>
+          <button type="button" className="guideline-ppt-upload" onClick={() => inputRef.current?.click()} disabled={uploading}>{uploading ? <LoaderCircle className="spin" size={16}/> : <Upload size={16}/>} Guardar PPT / PDF</button>
+        </>}
+      </div>
     </div>
 
     {error && <div className="guideline-ppt-error">{error}</div>}
 
     <div className="guideline-ppt-list">
-      {areaRequired && !managementId ? <div className="guideline-ppt-empty"><FileText size={19}/> Selecciona un área de Central para ver sus documentos.</div> : loading ? <div className="guideline-ppt-empty"><LoaderCircle className="spin" size={17}/> Cargando documentos...</div> : files.length === 0 ? <div className="guideline-ppt-empty"><FileText size={19}/> Aún no hay un PPT o PDF guardado para esta área.</div> : files.map(file => <article key={file.name} className="guideline-ppt-file">
+      {!effectiveManagementId ? <div className="guideline-ppt-empty"><FileText size={19}/> No hay un área disponible para estos documentos.</div> : loading ? <div className="guideline-ppt-empty"><LoaderCircle className="spin" size={17}/> Cargando documentos...</div> : files.length === 0 ? <div className="guideline-ppt-empty"><FileText size={19}/> Aún no hay un PPT o PDF guardado para esta área.</div> : files.map(file => <article key={file.name} className="guideline-ppt-file">
         <span className="guideline-ppt-file-icon"><FileText size={21}/></span>
         <div className="guideline-ppt-file-copy"><strong>{displayName(file.name)}</strong><small>{isPdf(file.name) ? 'PDF' : 'PowerPoint'}{file.metadata?.size ? ` · ${sizeLabel(file.metadata.size)}` : ''}{file.created_at ? ` · ${new Date(file.created_at).toLocaleString('es-PE')}` : ''}</small></div>
         <button type="button" className="guideline-ppt-view" onClick={() => void view(file)}><Eye size={15}/> Ver</button>
