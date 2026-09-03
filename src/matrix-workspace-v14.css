@@ -1,0 +1,9 @@
+.matrix-v14-subpoint-first td,.matrix-v14-subpoint-row td{vertical-align:top}
+.matrix-v14-subpoint-first{border-top:2px solid #cbdbe7}
+.matrix-v14-subpoint-row td{border-top:1px dashed #dbe5ec;background:#fbfdff}
+.matrix-v14-subpoint-main{min-width:220px}
+.matrix-v14-subpoint-main>strong{display:block;margin-bottom:8px;color:#183d58;font-size:11.5px;line-height:1.4}
+.matrix-v14-subpoint-line{display:grid;grid-template-columns:30px minmax(0,1fr);gap:7px;align-items:start;color:#345268;line-height:1.4}
+.matrix-v14-subpoint-line small{display:grid;place-items:center;min-height:22px;border-radius:999px;background:#eaf3f9;color:#1769aa;font-size:8px;font-weight:900}
+.matrix-v14-subpoint-row .matrix-v14-subpoint-main{padding-top:2px}
+.matrix-v14-subpoint-row .matrix-v14-subpoint-line{font-weight:600}
