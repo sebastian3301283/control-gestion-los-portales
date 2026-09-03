@@ -1,0 +1,7 @@
+.matrix-v10-subpoints-editor{margin-top:10px;padding-top:10px;border-top:1px dashed rgba(148,163,184,.65)}
+.matrix-v10-subpoints-editor label{display:block;margin-bottom:6px;font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#64748b}
+.matrix-v10-subpoints-editor textarea{min-height:86px}
+.matrix-v10-action-with-subpoints{display:flex;flex-direction:column;gap:8px;min-width:220px}
+.matrix-v10-action-with-subpoints>strong{font-weight:600;line-height:1.4;color:inherit}
+.matrix-v10-action-with-subpoints ul{margin:0;padding-left:18px;display:grid;gap:4px;color:#475569}
+.matrix-v10-action-with-subpoints li{line-height:1.35}
