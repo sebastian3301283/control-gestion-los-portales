@@ -20,11 +20,11 @@ jobs:
           ref: fix/central-partial-save-layout
           fetch-depth: 0
       - name: Apply fix
-        run: python scripts/apply-central-partial-save-layout.py
+        run: python scripts/apply-central-layout-v2.py
       - name: Commit fix
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/MatrixWorkspaceV10.tsx src/matrix-subpoints.css src/matrix-workspace-v11.css
+          git add src/MatrixWorkspaceV10.tsx src/MatrixWorkspaceV11.tsx src/matrix-subpoints.css src/matrix-workspace-v11.css
           git commit -m "fix: align Central subpoints and allow partial saves"
           git push origin HEAD:fix/central-partial-save-layout
