@@ -214,14 +214,14 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
     if (!keepEditor) setRowsLoading(true)
     const rowResult = await supabase.from('matrix_rows').select('*').eq('matrix_id', matrixId).order('sort_order').order('created_at')
     if (requestId !== loadRowsRequestRef.current) return
-    if (rowResult.error) { if (!keepEditor) setRowsLoading(false); onError('No pudimos cargar la matriz.'); return }
+    if (rowResult.error) { setRowsLoading(false); onError('No pudimos cargar la matriz.'); return }
     const nextRows = (rowResult.data || []) as MatrixRow[]
     const grouped: Record<string, string[]> = {}
     if (nextRows.length) {
       const linksResult = await supabase.from('matrix_row_responsibles').select('row_id,manager_id,sort_order').in('row_id', nextRows.map(row => row.id)).order('sort_order')
       if (requestId !== loadRowsRequestRef.current) return
       if (linksResult.error) {
-        if (!keepEditor) setRowsLoading(false)
+        setRowsLoading(false)
         onError('No pudimos cargar los responsables sin riesgo de perder información.')
         return
       }
@@ -236,7 +236,7 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
     if (requestId !== loadRowsRequestRef.current) return
     setRows(nextRows)
     setResponsibleIdsByRow(grouped)
-    if (!keepEditor) setRowsLoading(false)
+    setRowsLoading(false)
   }
 
   function matrixForArea(areaId: string) {
