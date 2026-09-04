@@ -15,15 +15,16 @@ const guidelineLinkMigration = guidelineLinkMigrationName
   ? await readFile(new URL(`../supabase/migrations/${guidelineLinkMigrationName}`, import.meta.url), 'utf8')
   : ''
 
-test('Central simplifica la toolbar y mueve las acciones de edición junto a Responsable', () => {
+test('Central simplifica la toolbar y ubica las acciones de edición sobre Responsable principal', () => {
   assert.match(central, /Expandir matriz/)
   assert.match(central, /Historial/)
   assert.match(central, /Exportar Excel/)
-  assert.match(central, /Nueva fila/)
+  assert.match(central, /Añadir acción/)
+  assert.doesNotMatch(central, />\s*Nueva fila\s*</)
   assert.doesNotMatch(central, /<ArrowLeft size=\{16\}\/> Áreas/)
   assert.doesNotMatch(central, /Importar Excel/)
   assert.doesNotMatch(central, /<th>Acciones<\/th>/)
-  assert.match(central, /matrix-central-responsible-editor-actions/)
+  assert.match(central, /matrix-central-summary-edit-actions/)
   for (const label of ['Añadir subobjetivo', 'Guardar', 'Cancelar', 'Eliminar acción']) assert.match(central, new RegExp(label))
 })
 
