@@ -26,7 +26,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'push' && github.ref_name || github.head_ref }}
           fetch-depth: 0
 
       - name: Set up Node.js
@@ -39,14 +38,18 @@ jobs:
         run: npm ci
 
       - name: Apply approved Central patch
-        if: github.event_name == 'push' && github.ref_name == 'auditoria-codex-parcial' && github.event.head_commit.message == 'chore: apply Central guideline editor'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/auditoria-codex-parcial'
         run: |
-          python scripts/central_guideline_editor_patch.py
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/CentralExcelWorkspace.tsx src/central-excel-workspace.css
-          git commit -m 'feat: scope Central actions to guidelines'
-          git push origin HEAD:auditoria-codex-parcial
+          if ! grep -q 'function startNewRowForGuideline' src/CentralExcelWorkspace.tsx; then
+            python scripts/central_guideline_editor_patch.py
+          fi
+          if ! git diff --quiet -- src/CentralExcelWorkspace.tsx src/central-excel-workspace.css; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add src/CentralExcelWorkspace.tsx src/central-excel-workspace.css
+            git commit -m 'feat: scope Central actions to guidelines'
+            git push origin HEAD:auditoria-codex-parcial
+          fi
 
       - name: Run regression tests
         run: node --test tests/*.test.mjs
