@@ -1,0 +1,340 @@
+name: Central visual finalizer
+
+on:
+  push:
+    branches: [auditoria-codex-parcial]
+    paths:
+      - .github/workflows/central-visual-finalizer.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: auditoria-codex-parcial
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply Central visual changes
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          def replace_once(text, old, new, label):
+              if old not in text:
+                  raise SystemExit(f'No se encontró ancla: {label}')
+              return text.replace(old, new, 1)
+
+          # Dashboard: remove welcome badge and keep Central matrices behind Lineamientos.
+          path = Path('src/Dashboard.tsx')
+          text = path.read_text()
+          text = text.replace('  Sparkles,\n', '')
+          text = replace_once(text, '<span className="welcome-kicker"><Sparkles size={15}/> Todo listo</span>', '', 'Todo listo')
+          matrix_card = '<button className="planning-module-choice planning-module-choice--matrices" onClick={() => { setStep(\'matrices\'); setError(\'\'); setNotice(\'\') }}><span className="planning-module-choice__icon"><ClipboardList size={25}/></span><span className="planning-module-choice__copy"><small>Plan de acción</small><strong>Matrices</strong><p>Entra por área y trabaja la matriz de gestión.</p></span><ArrowRight size={20}/></button>'
+          text = replace_once(text, matrix_card, "{selectedPlanningUnit.code !== 'CENTRAL' && " + matrix_card + '}', 'tarjeta Matrices Central')
+          anchor = "  const secondStepLabel = step === 'guidelines' ? '2. Lineamientos' : step === 'matrices' ? '2. Matrices' : '2. Planificación'"
+          callback = """  function openMatrixFromGuidelines(managementId: string) {
+    if (!selectedPeriod || !selectedPlanningUnit || selectedPlanningUnit.code !== 'CENTRAL') return
+    sessionStorage.setItem('cg:matrix-target-management', JSON.stringify({
+      periodId: selectedPeriod.id,
+      unitCode: selectedPlanningUnit.code,
+      managementId,
+      createdAt: Date.now(),
+    }))
+    setStep('matrices')
+    setError('')
+    setNotice('')
+  }
+
+""" + anchor
+          text = replace_once(text, anchor, callback, 'callback abrir matriz desde lineamientos')
+          guidelines_render = "<PlanningGuidelines unit={{ code: selectedPlanningUnit.code, name: selectedPlanningUnit.name }} periodId={selectedPeriod.id} canManage={canManage} />"
+          guidelines_new = "<PlanningGuidelines unit={{ code: selectedPlanningUnit.code, name: selectedPlanningUnit.name }} periodId={selectedPeriod.id} canManage={canManage} onOpenMatrixForArea={selectedPlanningUnit.code === 'CENTRAL' ? openMatrixFromGuidelines : undefined} />"
+          text = replace_once(text, guidelines_render, guidelines_new, 'PlanningGuidelines callback')
+          path.write_text(text)
+
+          # PlanningGuidelines: call the parent instead of finding the hidden Matrices card in the DOM.
+          path = Path('src/PlanningGuidelines.tsx')
+          text = path.read_text()
+          text = replace_once(text,
+              "type Props = {\n  unit: Unit\n  periodId: string\n  canManage: boolean\n}",
+              "type Props = {\n  unit: Unit\n  periodId: string\n  canManage: boolean\n  onOpenMatrixForArea?: (managementId: string) => void\n}",
+              'Props PlanningGuidelines')
+          text = replace_once(text,
+              'export default function PlanningGuidelines({ unit, periodId, canManage }: Props) {',
+              'export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMatrixForArea }: Props) {',
+              'firma PlanningGuidelines')
+          pattern = re.compile(r"  function openMatrixForSelectedArea\(\) \{.*?\n  \}\n\n  return <div", re.S)
+          replacement = """  function openMatrixForSelectedArea() {
+    if (!isCentral || !selectedArea) return
+    sessionStorage.setItem('cg:matrix-target-management', JSON.stringify({
+      periodId,
+      unitCode: unit.code,
+      managementId: selectedArea.id,
+      createdAt: Date.now(),
+    }))
+    setFullscreen(false)
+    onOpenMatrixForArea?.(selectedArea.id)
+  }
+
+  return <div"""
+          text, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit('No se pudo simplificar openMatrixForSelectedArea')
+          path.write_text(text)
+
+          # Central workspace.
+          path = Path('src/CentralExcelWorkspace.tsx')
+          text = path.read_text()
+          text = replace_once(text,
+              "import { actionPlanFromSubpoints, buildCentralSubpointDrafts, findIncompleteCentralSubpoint, normalizeCentralSubpointRows, type CentralSubpointDraft, type CentralSubpointRecord } from './central-subpoint-records.js'",
+              "import { actionPlanFromSubpoints, buildCentralSubpointDrafts, findIncompleteCentralSubpoint, normalizeCentralSubpointRows, type CentralSubpointDraft, type CentralSubpointRecord } from './central-subpoint-records.js'\nimport { filterHighestAreaManagers, groupHistoryByPerson, historyActionLabel } from './central-matrix-view-model.js'",
+              'import view model')
+          text = replace_once(text,
+              "type Matrix = { id: string; name: string; process_id: string; status: string; guideline_id: string | null }",
+              "type Matrix = { id: string; name: string; process_id: string; status: string; guideline_id: string | null; principal_responsible_manager_id: string | null }",
+              'Matrix principal responsable')
+          text = re.sub(r"\nfunction historyActionLabel\(value: string\) \{.*?\n\}\n", '\n', text, count=1, flags=re.S)
+          text = replace_once(text,
+              "  const [versions, setVersions] = useState<MatrixVersion[]>([])\n  const responsiblePickerRef",
+              "  const [versions, setVersions] = useState<MatrixVersion[]>([])\n  const [principalSaving, setPrincipalSaving] = useState(false)\n  const [expandedGuidelineKeys, setExpandedGuidelineKeys] = useState<Set<string>>(() => new Set())\n  const [historyNamesByEmail, setHistoryNamesByEmail] = useState<Record<string, string>>({})\n  const [expandedHistoryActors, setExpandedHistoryActors] = useState<Set<string>>(() => new Set())\n  const responsiblePickerRef",
+              'estados visuales')
+          old_computed = re.compile(r"  const selectedGuideline = useMemo\(\(\) => areaGuidelines\[0\] \|\| null, \[areaGuidelines\]\)\n(.*?)  const firstResponsible = useMemo\(\(\) => \{.*?\n  \}, \[selectedGuideline, managerById, rows, centralResponsibleIdsByRow\]\)", re.S)
+          match = old_computed.search(text)
+          if not match:
+              raise SystemExit('No se encontró bloque computed de Central')
+          guideline_context = match.group(1)
+          new_computed = """  const highestAreaManagers = useMemo(() => filterHighestAreaManagers(centralManagers), [centralManagers])
+  const guidelineGroups = useMemo(() => {
+    const claimed = new Set<string>()
+    const groups = areaGuidelines.map(guideline => {
+      const groupRows = rows.filter(row => row.guideline_id === guideline.id || (!row.guideline_id && normalizeText(row.objective_group) === normalizeText(guideline.guideline_text)))
+      groupRows.forEach(row => claimed.add(row.id))
+      return { key: guideline.id, label: guideline.guideline_text, code: guideline.code, rows: groupRows }
+    })
+    const legacy = new Map<string, { key: string; label: string; code: string | null; rows: MatrixRow[] }>()
+    rows.filter(row => !claimed.has(row.id)).forEach(row => {
+      const label = textValue(row.objective_group) || 'Sin lineamiento'
+      const key = `legacy:${normalizeText(label) || row.id}`
+      const current = legacy.get(key) || { key, label, code: null, rows: [] }
+      current.rows.push(row)
+      legacy.set(key, current)
+    })
+    return [...groups, ...legacy.values()]
+  }, [areaGuidelines, rows])
+""" + guideline_context + """  const principalResponsible = selectedMatrix?.principal_responsible_manager_id ? managerById.get(selectedMatrix.principal_responsible_manager_id) || null : null
+  const principalResponsibleName = principalResponsible?.name || 'Sin asignar'
+  const historyGroups = useMemo(() => groupHistoryByPerson(versions, historyNamesByEmail), [versions, historyNamesByEmail])"""
+          text = text[:match.start()] + new_computed + text[match.end():]
+          text = text.replace("supabase.from('matrices').select('id,name,process_id,status,guideline_id')", "supabase.from('matrices').select('id,name,process_id,status,guideline_id,principal_responsible_manager_id')", 1)
+
+          area_permission_anchor = """  async function loadAreaEditPermission(areaId: string) {
+    if (!supabase) return
+    const { data, error } = await supabase.rpc('can_edit_management', { management_id_input: areaId, unit_code_input: 'CENTRAL' })
+    setAreaCanEdit(!error && Boolean(data))
+  }
+"""
+          principal_function = area_permission_anchor + """
+  async function savePrincipalResponsible(managerId: string) {
+    if (!supabase || !selectedMatrix || !effectiveCanManage || principalSaving) return
+    const nextId = managerId || null
+    if (nextId && !highestAreaManagers.some(manager => manager.id === nextId)) {
+      onError('El responsable principal debe pertenecer al máximo nivel de cargo disponible en esta área.')
+      return
+    }
+    setPrincipalSaving(true); onError(''); onNotice('')
+    const { error } = await supabase.from('matrices').update({ principal_responsible_manager_id: nextId }).eq('id', selectedMatrix.id)
+    setPrincipalSaving(false)
+    if (error) { onError('No pudimos actualizar el responsable principal.'); return }
+    setMatrices(current => current.map(matrix => matrix.id === selectedMatrix.id ? { ...matrix, principal_responsible_manager_id: nextId } : matrix))
+    onNotice('Responsable principal actualizado.')
+  }
+"""
+          text = replace_once(text, area_permission_anchor, principal_function, 'savePrincipalResponsible')
+
+          edit_anchor = "    const matchedGuidelineId = row.guideline_id || areaGuidelines.find(item => normalizeText(item.guideline_text) === normalizeText(row.objective_group))?.id || null\n    setEditingRowId(row.id)"
+          edit_new = "    const matchedGuidelineId = row.guideline_id || areaGuidelines.find(item => normalizeText(item.guideline_text) === normalizeText(row.objective_group))?.id || null\n    const groupKey = matchedGuidelineId || `legacy:${normalizeText(row.objective_group) || row.id}`\n    setExpandedGuidelineKeys(current => { const next = new Set(current); next.add(groupKey); return next })\n    setEditingRowId(row.id)"
+          text = replace_once(text, edit_anchor, edit_new, 'abrir grupo al editar')
+          select_anchor = "    updateDraft('objective_group', guideline?.guideline_text || '')\n  }"
+          select_new = "    updateDraft('objective_group', guideline?.guideline_text || '')\n    if (guideline?.id) setExpandedGuidelineKeys(current => { const next = new Set(current); next.add(guideline.id); return next })\n  }"
+          text = replace_once(text, select_anchor, select_new, 'abrir grupo al seleccionar lineamiento')
+          text = text.replace('Añadir subpunto', 'Añadir subobjetivo')
+          text = text.replace('`Responsable: ${firstResponsible}`', '`Responsable: ${principalResponsibleName}`')
+
+          history_pattern = re.compile(r"  async function openHistory\(\) \{.*?\n  \}\n\n  function renderResponsiblePicker", re.S)
+          history_replacement = """  async function openHistory() {
+    if (!supabase || !selectedMatrix) return
+    setHistoryOpen(true); setHistoryLoading(true); setVersions([]); setHistoryNamesByEmail({}); setExpandedHistoryActors(new Set())
+    const { data, error } = await supabase.from('matrix_versions').select('id,version_no,action,changed_email,created_at,snapshot').eq('matrix_id', selectedMatrix.id).order('version_no', { ascending: false })
+    if (error) { setHistoryLoading(false); onError('No pudimos cargar el historial de la matriz.'); return }
+    const nextVersions = (data || []) as MatrixVersion[]
+    const emails = [...new Set(nextVersions.map(version => String(version.changed_email || '').trim().toLowerCase()).filter(Boolean))]
+    const names: Record<string, string> = {}
+    if (emails.length) {
+      const profileResult = await supabase.from('profiles').select('email,full_name').in('email', emails)
+      if (!profileResult.error) (profileResult.data || []).forEach(profile => {
+        const email = String(profile.email || '').trim().toLowerCase()
+        const fullName = String(profile.full_name || '').trim()
+        if (email && fullName) names[email] = fullName
+      })
+    }
+    setHistoryNamesByEmail(names)
+    setVersions(nextVersions)
+    setHistoryLoading(false)
+  }
+
+  function renderResponsiblePicker"""
+          text, count = history_pattern.subn(history_replacement, text, count=1)
+          if count != 1:
+              raise SystemExit('No se pudo reemplazar openHistory')
+
+          render_anchor = "  return <div className={`matrix-v5 matrix-v10 matrix-v5--central"
+          helpers = """  function toggleGuidelineGroup(key: string, groupRows: MatrixRow[]) {
+    setExpandedGuidelineKeys(current => {
+      const next = new Set(current)
+      if (next.has(key)) {
+        if (editingRowId && groupRows.some(row => row.id === editingRowId)) return current
+        next.delete(key)
+      } else next.add(key)
+      return next
+    })
+  }
+
+  function toggleHistoryActor(key: string) {
+    setExpandedHistoryActors(current => {
+      const next = new Set(current)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  function renderPersistedRow(row: MatrixRow) {
+    const responsibleIds = centralResponsibleIdsByRow[row.id] || (row.responsible_manager_id ? [row.responsible_manager_id] : [])
+    const responsibleNames = responsibleIds.map(id => managerById.get(id)?.name).filter(Boolean)
+    const subpoints = buildCentralSubpointDrafts(centralSubpointsByRow[row.id] || [], row)
+    const sharedRowSpan = subpoints.length + 1
+    return <>
+      <tr data-matrix-row-id={row.id} className={`matrix-v10-central-excel-row ${effectiveCanManage ? 'matrix-v10-central-excel-row--editable' : ''}`} onClick={() => startEditRow(row)}>
+        <td className="matrix-v5-action-cell">{row.objective || '—'}</td>
+        <td rowSpan={sharedRowSpan}>{responsibleNames.length ? <div className="matrix-central-responsible-chips">{responsibleNames.map(name => <span key={name}>{name}</span>)}</div> : row.responsible_text || '—'}</td>
+        <td rowSpan={sharedRowSpan}>{row.priority ? <span className={`matrix-v5-priority matrix-v5-priority--${priorityClass(row.priority)}`}>{row.priority}</span> : '—'}</td>
+        <td>{row.milestones || '—'}</td><td>{row.kpi || '—'}</td><td>{formatDate(row.start_date)}</td><td>{formatDate(row.end_date)}</td>
+        <td rowSpan={sharedRowSpan}>{row.risks || '—'}</td><td rowSpan={sharedRowSpan}>{row.restrictions || '—'}</td><td rowSpan={sharedRowSpan}>{row.support || '—'}</td><td rowSpan={sharedRowSpan}>{row.deliverables || '—'}</td><td rowSpan={sharedRowSpan}>{row.committee || '—'}</td>
+      </tr>
+      {subpoints.map((subpoint, subpointIndex) => <tr data-matrix-row-id={row.id} className={`matrix-central-subpoint-row ${effectiveCanManage ? 'matrix-central-subpoint-row--editable' : ''}`} onClick={() => startEditRow(row)} key={`${row.id}-subpoint-${subpoint.id || subpointIndex}`}>
+        <td className="matrix-v5-action-cell matrix-central-subpoint-cell"><div><span className="matrix-central-subpoint-badge">S{subpointIndex + 1}</span><span>{subpoint.text || '—'}</span></div></td>
+        <td>{subpoint.milestones || '—'}</td><td>{subpoint.kpi || '—'}</td><td>{formatDate(subpoint.start_date || null)}</td><td>{formatDate(subpoint.end_date || null)}</td>
+      </tr>)}
+    </>
+  }
+
+""" + render_anchor
+          text = replace_once(text, render_anchor, helpers, 'helpers render Central')
+
+          # Remove top zoom and replace summary.
+          top_zoom = "        {expanded && <div className=\"matrix-v5-zoom\"><button title=\"Alejar\" onClick={() => setZoom(value => Math.max(.75, +(value - .1).toFixed(2)))}><ZoomOut size={15}/></button><span>{Math.round(zoom * 100)}%</span><button title=\"Acercar\" onClick={() => setZoom(value => Math.min(1.4, +(value + .1).toFixed(2)))}><ZoomIn size={15}/></button><button title=\"Restablecer zoom\" onClick={() => setZoom(1)}><RotateCcw size={14}/></button></div>}\n"
+          text = replace_once(text, top_zoom, '', 'zoom superior')
+          summary_old = '<div className="matrix-v5-summary"><div><span>Área</span><strong>{selectedArea?.name || \'—\'}</strong></div><div><span>Unidad</span><strong>Central</strong></div><div><span>Responsable principal</span><strong>{firstResponsible}</strong></div></div>'
+          summary_new = """<div className="matrix-v5-summary"><div><span>Área</span><strong>{selectedArea?.name || '—'}</strong></div><div><span>Unidad</span><strong>Central</strong></div><div><span>Responsable principal</span><label className="matrix-central-principal-responsible"><select value={selectedMatrix.principal_responsible_manager_id || ''} onChange={event => void savePrincipalResponsible(event.target.value)} disabled={!effectiveCanManage || principalSaving}><option value="">Sin asignar</option>{highestAreaManagers.map(manager => <option key={manager.id} value={manager.id}>{manager.name}{manager.cargo ? ` · ${manager.cargo}` : ''}</option>)}</select>{principalSaving && <LoaderCircle className="spin" size={14}/>}</label></div></div>"""
+          text = replace_once(text, summary_old, summary_new, 'Responsable principal desplegable')
+
+          # Replace the old row-by-row body with collapsible guideline groups.
+          table_pattern = re.compile(r'<div className="matrix-v5-sheet-card"><div className="matrix-v5-sheet-scroll" style=\{zoomStyle\}><table className="matrix-v5-sheet matrix-v10-central-excel matrix-central-spreadsheet-grid"><thead><tr><th>Acción</th>.*?</tbody></table></div></div>', re.S)
+          table_new = """<div className="matrix-v5-sheet-card"><div className="matrix-v5-sheet-scroll" style={zoomStyle}><table className="matrix-v5-sheet matrix-v10-central-excel matrix-central-spreadsheet-grid"><thead><tr><th>Acción</th><th>Responsable</th><th>Prioridad</th><th>Hitos / Fechas</th><th>KPI (Cuantitativo)</th><th>Inicio</th><th>Fin</th><th>Riesgos de no ejecutar</th><th>Restricciones</th><th>Soporte</th><th>Entregable</th><th>Comité</th></tr></thead><tbody>
+        {rowsLoading ? <tr><td colSpan={tableColSpan} className="matrix-v5-table-empty"><LoaderCircle className="spin" size={20}/> Cargando matriz...</td></tr> : guidelineGroups.length === 0 && !rowFormOpen ? <tr><td colSpan={tableColSpan} className="matrix-v5-table-empty">La matriz está lista. Presiona “Nueva fila” para comenzar.</td></tr> : <>
+          {guidelineGroups.map(group => {
+            const groupOpen = expandedGuidelineKeys.has(group.key)
+            return <Fragment key={group.key}>
+              <tr className="matrix-v5-objective-row matrix-central-objective-group matrix-central-guideline-bar"><td colSpan={tableColSpan}><button type="button" className="matrix-central-guideline-toggle" aria-expanded={groupOpen} onClick={() => toggleGuidelineGroup(group.key, group.rows)}><span aria-hidden="true">{groupOpen ? '▼' : '▶'}</span><strong>{group.code ? `${group.code} · ` : ''}{group.label}</strong><small>{group.rows.length} objetivo{group.rows.length === 1 ? '' : 's'}</small></button></td></tr>
+              {groupOpen && group.rows.map(row => <Fragment key={row.id}>{editingRowId === row.id ? renderSpreadsheetDraftRows(`edit-${row.id}`) : renderPersistedRow(row)}</Fragment>)}
+            </Fragment>
+          })}
+          {rowFormOpen && !editingRowId && <Fragment key="new-central-action">{renderSpreadsheetDraftRows('new-central-action')}</Fragment>}
+        </>}
+      </tbody></table></div></div>"""
+          text, count = table_pattern.subn(table_new, text, count=1)
+          if count != 1:
+              raise SystemExit('No se pudo reemplazar tabla agrupada')
+
+          footer_anchor = '      <div className="matrix-v5-footer"><span>{rows.length} acción{rows.length === 1 ? \'\' : \'es\'}</span><small>Edición tipo Excel · Tab para avanzar · Ctrl+Enter para guardar</small></div>'
+          zoom_dock = """      <div className="matrix-central-zoom-dock" aria-label="Zoom de matriz"><button title="Alejar" onClick={() => setZoom(value => Math.max(.75, +(value - .1).toFixed(2)))}><ZoomOut size={15}/></button><span>{Math.round(zoom * 100)}%</span><button title="Acercar" onClick={() => setZoom(value => Math.min(1.4, +(value + .1).toFixed(2)))}><ZoomIn size={15}/></button><button title="Restablecer zoom" onClick={() => setZoom(1)}><RotateCcw size={14}/></button></div>
+""" + footer_anchor
+          text = replace_once(text, footer_anchor, zoom_dock, 'zoom dock')
+
+          # Replace history UI, keeping version articles so the existing restore enhancer still works.
+          split_token = '\n    {historyOpen &&'
+          if split_token not in text:
+              raise SystemExit('No se encontró UI historial')
+          prefix, tail = text.rsplit(split_token, 1)
+          end_marker = '\n  </div>\n}'
+          if end_marker not in tail:
+              raise SystemExit('No se encontró cierre historial')
+          _, suffix = tail.split(end_marker, 1)
+          history_ui = """
+    {historyOpen && <div className="matrix-v10-history-backdrop" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target) setHistoryOpen(false) }}><section className="matrix-v10-history-dialog"><header><div><span>Historial</span><h3>{selectedArea?.name || 'Matriz'} · {year}</h3></div><button onClick={() => setHistoryOpen(false)}><X size={18}/></button></header>{historyLoading ? <div className="matrix-v10-history-loading"><LoaderCircle className="spin" size={20}/> Cargando historial...</div> : historyGroups.length === 0 ? <div className="matrix-v10-history-empty">Todavía no hay cambios registrados.</div> : <div className="matrix-v10-history-list matrix-central-history-list">{historyGroups.map(group => { const actorOpen = expandedHistoryActors.has(group.key); return <section className="matrix-central-history-person" key={group.key}><button type="button" className="matrix-central-history-person-toggle" aria-expanded={actorOpen} onClick={() => toggleHistoryActor(group.key)}><strong>{group.name}</strong><span aria-hidden="true">{actorOpen ? '▾' : '›'}</span></button>{actorOpen && <div className="matrix-central-history-changes">{group.versions.map(version => <article key={version.id}><div className="matrix-v10-version-number">v{version.version_no}</div><div><strong>{historyActionLabel(version.action)}</strong><span>{formatDateTime(version.created_at)}</span></div></article>)}</div>}</section> })}</div>}</section></div>}"""
+          text = prefix + history_ui + end_marker + suffix
+          path.write_text(text)
+
+          # Central styles.
+          path = Path('src/central-excel-workspace.css')
+          css = path.read_text()
+          css += """
+
+/* Central visual polish */
+.matrix-central-principal-responsible{display:flex;align-items:center;gap:8px;min-width:260px}
+.matrix-central-principal-responsible select{width:100%;min-width:0;border:1px solid #c8d7e8;border-radius:8px;background:#fff;color:#0b3155;font:inherit;font-weight:700;padding:7px 30px 7px 9px}
+.matrix-central-principal-responsible select:disabled{background:#f4f7fa;color:#64748b}
+.matrix-central-zoom-dock{position:fixed;right:24px;bottom:82px;z-index:48;display:flex;align-items:center;gap:5px;padding:6px;border:1px solid #c8d7e8;border-radius:12px;background:rgba(255,255,255,.96);box-shadow:0 8px 24px rgba(15,45,75,.15);backdrop-filter:blur(8px)}
+.matrix-central-zoom-dock button{display:grid;place-items:center;width:32px;height:32px;border:0;border-radius:8px;background:transparent;color:#174c78;cursor:pointer}
+.matrix-central-zoom-dock button:hover{background:#eaf3fb}
+.matrix-central-zoom-dock span{min-width:48px;text-align:center;font-size:12px;font-weight:800;color:#34536f}
+.matrix-central-guideline-bar>td{padding:0!important;background:#dfeefa!important;border-top:1px solid #a9c8e1!important;border-bottom:1px solid #a9c8e1!important}
+.matrix-central-guideline-toggle{width:100%;display:grid;grid-template-columns:20px minmax(0,1fr) auto;align-items:center;gap:8px;border:0;background:transparent;padding:10px 12px;text-align:left;color:#0a3e68;cursor:pointer}
+.matrix-central-guideline-toggle strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.matrix-central-guideline-toggle small{font-size:11px;font-weight:800;color:#58738b;white-space:nowrap}
+.matrix-central-history-list{display:block!important}
+.matrix-central-history-person{border-bottom:1px solid #e1e8f0}
+.matrix-central-history-person-toggle{width:100%;display:flex;align-items:center;justify-content:space-between;border:0;background:#fff;padding:14px 16px;text-align:left;color:#113e63;cursor:pointer}
+.matrix-central-history-person-toggle:hover{background:#f5f9fc}
+.matrix-central-history-person-toggle strong{font-size:14px}
+.matrix-central-history-person-toggle span{font-size:20px;color:#5e7890}
+.matrix-central-history-changes{padding:0 12px 12px;background:#f8fbfd}
+.matrix-central-history-changes article{margin-top:8px;background:#fff}
+@media (max-width:720px){.matrix-central-zoom-dock{right:12px;bottom:72px}.matrix-central-principal-responsible{min-width:190px}}
+"""
+          path.write_text(css)
+
+          # Existing regression now follows the renamed control.
+          path = Path('tests/central-ui-guideline-flow.test.mjs')
+          text = path.read_text().replace("['Añadir subpunto', 'Guardar', 'Cancelar', 'Eliminar acción']", "['Añadir subobjetivo', 'Guardar', 'Cancelar', 'Eliminar acción']")
+          path.write_text(text)
+          PY
+      - name: Install dependencies
+        run: npm ci
+      - name: Run regression tests
+        run: node --test tests/*.test.mjs
+      - name: Check TypeScript
+        run: npm run check
+      - name: Build production application
+        run: npm run build
+      - name: Commit verified implementation
+        shell: bash
+        run: |
+          git config user.name "Sebastian Aguilat"
+          git config user.email "116051904+sebastian3301283@users.noreply.github.com"
+          git add src/Dashboard.tsx src/PlanningGuidelines.tsx src/CentralExcelWorkspace.tsx src/central-excel-workspace.css tests/central-ui-guideline-flow.test.mjs
+          if git diff --cached --quiet; then
+            echo "No implementation changes"
+            exit 0
+          fi
+          git commit -m "feat: polish Central planning and matrix UX"
+          git push origin HEAD:auditoria-codex-parcial
