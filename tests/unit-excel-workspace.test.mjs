@@ -69,3 +69,15 @@ test('matrix reloads ignore stale responses and failed imports remove partial ro
     assert.match(source, /delete\(\)\.in\('id', createdRowIds\)/)
   }
 })
+
+test('the latest matrix reload always releases the loading spinner, including Realtime refreshes', async () => {
+  const unitSource = await readFile(new URL('../src/UnitExcelWorkspace.tsx', import.meta.url), 'utf8')
+  const centralSource = await readFile(new URL('../src/CentralExcelWorkspace.tsx', import.meta.url), 'utf8')
+
+  for (const source of [unitSource, centralSource]) {
+    assert.match(source, /loadRows\(selectedMatrixId, true\)/)
+    assert.match(source, /requestId !== loadRowsRequestRef\.current/)
+    assert.doesNotMatch(source, /if \(!keepEditor\) setRowsLoading\(false\)/)
+    assert.match(source, /setRowsLoading\(false\)/)
+  }
+})
