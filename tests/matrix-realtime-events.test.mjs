@@ -51,11 +51,14 @@ test('owns one realtime channel from the explicit active matrix id without DOM p
   assert.match(v13, /activeMatrixId/)
   assert.match(v13, /onActiveMatrixChange/)
   assert.match(v11, /onActiveMatrixChange/)
+  assert.match(v11, /loadRowsAndLocksRequestRef/)
+  assert.match(v11, /requestId !== loadRowsAndLocksRequestRef\.current/)
   assert.doesNotMatch(v11, /setInterval\(\(\) => void tick\(\), 3000\)/)
 })
 
 test('subscribes to every persisted matrix relation and surfaces degraded channel states', async () => {
   const layer = await readFile(new URL('../src/MatrixRealtimeLayer.tsx', import.meta.url), 'utf8')
+  const v11 = await readFile(new URL('../src/MatrixWorkspaceV11.tsx', import.meta.url), 'utf8')
 
   for (const table of ['matrix_rows', 'matrix_row_subpoints', 'matrix_row_responsibles', 'matrix_row_edit_locks']) {
     assert.match(layer, new RegExp(`table: ['"]${table}['"]`))
@@ -64,4 +67,6 @@ test('subscribes to every persisted matrix relation and surfaces degraded channe
     assert.match(layer, new RegExp(status))
   }
   assert.match(layer, /sameCollaborationLocation/)
+  assert.match(v11, /addEventListener\(['"]matrix-realtime-lock-change['"]/)
+  assert.match(v11, /removeEventListener\(['"]matrix-realtime-lock-change['"]/)
 })

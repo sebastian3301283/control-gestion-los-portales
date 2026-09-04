@@ -1,6 +1,7 @@
 import { ChangeEvent, CSSProperties, Fragment, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, ArrowRight, Building2, Check, Download, History, LoaderCircle, Maximize2, Minimize2, Plus, RotateCcw, Trash2, Upload, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { supabase } from './lib/supabase'
+import { actionPlanFromSubpoints, buildCentralSubpointDrafts, findIncompleteCentralSubpoint, normalizeCentralSubpointRows, type CentralSubpointDraft, type CentralSubpointRecord } from './central-subpoint-records.js'
 import './matrix-workspace-v5.css'
 import './matrix-workspace-v10.css'
 import './central-excel-workspace.css'
@@ -33,6 +34,7 @@ type MatrixRow = {
   sort_order: number
 }
 type RowResponsible = { row_id: string; manager_id: string; sort_order: number }
+type PersistedCentralSubpoint = CentralSubpointRecord & { id: string; matrix_row_id: string; sort_order: number }
 type MatrixVersion = { id: string; version_no: number; action: string; changed_email: string | null; created_at: string; snapshot: { rows?: unknown[] } | null }
 type RowDraft = Omit<MatrixRow, 'id' | 'sort_order'>
 type Props = {
@@ -51,6 +53,7 @@ const emptyRow: RowDraft = {
   objective_group: '', objective: '', action_plan: null, responsible_manager_id: null, responsible_text: '', priority: '', milestones: '', kpi: '', target: null,
   start_date: '', end_date: '', risks: '', restrictions: '', support: '', deliverables: '', committee: '', status: 'DRAFT',
 }
+const emptyCentralSubpoint = (): CentralSubpointDraft => ({ id: null, text: '', milestones: '', kpi: '', start_date: '', end_date: '' })
 
 function normalizeText(value: unknown) {
   return String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase().replace(/\s+/g, ' ')
@@ -102,6 +105,7 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
   const [guidelines, setGuidelines] = useState<Guideline[]>([])
   const [rows, setRows] = useState<MatrixRow[]>([])
   const [centralResponsibleIdsByRow, setCentralResponsibleIdsByRow] = useState<Record<string, string[]>>({})
+  const [centralSubpointsByRow, setCentralSubpointsByRow] = useState<Record<string, PersistedCentralSubpoint[]>>({})
   const [selectedAreaId, setSelectedAreaId] = useState('')
   const [selectedMatrixId, setSelectedMatrixId] = useState('')
   const [loading, setLoading] = useState(true)
@@ -113,6 +117,7 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
   const [rowFormOpen, setRowFormOpen] = useState(false)
   const [rowDraft, setRowDraft] = useState<RowDraft>(emptyRow)
   const [selectedResponsibleIds, setSelectedResponsibleIds] = useState<string[]>([])
+  const [centralSubpointDrafts, setCentralSubpointDrafts] = useState<CentralSubpointDraft[]>([emptyCentralSubpoint()])
   const [creatingObjectiveGroup, setCreatingObjectiveGroup] = useState(false)
   const [areaCanEdit, setAreaCanEdit] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -121,6 +126,7 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
   const [historyLoading, setHistoryLoading] = useState(false)
   const [versions, setVersions] = useState<MatrixVersion[]>([])
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const loadRowsRequestRef = useRef(0)
 
   const selectedArea = areas.find(item => item.id === selectedAreaId) || null
   const selectedMatrix = matrices.find(item => item.id === selectedMatrixId) || null
@@ -149,7 +155,7 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
     void loadAreaEditPermission(selectedAreaId)
   }, [selectedAreaId])
   useEffect(() => {
-    if (!selectedMatrixId) { setRows([]); setCentralResponsibleIdsByRow({}); return }
+    if (!selectedMatrixId) { setRows([]); setCentralResponsibleIdsByRow({}); setCentralSubpointsByRow({}); return }
     void loadRows(selectedMatrixId)
   }, [selectedMatrixId])
   useEffect(() => {
@@ -212,25 +218,44 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
 
   async function loadRows(matrixId: string, keepEditor = false) {
     if (!supabase) return
+    const requestId = ++loadRowsRequestRef.current
     if (!keepEditor) setRowsLoading(true)
     const rowResult = await supabase.from('matrix_rows').select('*').eq('matrix_id', matrixId).order('sort_order').order('created_at')
+    if (requestId !== loadRowsRequestRef.current) return
     if (rowResult.error) { if (!keepEditor) setRowsLoading(false); onError('No pudimos cargar la matriz.'); return }
     const nextRows = (rowResult.data || []) as MatrixRow[]
+    const rowIds = nextRows.map(row => row.id)
+    const [linksResult, subpointsResult] = rowIds.length
+      ? await Promise.all([
+          supabase.from('matrix_row_responsibles').select('row_id,manager_id,sort_order').in('row_id', rowIds).order('sort_order'),
+          supabase.from('matrix_row_subpoints').select('id,matrix_row_id,text,milestones,kpi,start_date,end_date,sort_order').in('matrix_row_id', rowIds).order('sort_order').order('created_at'),
+        ])
+      : [{ data: [], error: null }, { data: [], error: null }]
+    if (requestId !== loadRowsRequestRef.current) return
+    if (linksResult.error || subpointsResult.error) {
+      if (!keepEditor) setRowsLoading(false)
+      onError('No pudimos cargar responsables y subpuntos sin riesgo de perder información.')
+      return
+    }
+
+    const groupedResponsibleIds: Record<string, string[]> = {}
+    ;((linksResult.data || []) as RowResponsible[]).forEach(link => {
+      if (!groupedResponsibleIds[link.row_id]) groupedResponsibleIds[link.row_id] = []
+      groupedResponsibleIds[link.row_id].push(link.manager_id)
+    })
+    nextRows.forEach(row => {
+      if (!groupedResponsibleIds[row.id]?.length && row.responsible_manager_id) groupedResponsibleIds[row.id] = [row.responsible_manager_id]
+    })
+
+    const groupedSubpoints: Record<string, PersistedCentralSubpoint[]> = {}
+    ;((subpointsResult.data || []) as PersistedCentralSubpoint[]).forEach(item => {
+      if (!groupedSubpoints[item.matrix_row_id]) groupedSubpoints[item.matrix_row_id] = []
+      groupedSubpoints[item.matrix_row_id].push(item)
+    })
+
     setRows(nextRows)
-    if (nextRows.length) {
-      const linksResult = await supabase.from('matrix_row_responsibles').select('row_id,manager_id,sort_order').in('row_id', nextRows.map(row => row.id)).order('sort_order')
-      if (!linksResult.error) {
-        const grouped: Record<string, string[]> = {}
-        ;((linksResult.data || []) as RowResponsible[]).forEach(link => {
-          if (!grouped[link.row_id]) grouped[link.row_id] = []
-          grouped[link.row_id].push(link.manager_id)
-        })
-        nextRows.forEach(row => {
-          if (!grouped[row.id]?.length && row.responsible_manager_id) grouped[row.id] = [row.responsible_manager_id]
-        })
-        setCentralResponsibleIdsByRow(grouped)
-      }
-    } else setCentralResponsibleIdsByRow({})
+    setCentralResponsibleIdsByRow(groupedResponsibleIds)
+    setCentralSubpointsByRow(groupedSubpoints)
     if (!keepEditor) setRowsLoading(false)
   }
 
@@ -252,6 +277,7 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
     setEditingRowId(null)
     setRowDraft({ ...emptyRow, objective_group: rowObjectiveGroups.length === 1 ? rowObjectiveGroups[0] : '' })
     setSelectedResponsibleIds([])
+    setCentralSubpointDrafts([emptyCentralSubpoint()])
     setCreatingObjectiveGroup(rowObjectiveGroups.length === 0)
     setRowFormOpen(true); onError(''); onNotice('')
   }
@@ -265,26 +291,37 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
       deliverables: row.deliverables || '', committee: row.committee || '', status: row.status || 'DRAFT',
     })
     setSelectedResponsibleIds(centralResponsibleIdsByRow[row.id] || (row.responsible_manager_id ? [row.responsible_manager_id] : []))
+    const subpoints = buildCentralSubpointDrafts(centralSubpointsByRow[row.id] || [], row)
+    setCentralSubpointDrafts(subpoints.length ? subpoints : [emptyCentralSubpoint()])
     setCreatingObjectiveGroup(false)
     setRowFormOpen(true); onError(''); onNotice('')
   }
   function cancelRowEdit() {
-    setEditingRowId(null); setRowFormOpen(false); setRowDraft(emptyRow); setSelectedResponsibleIds([]); setCreatingObjectiveGroup(false)
+    setEditingRowId(null); setRowFormOpen(false); setRowDraft(emptyRow); setSelectedResponsibleIds([]); setCentralSubpointDrafts([emptyCentralSubpoint()]); setCreatingObjectiveGroup(false)
   }
   function updateDraft<K extends keyof RowDraft>(key: K, value: RowDraft[K]) { setRowDraft(current => ({ ...current, [key]: value })) }
   function toggleResponsible(managerId: string) {
     setSelectedResponsibleIds(current => current.includes(managerId) ? current.filter(id => id !== managerId) : [...current, managerId])
   }
+  function updateCentralSubpoint(index: number, key: keyof CentralSubpointDraft, value: string) {
+    setCentralSubpointDrafts(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, [key]: value } : item))
+  }
 
   async function saveRow() {
     if (!supabase || !selectedMatrix || !effectiveCanManage || saving) return
+    const subpointRows = normalizeCentralSubpointRows(centralSubpointDrafts)
+    const incompleteSubpointIndex = findIncompleteCentralSubpoint(subpointRows)
+    if (incompleteSubpointIndex >= 0) {
+      onError(`Escribe el texto del subpunto S${incompleteSubpointIndex + 1} antes de guardar.`)
+      return
+    }
     setSaving(true); onError(''); onNotice('')
     const responsibleNames = selectedResponsibleIds.map(id => managerById.get(id)?.name).filter((name): name is string => Boolean(name))
     const payload = {
       matrix_id: selectedMatrix.id,
       objective_group: textValue(rowDraft.objective_group) || null,
       objective: textValue(rowDraft.objective) || null,
-      action_plan: null,
+      action_plan: actionPlanFromSubpoints(subpointRows) || null,
       responsible_manager_id: selectedResponsibleIds[0] || null,
       responsible_text: responsibleNames.length ? responsibleNames.join(', ') : null,
       priority: rowDraft.priority || null,
@@ -315,6 +352,11 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
 
     if (rowId) {
       const previousIds = centralResponsibleIdsByRow[rowId] || []
+      const previousSubpoints = centralSubpointsByRow[rowId] || []
+      const restoreResponsibles = async () => {
+        await supabase.from('matrix_row_responsibles').delete().eq('row_id', rowId)
+        if (previousIds.length) await supabase.from('matrix_row_responsibles').insert(previousIds.map((managerId, index) => ({ row_id: rowId, manager_id: managerId, sort_order: index })))
+      }
       const deleteResult = await supabase.from('matrix_row_responsibles').delete().eq('row_id', rowId)
       if (deleteResult.error) {
         if (created) await supabase.from('matrix_rows').delete().eq('id', rowId)
@@ -323,9 +365,35 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
       if (selectedResponsibleIds.length) {
         const insertResult = await supabase.from('matrix_row_responsibles').insert(selectedResponsibleIds.map((managerId, index) => ({ row_id: rowId, manager_id: managerId, sort_order: index })))
         if (insertResult.error) {
-          if (previousIds.length) await supabase.from('matrix_row_responsibles').insert(previousIds.map((managerId, index) => ({ row_id: rowId, manager_id: managerId, sort_order: index })))
+          await restoreResponsibles()
           if (created) await supabase.from('matrix_rows').delete().eq('id', rowId)
           setSaving(false); onError('No pudimos guardar los responsables seleccionados.'); return
+        }
+      }
+
+      const deleteSubpointsResult = await supabase.from('matrix_row_subpoints').delete().eq('matrix_row_id', rowId)
+      if (deleteSubpointsResult.error) {
+        await restoreResponsibles()
+        if (created) await supabase.from('matrix_rows').delete().eq('id', rowId)
+        setSaving(false); onError('No pudimos preparar los subpuntos para guardar.'); return
+      }
+      if (subpointRows.length) {
+        const insertSubpointsResult = await supabase.from('matrix_row_subpoints').insert(subpointRows.map(item => ({ ...item, matrix_row_id: rowId })))
+        if (insertSubpointsResult.error) {
+          if (previousSubpoints.length) {
+            await supabase.from('matrix_row_subpoints').insert(previousSubpoints.map(item => ({
+              matrix_row_id: rowId,
+              text: textValue(item.text),
+              milestones: textValue(item.milestones) || null,
+              kpi: textValue(item.kpi) || null,
+              start_date: textValue(item.start_date) || null,
+              end_date: textValue(item.end_date) || null,
+              sort_order: item.sort_order,
+            })))
+          }
+          await restoreResponsibles()
+          if (created) await supabase.from('matrix_rows').delete().eq('id', rowId)
+          setSaving(false); onError('No pudimos guardar los subpuntos.'); return
         }
       }
     }
@@ -360,6 +428,9 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
         if (group && group !== previousGroup) { grid.push([group]); groupRows.push(grid.length - 1); previousGroup = group }
         const responsible = (centralResponsibleIdsByRow[row.id] || []).map(id => managerById.get(id)?.name).filter(Boolean).join(', ') || row.responsible_text || ''
         grid.push([row.objective || '', responsible, row.priority || '', row.milestones || '', row.kpi || '', row.start_date || '', row.end_date || '', row.risks || '', row.restrictions || '', row.support || '', row.deliverables || '', row.committee || ''])
+        buildCentralSubpointDrafts(centralSubpointsByRow[row.id] || [], row).forEach((subpoint, index) => {
+          grid.push([`S${index + 1}: ${subpoint.text}`, '', '', subpoint.milestones, subpoint.kpi, subpoint.start_date, subpoint.end_date, '', '', '', '', ''])
+        })
       })
       const sheet = XLSX.utils.aoa_to_sheet(grid)
       sheet['!merges'] = groupRows.map(row => ({ s: { r: row, c: 0 }, e: { r: row, c: headers.length - 1 } }))
@@ -373,6 +444,7 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
     const file = event.target.files?.[0]; event.target.value = ''
     if (!file || !selectedMatrix || !supabase || !effectiveCanManage) return
     setImporting(true); onError(''); onNotice('')
+    const createdRowIds: string[] = []
     try {
       const XLSX = await import(/* @vite-ignore */ XLSX_MODULE_URL)
       const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true })
@@ -390,10 +462,34 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
       const at = (row: unknown[], col: number) => col >= 0 ? row[col] : ''
       let currentGroup = ''
       let imported = 0
+      let importedSubpoints = 0
+      let lastImportedRowId = ''
+      let lastImportedSubpointTexts: string[] = []
       for (const sourceRow of grid.slice(headerIndex + 1)) {
         const action = textValue(at(sourceRow, actionCol))
         const otherValues = sourceRow.filter((_, index) => index !== actionCol).map(textValue).filter(Boolean)
-        if (action && otherValues.length === 0) { currentGroup = action; continue }
+        const subpointMatch = action.match(/^S\d+\s*:\s*(.*)$/i)
+        if (subpointMatch && lastImportedRowId) {
+          const subpoint = {
+            matrix_row_id: lastImportedRowId,
+            text: textValue(subpointMatch[1]),
+            milestones: textValue(at(sourceRow, milestoneCol)) || null,
+            kpi: textValue(at(sourceRow, kpiCol)) || null,
+            start_date: dateToIso(at(sourceRow, startCol)),
+            end_date: dateToIso(at(sourceRow, endCol)),
+            sort_order: lastImportedSubpointTexts.length,
+          }
+          if (subpoint.text || subpoint.milestones || subpoint.kpi || subpoint.start_date || subpoint.end_date) {
+            const subpointResult = await supabase.from('matrix_row_subpoints').insert(subpoint)
+            if (subpointResult.error) throw subpointResult.error
+            lastImportedSubpointTexts.push(subpoint.text)
+            const mirrorResult = await supabase.from('matrix_rows').update({ action_plan: lastImportedSubpointTexts.filter(Boolean).join('\n') || null }).eq('id', lastImportedRowId)
+            if (mirrorResult.error) throw mirrorResult.error
+            importedSubpoints += 1
+          }
+          continue
+        }
+        if (action && otherValues.length === 0) { currentGroup = action; lastImportedRowId = ''; lastImportedSubpointTexts = []; continue }
         if (!action) continue
         const responsibleNames = splitResponsibleNames(at(sourceRow, responsibleCol))
         const managerIds = responsibleNames.map(name => centralManagers.find(manager => normalizeText(manager.name) === normalizeText(name))?.id).filter((id): id is string => Boolean(id))
@@ -408,6 +504,9 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
         const { data, error } = await supabase.from('matrix_rows').insert(payload).select('id').single()
         if (error || !data?.id) throw error || new Error('INSERT')
         const rowId = String(data.id)
+        createdRowIds.push(rowId)
+        lastImportedRowId = rowId
+        lastImportedSubpointTexts = []
         if (managerIds.length) {
           const linkResult = await supabase.from('matrix_row_responsibles').insert(managerIds.map((managerId, index) => ({ row_id: rowId, manager_id: managerId, sort_order: index })))
           if (linkResult.error) throw linkResult.error
@@ -415,8 +514,11 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
         imported += 1
       }
       if (!imported) { onError('No encontramos acciones para importar.'); return }
-      await loadRows(selectedMatrix.id); onNotice(`${imported} acción${imported === 1 ? '' : 'es'} importada${imported === 1 ? '' : 's'} correctamente.`)
-    } catch { onError('No pudimos importar el Excel de Central. Revisa el formato y los nombres de responsables.') } finally { setImporting(false) }
+      await loadRows(selectedMatrix.id); onNotice(`${imported} acción${imported === 1 ? '' : 'es'} y ${importedSubpoints} subpunto${importedSubpoints === 1 ? '' : 's'} importados correctamente.`)
+    } catch {
+      if (createdRowIds.length) await supabase.from('matrix_rows').delete().in('id', createdRowIds)
+      onError('No pudimos importar el Excel de Central. No se conservaron filas parciales; revisa el formato y los nombres de responsables.')
+    } finally { setImporting(false) }
   }
 
   async function openHistory() {
@@ -439,29 +541,38 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
   }
 
   function renderObjectiveGroupEditor() {
-    return creatingObjectiveGroup || rowObjectiveGroups.length === 0
+    const groupEditor = creatingObjectiveGroup || rowObjectiveGroups.length === 0
       ? <div className="matrix-central-objective-edit"><strong>OBJETIVO</strong><input value={rowDraft.objective_group || ''} onChange={event => updateDraft('objective_group', event.target.value)} placeholder="Ej. OB1: Consolidar el rol de Auditoría..."/>{rowObjectiveGroups.length > 0 && <button type="button" onClick={() => { setCreatingObjectiveGroup(false); updateDraft('objective_group', '') }}>Usar existente</button>}</div>
       : <div className="matrix-central-objective-edit"><strong>OBJETIVO</strong><select value={rowDraft.objective_group || ''} onChange={event => { if (event.target.value === '__new__') { setCreatingObjectiveGroup(true); updateDraft('objective_group', '') } else updateDraft('objective_group', event.target.value) }}><option value="">Selecciona un objetivo</option>{rowObjectiveGroups.map(group => <option key={group} value={group}>{group}</option>)}<option value="__new__">+ Crear nuevo objetivo</option></select></div>
+    return <div className="matrix-central-objective-toolbar">{groupEditor}<button type="button" className="matrix-central-add-subpoint" onClick={() => setCentralSubpointDrafts(current => [...current, emptyCentralSubpoint()])}><Plus size={14}/> Añadir subpunto</button></div>
   }
 
   function renderSpreadsheetDraftRows(key: string) {
+    const sharedRowSpan = centralSubpointDrafts.length + 1
     return <>
       <tr className="matrix-v5-edit-row matrix-central-objective-editor-row" key={`${key}-group`}><td colSpan={tableColSpan}>{renderObjectiveGroupEditor()}</td></tr>
       <tr className="matrix-v5-edit-row matrix-v10-central-excel-row matrix-v10-central-excel-row--editing matrix-central-in-grid-draft" key={`${key}-row`} onKeyDown={handleEditKeyDown}>
         <td className="matrix-central-sheet-cell matrix-central-sheet-cell--action"><textarea rows={1} value={rowDraft.objective || ''} onChange={event => updateDraft('objective', event.target.value)} placeholder="Acción" aria-label="Acción" autoFocus/></td>
-        <td className="matrix-central-sheet-cell matrix-central-sheet-cell--responsible">{renderResponsiblePicker()}</td>
-        <td className="matrix-central-sheet-cell"><select value={rowDraft.priority || ''} onChange={event => updateDraft('priority', event.target.value)} aria-label="Prioridad"><option value="">—</option><option>Alta</option><option>Media</option><option>Baja</option></select></td>
+        <td className="matrix-central-sheet-cell matrix-central-sheet-cell--responsible" rowSpan={sharedRowSpan}>{renderResponsiblePicker()}</td>
+        <td className="matrix-central-sheet-cell" rowSpan={sharedRowSpan}><select value={rowDraft.priority || ''} onChange={event => updateDraft('priority', event.target.value)} aria-label="Prioridad"><option value="">—</option><option>Alta</option><option>Media</option><option>Baja</option></select></td>
         <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.milestones || ''} onChange={event => updateDraft('milestones', event.target.value)} placeholder="Hito o fecha" aria-label="Hitos o fechas"/></td>
         <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.kpi || ''} onChange={event => updateDraft('kpi', event.target.value)} placeholder="KPI" aria-label="KPI cuantitativo"/></td>
         <td className="matrix-central-sheet-cell"><input type="date" value={rowDraft.start_date || ''} onChange={event => updateDraft('start_date', event.target.value)} aria-label="Inicio"/></td>
         <td className="matrix-central-sheet-cell"><input type="date" value={rowDraft.end_date || ''} onChange={event => updateDraft('end_date', event.target.value)} aria-label="Fin"/></td>
-        <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.risks || ''} onChange={event => updateDraft('risks', event.target.value)} placeholder="Riesgos" aria-label="Riesgos de no ejecutar"/></td>
-        <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.restrictions || ''} onChange={event => updateDraft('restrictions', event.target.value)} placeholder="Restricciones" aria-label="Restricciones"/></td>
-        <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.support || ''} onChange={event => updateDraft('support', event.target.value)} placeholder="Soporte" aria-label="Soporte"/></td>
-        <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.deliverables || ''} onChange={event => updateDraft('deliverables', event.target.value)} placeholder="Entregable" aria-label="Entregable"/></td>
-        <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.committee || ''} onChange={event => updateDraft('committee', event.target.value)} placeholder="Comité" aria-label="Comité"/></td>
-        {effectiveCanManage && <td className="matrix-central-sheet-cell matrix-central-sheet-cell--actions"><div className="matrix-v5-row-actions matrix-central-edit-actions"><button type="button" title="Cancelar" onClick={cancelRowEdit}><X size={14}/></button><button type="button" className="save" title="Guardar · Ctrl+Enter" onClick={() => void saveRow()} disabled={saving}>{saving ? <LoaderCircle className="spin" size={14}/> : <Check size={14}/>}</button></div></td>}
+        <td className="matrix-central-sheet-cell" rowSpan={sharedRowSpan}><textarea rows={1} value={rowDraft.risks || ''} onChange={event => updateDraft('risks', event.target.value)} placeholder="Riesgos" aria-label="Riesgos de no ejecutar"/></td>
+        <td className="matrix-central-sheet-cell" rowSpan={sharedRowSpan}><textarea rows={1} value={rowDraft.restrictions || ''} onChange={event => updateDraft('restrictions', event.target.value)} placeholder="Restricciones" aria-label="Restricciones"/></td>
+        <td className="matrix-central-sheet-cell" rowSpan={sharedRowSpan}><textarea rows={1} value={rowDraft.support || ''} onChange={event => updateDraft('support', event.target.value)} placeholder="Soporte" aria-label="Soporte"/></td>
+        <td className="matrix-central-sheet-cell" rowSpan={sharedRowSpan}><textarea rows={1} value={rowDraft.deliverables || ''} onChange={event => updateDraft('deliverables', event.target.value)} placeholder="Entregable" aria-label="Entregable"/></td>
+        <td className="matrix-central-sheet-cell" rowSpan={sharedRowSpan}><textarea rows={1} value={rowDraft.committee || ''} onChange={event => updateDraft('committee', event.target.value)} placeholder="Comité" aria-label="Comité"/></td>
+        {effectiveCanManage && <td className="matrix-central-sheet-cell matrix-central-sheet-cell--actions" rowSpan={sharedRowSpan}><div className="matrix-v5-row-actions matrix-central-edit-actions"><button type="button" title="Cancelar" onClick={cancelRowEdit}><X size={14}/></button><button type="button" className="save" title="Guardar · Ctrl+Enter" onClick={() => void saveRow()} disabled={saving}>{saving ? <LoaderCircle className="spin" size={14}/> : <Check size={14}/>}</button></div></td>}
       </tr>
+      {centralSubpointDrafts.map((subpoint, index) => <tr className="matrix-v5-edit-row matrix-central-subpoint-row matrix-central-subpoint-row--editing" key={`${key}-subpoint-${subpoint.id || 'new'}-${index}`} onKeyDown={handleEditKeyDown}>
+        <td className="matrix-central-sheet-cell matrix-central-subpoint-cell"><div><span className="matrix-central-subpoint-badge">S{index + 1}</span><textarea rows={1} value={subpoint.text} onChange={event => updateCentralSubpoint(index, 'text', event.target.value)} placeholder={`Subpunto ${index + 1}`} aria-label={`Subpunto ${index + 1}`}/><button type="button" title="Eliminar subpunto" disabled={centralSubpointDrafts.length === 1} onClick={() => setCentralSubpointDrafts(current => current.length === 1 ? current : current.filter((_, itemIndex) => itemIndex !== index))}><Trash2 size={13}/></button></div></td>
+        <td className="matrix-central-sheet-cell"><textarea rows={1} value={subpoint.milestones} onChange={event => updateCentralSubpoint(index, 'milestones', event.target.value)} placeholder="Hito o fecha" aria-label={`Hito del subpunto ${index + 1}`}/></td>
+        <td className="matrix-central-sheet-cell"><textarea rows={1} value={subpoint.kpi} onChange={event => updateCentralSubpoint(index, 'kpi', event.target.value)} placeholder="KPI" aria-label={`KPI del subpunto ${index + 1}`}/></td>
+        <td className="matrix-central-sheet-cell"><input type="date" value={subpoint.start_date} onChange={event => updateCentralSubpoint(index, 'start_date', event.target.value)} aria-label={`Inicio del subpunto ${index + 1}`}/></td>
+        <td className="matrix-central-sheet-cell"><input type="date" value={subpoint.end_date} onChange={event => updateCentralSubpoint(index, 'end_date', event.target.value)} aria-label={`Fin del subpunto ${index + 1}`}/></td>
+      </tr>)}
     </>
   }
 
@@ -493,16 +604,22 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
           if (editingRowId === row.id) return <Fragment key={row.id}>{renderSpreadsheetDraftRows(`edit-${row.id}`)}</Fragment>
           const responsibleIds = centralResponsibleIdsByRow[row.id] || (row.responsible_manager_id ? [row.responsible_manager_id] : [])
           const responsibleNames = responsibleIds.map(id => managerById.get(id)?.name).filter(Boolean)
+          const subpoints = buildCentralSubpointDrafts(centralSubpointsByRow[row.id] || [], row)
+          const sharedRowSpan = subpoints.length + 1
           return <Fragment key={row.id}>
             {showGroup && <tr className="matrix-v5-objective-row matrix-central-objective-group"><td colSpan={tableColSpan}>{currentGroup}</td></tr>}
             <tr data-matrix-row-id={row.id} className={`matrix-v10-central-excel-row ${effectiveCanManage ? 'matrix-v10-central-excel-row--editable' : ''}`} onClick={() => startEditRow(row)}>
               <td className="matrix-v5-action-cell">{row.objective || '—'}</td>
-              <td>{responsibleNames.length ? <div className="matrix-central-responsible-chips">{responsibleNames.map(name => <span key={name}>{name}</span>)}</div> : row.responsible_text || '—'}</td>
-              <td>{row.priority ? <span className={`matrix-v5-priority matrix-v5-priority--${priorityClass(row.priority)}`}>{row.priority}</span> : '—'}</td>
+              <td rowSpan={sharedRowSpan}>{responsibleNames.length ? <div className="matrix-central-responsible-chips">{responsibleNames.map(name => <span key={name}>{name}</span>)}</div> : row.responsible_text || '—'}</td>
+              <td rowSpan={sharedRowSpan}>{row.priority ? <span className={`matrix-v5-priority matrix-v5-priority--${priorityClass(row.priority)}`}>{row.priority}</span> : '—'}</td>
               <td>{row.milestones || '—'}</td><td>{row.kpi || '—'}</td><td>{formatDate(row.start_date)}</td><td>{formatDate(row.end_date)}</td>
-              <td>{row.risks || '—'}</td><td>{row.restrictions || '—'}</td><td>{row.support || '—'}</td><td>{row.deliverables || '—'}</td><td>{row.committee || '—'}</td>
-              {effectiveCanManage && <td><div className="matrix-v5-row-actions"><button type="button" title="Eliminar acción" className="danger" onClick={event => { event.stopPropagation(); void deleteRow(row.id) }}><Trash2 size={14}/></button></div></td>}
+              <td rowSpan={sharedRowSpan}>{row.risks || '—'}</td><td rowSpan={sharedRowSpan}>{row.restrictions || '—'}</td><td rowSpan={sharedRowSpan}>{row.support || '—'}</td><td rowSpan={sharedRowSpan}>{row.deliverables || '—'}</td><td rowSpan={sharedRowSpan}>{row.committee || '—'}</td>
+              {effectiveCanManage && <td rowSpan={sharedRowSpan}><div className="matrix-v5-row-actions"><button type="button" title="Eliminar acción" className="danger" onClick={event => { event.stopPropagation(); void deleteRow(row.id) }}><Trash2 size={14}/></button></div></td>}
             </tr>
+            {subpoints.map((subpoint, subpointIndex) => <tr data-matrix-row-id={row.id} className={`matrix-central-subpoint-row ${effectiveCanManage ? 'matrix-central-subpoint-row--editable' : ''}`} onClick={() => startEditRow(row)} key={`${row.id}-subpoint-${subpoint.id || subpointIndex}`}>
+              <td className="matrix-v5-action-cell matrix-central-subpoint-cell"><div><span className="matrix-central-subpoint-badge">S{subpointIndex + 1}</span><span>{subpoint.text || '—'}</span></div></td>
+              <td>{subpoint.milestones || '—'}</td><td>{subpoint.kpi || '—'}</td><td>{formatDate(subpoint.start_date || null)}</td><td>{formatDate(subpoint.end_date || null)}</td>
+            </tr>)}
           </Fragment>
         })}
         {rowFormOpen && !editingRowId && <Fragment key="new-central-action">{renderSpreadsheetDraftRows('new-central-action')}</Fragment>}

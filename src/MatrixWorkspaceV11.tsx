@@ -44,6 +44,7 @@ export default function MatrixWorkspaceV11(props: Props) {
   const matrixIdRef = useRef('')
   const rowIdsRef = useRef<string[]>([])
   const locksRef = useRef<RowLock[]>([])
+  const loadRowsAndLocksRequestRef = useRef(0)
   const currentUserIdRef = useRef('')
   const lockedRowIdRef = useRef<string | null>(null)
   const bypassClickRef = useRef(false)
@@ -82,11 +83,13 @@ export default function MatrixWorkspaceV11(props: Props) {
 
   async function loadRowsAndLocks(nextMatrixId: string) {
     if (!supabase || !nextMatrixId) return
+    const requestId = ++loadRowsAndLocksRequestRef.current
     const now = new Date().toISOString()
     const [rowResult, lockResult] = await Promise.all([
       supabase.from('matrix_rows').select('id').eq('matrix_id', nextMatrixId).order('sort_order').order('created_at'),
       supabase.from('matrix_row_edit_locks').select('row_id,matrix_id,user_id,user_email,display_name,expires_at').eq('matrix_id', nextMatrixId).gt('expires_at', now).order('locked_at'),
     ])
+    if (requestId !== loadRowsAndLocksRequestRef.current || nextMatrixId !== matrixIdRef.current) return
     if (!rowResult.error) rowIdsRef.current = (rowResult.data || []).map(item => String(item.id))
     if (!lockResult.error) {
       const nextLocks = (lockResult.data || []) as RowLock[]
@@ -104,6 +107,7 @@ export default function MatrixWorkspaceV11(props: Props) {
     const lockedRowId = lockedRowIdRef.current
     if (lockedRowId && supabase) void supabase.rpc('release_matrix_row_lock', { row_id_input: lockedRowId })
     lockedRowIdRef.current = null
+    loadRowsAndLocksRequestRef.current += 1
     matrixIdRef.current = matrixId
     rowIdsRef.current = []
     locksRef.current = []
@@ -137,8 +141,19 @@ export default function MatrixWorkspaceV11(props: Props) {
       if (!currentMatrixId || (changedMatrixId && changedMatrixId !== currentMatrixId)) return
       void loadRowsAndLocks(currentMatrixId)
     }
+    const handleRealtimeLockChange = (event: Event) => {
+      const detail = (event as CustomEvent<{ matrixId?: string }>).detail
+      const changedMatrixId = String(detail?.matrixId || '')
+      const currentMatrixId = matrixIdRef.current
+      if (!currentMatrixId || (changedMatrixId && changedMatrixId !== currentMatrixId)) return
+      void loadRowsAndLocks(currentMatrixId)
+    }
     window.addEventListener('matrix-realtime-data-change', handleRealtimeDataChange)
-    return () => window.removeEventListener('matrix-realtime-data-change', handleRealtimeDataChange)
+    window.addEventListener('matrix-realtime-lock-change', handleRealtimeLockChange)
+    return () => {
+      window.removeEventListener('matrix-realtime-data-change', handleRealtimeDataChange)
+      window.removeEventListener('matrix-realtime-lock-change', handleRealtimeLockChange)
+    }
   }, [])
 
   async function acquireLock(rowId: string) {

@@ -15,12 +15,14 @@ test('Central conserva la toolbar completa y sigue pasando por MatrixWorkspaceV1
   assert.match(v12, /<MatrixWorkspaceV11/)
 })
 
-test('Central usa objetivos OB como separadores y acciones como filas de hoja de cálculo', () => {
+test('Central usa objetivos OB como separadores, acciones como filas y subpuntos como filas hijas reales', () => {
   assert.match(central, /<th>Acción<\/th>/)
   assert.match(central, /matrix-central-objective-group/)
   assert.match(central, /matrix-central-spreadsheet-grid/)
   assert.match(central, /matrix-central-in-grid-draft/)
-  assert.doesNotMatch(central, /<th>Subpunto<\/th>|matrix-v10-central-subpoint-row/)
+  assert.match(central, /<tr[^>]*matrix-central-subpoint-row/)
+  assert.match(central, /matrix-central-subpoint-badge/)
+  assert.doesNotMatch(central, /matrix-central-subpoint-stack/)
 })
 
 test('V11 no oculta ni desplaza la primera columna Acción de Central', () => {

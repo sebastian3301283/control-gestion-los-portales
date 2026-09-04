@@ -120,6 +120,7 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
   const [historyLoading, setHistoryLoading] = useState(false)
   const [versions, setVersions] = useState<MatrixVersion[]>([])
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const loadRowsRequestRef = useRef(0)
 
   const selectedArea = areas.find(item => item.id === selectedAreaId) || null
   const selectedMatrix = matrices.find(item => item.id === selectedMatrixId) || null
@@ -209,24 +210,31 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
 
   async function loadRows(matrixId: string, keepEditor = false) {
     if (!supabase) return
+    const requestId = ++loadRowsRequestRef.current
     if (!keepEditor) setRowsLoading(true)
     const rowResult = await supabase.from('matrix_rows').select('*').eq('matrix_id', matrixId).order('sort_order').order('created_at')
+    if (requestId !== loadRowsRequestRef.current) return
     if (rowResult.error) { if (!keepEditor) setRowsLoading(false); onError('No pudimos cargar la matriz.'); return }
     const nextRows = (rowResult.data || []) as MatrixRow[]
-    setRows(nextRows)
     const grouped: Record<string, string[]> = {}
     if (nextRows.length) {
       const linksResult = await supabase.from('matrix_row_responsibles').select('row_id,manager_id,sort_order').in('row_id', nextRows.map(row => row.id)).order('sort_order')
-      if (!linksResult.error) {
-        ;((linksResult.data || []) as RowResponsible[]).forEach(link => {
-          if (!grouped[link.row_id]) grouped[link.row_id] = []
-          grouped[link.row_id].push(link.manager_id)
-        })
+      if (requestId !== loadRowsRequestRef.current) return
+      if (linksResult.error) {
+        if (!keepEditor) setRowsLoading(false)
+        onError('No pudimos cargar los responsables sin riesgo de perder información.')
+        return
       }
+      ;((linksResult.data || []) as RowResponsible[]).forEach(link => {
+        if (!grouped[link.row_id]) grouped[link.row_id] = []
+        grouped[link.row_id].push(link.manager_id)
+      })
       nextRows.forEach(row => {
         if (!grouped[row.id]?.length && row.responsible_manager_id) grouped[row.id] = [row.responsible_manager_id]
       })
     }
+    if (requestId !== loadRowsRequestRef.current) return
+    setRows(nextRows)
     setResponsibleIdsByRow(grouped)
     if (!keepEditor) setRowsLoading(false)
   }
@@ -357,6 +365,7 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
     const file = event.target.files?.[0]; event.target.value = ''
     if (!file || !selectedMatrix || !supabase || !effectiveCanManage) return
     setImporting(true); onError(''); onNotice('')
+    const createdRowIds: string[] = []
     try {
       const XLSX = await import(/* @vite-ignore */ XLSX_MODULE_URL)
       const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true })
@@ -390,6 +399,7 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
         const { data, error } = await supabase.from('matrix_rows').insert(payload).select('id').single()
         if (error || !data?.id) throw error || new Error('INSERT')
         const rowId = String(data.id)
+        createdRowIds.push(rowId)
         if (managerIds.length) {
           const linkResult = await supabase.from('matrix_row_responsibles').insert(managerIds.map((managerId, index) => ({ row_id: rowId, manager_id: managerId, sort_order: index })))
           if (linkResult.error) { await supabase.from('matrix_rows').delete().eq('id', rowId); throw linkResult.error }
@@ -398,7 +408,10 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
       }
       if (!imported) { onError('No encontramos filas para importar.'); return }
       await loadRows(selectedMatrix.id); onNotice(`${imported} fila${imported === 1 ? '' : 's'} importada${imported === 1 ? '' : 's'} correctamente.`)
-    } catch { onError(`No pudimos importar el Excel de ${unitName}. Revisa el formato y los nombres de responsables.`) } finally { setImporting(false) }
+    } catch {
+      if (createdRowIds.length) await supabase.from('matrix_rows').delete().in('id', createdRowIds)
+      onError(`No pudimos importar el Excel de ${unitName}. No se conservaron filas parciales; revisa el formato y los nombres de responsables.`)
+    } finally { setImporting(false) }
   }
 
   async function openHistory() {

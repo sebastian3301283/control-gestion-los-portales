@@ -12,6 +12,11 @@ type ManagerManagement = { manager_id: string; management_id: string }
 type MatrixUnitArea = { unit_code: string; management_id: string }
 type Props = { units?: Unit[]; canManage: boolean }
 type DeleteTarget = { id: string; name: string } | null
+type SpreadsheetModule = {
+  utils: {
+    sheet_to_json: (sheet: unknown, options: { header: number; defval: string; raw: boolean }) => unknown[][]
+  }
+}
 
 const XLSX_MODULE_URL = 'https://unpkg.com/xlsx@0.18.5/xlsx.mjs'
 const fallbackUnits: Unit[] = [
@@ -43,8 +48,8 @@ function valueFromRow(row: Record<string, unknown>, aliases: string[]) {
   const entry = Object.entries(row).find(([key]) => wanted.has(normalizeHeader(key)))
   return String(entry?.[1] ?? '').trim()
 }
-function recordsFromDetectedHeader(XLSX: any, sheet: any) {
-  const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false }) as unknown[][]
+function recordsFromDetectedHeader(XLSX: SpreadsheetModule, sheet: unknown) {
+  const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false })
   const names = new Set(['nombre', 'responsable', 'gerente', 'gerenteresponsable', 'bonista'])
   const areas = new Set(['area', 'areas', 'gerencia', 'gerencias'])
   const headerIndex = matrix.findIndex(row => {

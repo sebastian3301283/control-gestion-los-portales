@@ -22,6 +22,14 @@ function locationFromTarget(target: HTMLElement): CollaborationLocation | null {
   const editable = target.closest<HTMLElement>('input,textarea,select,[contenteditable="true"]')
   if (!editable) return null
 
+  const centralSubpointRow = editable.closest<HTMLTableRowElement>('.matrix-central-subpoint-row--editing')
+  if (centralSubpointRow) {
+    const cell = editable.closest<HTMLTableCellElement>('td')
+    const field = ['Subpunto', 'Hitos / Fechas', 'KPI', 'Inicio', 'Fin'][cell?.cellIndex ?? 0] || 'Subpunto'
+    const subpoint = centralSubpointRow.querySelector<HTMLElement>('.matrix-central-subpoint-badge')?.textContent?.trim() || ''
+    return { field, ...(subpoint ? { subpoint } : {}) }
+  }
+
   const subpointRow = editable.closest<HTMLElement>('.matrix-v12-subpoint-row:not(.matrix-v12-subpoint-row--head)')
   if (subpointRow) {
     const parent = subpointRow.parentElement
@@ -43,7 +51,7 @@ function locationFromTarget(target: HTMLElement): CollaborationLocation | null {
   if (cell && row && table) {
     const header = table.querySelectorAll<HTMLTableCellElement>('thead th')[cell.cellIndex]?.textContent?.trim() || 'Campo'
     const rowNumber = row.cells[0]?.textContent?.trim() || ''
-    const subpoint = row.querySelector<HTMLElement>('.matrix-v10-subpoint-badge,.matrix-v14-subpoint-line small')?.textContent?.trim() || ''
+    const subpoint = row.querySelector<HTMLElement>('.matrix-v10-subpoint-badge,.matrix-v14-subpoint-line small,.matrix-central-subpoint-badge')?.textContent?.trim() || ''
     return { field: header, ...(subpoint ? { subpoint } : {}), ...(rowNumber ? { row: rowNumber } : {}) }
   }
 

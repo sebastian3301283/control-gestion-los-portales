@@ -1,4 +1,5 @@
 import MatrixWorkspaceV11 from './MatrixWorkspaceV11'
+import './matrix-workspace-v12.css'
 
 type UnitCode = 'HU' | 'DEP' | 'VS' | 'HOT' | 'CENTRAL'
 type Props = {
@@ -14,5 +15,5 @@ type Props = {
 }
 
 export default function MatrixWorkspaceV12(props: Props) {
-  return <MatrixWorkspaceV11 {...props} />
+  return <div className="matrix-v12-host"><MatrixWorkspaceV11 {...props} /></div>
 }

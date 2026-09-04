@@ -57,3 +57,15 @@ test('unit Excel workspace keeps collaboration refresh and the existing Central 
   assert.match(centralSource, /export default function CentralExcelWorkspace/)
   assert.match(centralSource, /manager_managements/)
 })
+
+test('matrix reloads ignore stale responses and failed imports remove partial rows', async () => {
+  const unitSource = await readFile(new URL('../src/UnitExcelWorkspace.tsx', import.meta.url), 'utf8')
+  const centralSource = await readFile(new URL('../src/CentralExcelWorkspace.tsx', import.meta.url), 'utf8')
+
+  for (const source of [unitSource, centralSource]) {
+    assert.match(source, /loadRowsRequestRef/)
+    assert.match(source, /requestId !== loadRowsRequestRef\.current/)
+    assert.match(source, /createdRowIds/)
+    assert.match(source, /delete\(\)\.in\('id', createdRowIds\)/)
+  }
+})

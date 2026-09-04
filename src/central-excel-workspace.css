@@ -17,10 +17,12 @@
 .matrix-v10-central-excel-row--editable:hover td{background:#f6fbff}
 .matrix-central-objective-group td{padding:8px 10px!important;background:#dbeaf6!important;color:#0d2d48!important;font-size:12px!important;font-weight:900!important;border-bottom:1px solid #aebfcd!important;letter-spacing:0!important;text-transform:none!important}
 .matrix-central-objective-editor-row td{padding:5px 7px!important;background:#dbeaf6!important;border-bottom:1px solid #9fbfd7!important}
+.matrix-central-objective-toolbar{display:flex;align-items:center;gap:8px;width:100%;min-width:0}
 .matrix-central-objective-edit{display:flex;align-items:center;gap:8px;width:100%}
 .matrix-central-objective-edit>strong{font-size:10px;letter-spacing:.05em;color:#175c92;white-space:nowrap}
 .matrix-central-objective-edit input,.matrix-central-objective-edit select{min-width:260px;max-width:100%;flex:1;border:1px solid #8fb5d2;border-radius:2px;background:#fff;padding:7px 9px;font:inherit;color:#17324a;min-height:34px;box-sizing:border-box}
 .matrix-central-objective-edit button{min-height:34px;border:1px solid #9fbfd7;border-radius:3px;background:#fff;color:#175c92;font-size:11px;font-weight:800;padding:0 12px;white-space:nowrap}
+.matrix-central-add-subpoint{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:34px;border:1px solid #1f6fae;border-radius:3px;background:#1f6fae;color:#fff;font-size:11px;font-weight:850;padding:0 12px;white-space:nowrap}
 .matrix-central-in-grid-draft td{background:#fff!important}
 .matrix-central-sheet-cell{padding:0!important;background:#fff!important;vertical-align:middle!important;position:relative}
 .matrix-central-sheet-cell:focus-within{box-shadow:inset 0 0 0 2px #1677c8;z-index:4}
@@ -45,6 +47,16 @@
 .matrix-central-edit-actions{display:flex;align-items:center;gap:5px;justify-content:center;height:100%}
 .matrix-central-edit-actions button{width:31px;height:31px;border:1px solid #c7d4df;border-radius:3px;background:#fff;display:grid;place-items:center;color:#516b80}
 .matrix-central-edit-actions button.save{background:#1f6fae;border-color:#1f6fae;color:#fff}
+.matrix-central-subpoint-row td{background:#f7fbfe;border-bottom-color:#b8ccdc}
+.matrix-central-subpoint-row--editable{cursor:cell}
+.matrix-central-subpoint-row--editable:hover td{background:#eef7fd}
+.matrix-central-subpoint-cell>div{display:flex;align-items:center;gap:7px;min-width:0}
+.matrix-central-subpoint-badge{display:inline-grid;place-items:center;flex:0 0 auto;min-width:28px;height:22px;border-radius:3px;background:#d7e9f6;color:#175c92;font-size:10px;font-weight:900;letter-spacing:.02em}
+.matrix-central-subpoint-cell>div>span:last-child{min-width:0;overflow-wrap:anywhere}
+.matrix-central-subpoint-row--editing .matrix-central-subpoint-cell>div{min-height:48px;padding:0 6px}
+.matrix-central-subpoint-row--editing .matrix-central-subpoint-cell textarea{flex:1;min-width:0;height:48px;border:0;background:transparent;padding:8px 2px;font:inherit;color:#17324a;resize:vertical;outline:none}
+.matrix-central-subpoint-row--editing .matrix-central-subpoint-cell button{display:grid;place-items:center;flex:0 0 28px;width:28px;height:28px;border:1px solid #c7d4df;border-radius:3px;background:#fff;color:#b33434}
+.matrix-central-subpoint-row--editing .matrix-central-subpoint-cell button:disabled{opacity:.35;cursor:not-allowed}
 .matrix-central-spreadsheet-grid tbody tr:not(.matrix-central-objective-group):not(.matrix-central-objective-editor-row){min-height:48px}
 .matrix-v5--expanded .matrix-v10-central-excel thead th{top:0}
-@media(max-width:900px){.matrix-central-objective-edit{align-items:stretch;flex-direction:column}.matrix-central-objective-edit input,.matrix-central-objective-edit select{min-width:0;width:100%}.matrix-central-responsible-menu{width:280px}}
+@media(max-width:900px){.matrix-central-objective-toolbar,.matrix-central-objective-edit{align-items:stretch;flex-direction:column}.matrix-central-objective-edit input,.matrix-central-objective-edit select{min-width:0;width:100%}.matrix-central-responsible-menu{width:280px}}
