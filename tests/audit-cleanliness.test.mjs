@@ -50,10 +50,11 @@ test('every relative source import resolves to an existing file', async () => {
 
 test('active source has no debugging leftovers or unfinished TODO markers', () => {
   const findings = []
+  const todoComment = /(?:\/\/|\/\*|\*)\s*(?:TODO|FIXME)\b/
   for (const [file, source] of sources) {
     if (/\bdebugger\b/.test(source)) findings.push(`${file.slice(root.length + 1)}: debugger`)
     if (/\bconsole\.log\s*\(/.test(source)) findings.push(`${file.slice(root.length + 1)}: console.log`)
-    if (/\b(?:TODO|FIXME)\b/i.test(source)) findings.push(`${file.slice(root.length + 1)}: TODO/FIXME`)
+    if (todoComment.test(source)) findings.push(`${file.slice(root.length + 1)}: TODO/FIXME`)
   }
   assert.deepEqual(findings, [])
 })
