@@ -44,9 +44,30 @@ test('Central workspace is an action matrix, not the old subpoint editor', async
   assert.match(v11, /props\.unitCode === 'CENTRAL'/)
 })
 
-test('Central Excel layout keeps the table header visible and cells compact', async () => {
+test('Central spreadsheet edits rows in-place instead of rendering a detached form below the grid', async () => {
+  const source = await readFile(new URL('../src/CentralExcelWorkspace.tsx', import.meta.url), 'utf8')
+  assert.match(source, /matrix-central-in-grid-draft/)
+  assert.match(source, /matrix-central-sheet-cell/)
+  assert.match(source, /matrix-central-objective-editor-row/)
+  assert.match(source, /data-matrix-row-id=\{row\.id\}/)
+  assert.doesNotMatch(source, /rowFormOpen && !editingRowId && renderEditRows\('new-central-action'\)/)
+})
+
+test('Central spreadsheet keeps native keyboard flow and realtime refresh without replacing the local draft', async () => {
+  const source = await readFile(new URL('../src/CentralExcelWorkspace.tsx', import.meta.url), 'utf8')
+  assert.match(source, /\(event\.ctrlKey \|\| event\.metaKey\) && event\.key === 'Enter'/)
+  assert.match(source, /loadRows\(selectedMatrixId, true\)/)
+  assert.match(source, /keepEditor/)
+})
+
+test('Central Excel layout keeps the table header visible and spreadsheet cells compact', async () => {
   const css = await readFile(new URL('../src/central-excel-workspace.css', import.meta.url), 'utf8')
+  const v11Css = await readFile(new URL('../src/matrix-workspace-v11.css', import.meta.url), 'utf8')
   assert.match(css, /\.matrix-v10-central-excel[^{]*\{[^}]*border-collapse:separate/)
   assert.match(css, /\.matrix-v10-central-excel thead th[^{]*\{[^}]*position:sticky/)
   assert.match(css, /\.matrix-v10-central-excel-row[^{]*\{[^}]*cursor:cell/)
+  assert.match(css, /\.matrix-central-sheet-cell[^{]*\{[^}]*padding:0/)
+  assert.match(css, /\.matrix-central-sheet-cell[^}]*:focus-within/)
+  assert.doesNotMatch(v11Css, /matrix-v5--central \.matrix-v5-sheet thead th:first-child[^}]*display:none/s)
+  assert.doesNotMatch(v11Css, /matrix-v5--central \.matrix-v5-sheet th:nth-child\(2\)/)
 })

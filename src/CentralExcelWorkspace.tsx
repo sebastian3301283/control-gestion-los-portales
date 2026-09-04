@@ -439,23 +439,23 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
       : <div className="matrix-central-objective-edit"><strong>OBJETIVO</strong><select value={rowDraft.objective_group || ''} onChange={event => { if (event.target.value === '__new__') { setCreatingObjectiveGroup(true); updateDraft('objective_group', '') } else updateDraft('objective_group', event.target.value) }}><option value="">Selecciona un objetivo</option>{rowObjectiveGroups.map(group => <option key={group} value={group}>{group}</option>)}<option value="__new__">+ Crear nuevo objetivo</option></select></div>
   }
 
-  function renderEditRows(key: string) {
+  function renderSpreadsheetDraftRows(key: string) {
     return <>
-      <tr className="matrix-v5-edit-row matrix-central-objective-edit-row" key={`${key}-group`}><td colSpan={tableColSpan}>{renderObjectiveGroupEditor()}</td></tr>
-      <tr className="matrix-v5-edit-row matrix-v10-central-excel-row matrix-v10-central-excel-row--editing" key={`${key}-row`} onKeyDown={handleEditKeyDown}>
-        <td><textarea value={rowDraft.objective || ''} onChange={event => updateDraft('objective', event.target.value)} placeholder="Acción" autoFocus/></td>
-        <td>{renderResponsiblePicker()}</td>
-        <td><select value={rowDraft.priority || ''} onChange={event => updateDraft('priority', event.target.value)}><option value="">—</option><option>Alta</option><option>Media</option><option>Baja</option></select></td>
-        <td><textarea value={rowDraft.milestones || ''} onChange={event => updateDraft('milestones', event.target.value)} placeholder="Hito o fecha"/></td>
-        <td><textarea value={rowDraft.kpi || ''} onChange={event => updateDraft('kpi', event.target.value)} placeholder="KPI"/></td>
-        <td><input type="date" value={rowDraft.start_date || ''} onChange={event => updateDraft('start_date', event.target.value)}/></td>
-        <td><input type="date" value={rowDraft.end_date || ''} onChange={event => updateDraft('end_date', event.target.value)}/></td>
-        <td><textarea value={rowDraft.risks || ''} onChange={event => updateDraft('risks', event.target.value)} placeholder="Riesgos"/></td>
-        <td><textarea value={rowDraft.restrictions || ''} onChange={event => updateDraft('restrictions', event.target.value)} placeholder="Restricciones"/></td>
-        <td><textarea value={rowDraft.support || ''} onChange={event => updateDraft('support', event.target.value)} placeholder="Soporte"/></td>
-        <td><textarea value={rowDraft.deliverables || ''} onChange={event => updateDraft('deliverables', event.target.value)} placeholder="Entregable"/></td>
-        <td><textarea value={rowDraft.committee || ''} onChange={event => updateDraft('committee', event.target.value)} placeholder="Comité"/></td>
-        {effectiveCanManage && <td><div className="matrix-v5-row-actions matrix-central-edit-actions"><button type="button" title="Cancelar" onClick={cancelRowEdit}><X size={14}/></button><button type="button" className="save" title="Guardar · Ctrl+Enter" onClick={() => void saveRow()} disabled={saving}>{saving ? <LoaderCircle className="spin" size={14}/> : <Check size={14}/>}</button></div></td>}
+      <tr className="matrix-v5-edit-row matrix-central-objective-editor-row" key={`${key}-group`}><td colSpan={tableColSpan}>{renderObjectiveGroupEditor()}</td></tr>
+      <tr className="matrix-v5-edit-row matrix-v10-central-excel-row matrix-v10-central-excel-row--editing matrix-central-in-grid-draft" key={`${key}-row`} onKeyDown={handleEditKeyDown}>
+        <td className="matrix-central-sheet-cell matrix-central-sheet-cell--action"><textarea rows={1} value={rowDraft.objective || ''} onChange={event => updateDraft('objective', event.target.value)} placeholder="Acción" aria-label="Acción" autoFocus/></td>
+        <td className="matrix-central-sheet-cell matrix-central-sheet-cell--responsible">{renderResponsiblePicker()}</td>
+        <td className="matrix-central-sheet-cell"><select value={rowDraft.priority || ''} onChange={event => updateDraft('priority', event.target.value)} aria-label="Prioridad"><option value="">—</option><option>Alta</option><option>Media</option><option>Baja</option></select></td>
+        <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.milestones || ''} onChange={event => updateDraft('milestones', event.target.value)} placeholder="Hito o fecha" aria-label="Hitos o fechas"/></td>
+        <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.kpi || ''} onChange={event => updateDraft('kpi', event.target.value)} placeholder="KPI" aria-label="KPI cuantitativo"/></td>
+        <td className="matrix-central-sheet-cell"><input type="date" value={rowDraft.start_date || ''} onChange={event => updateDraft('start_date', event.target.value)} aria-label="Inicio"/></td>
+        <td className="matrix-central-sheet-cell"><input type="date" value={rowDraft.end_date || ''} onChange={event => updateDraft('end_date', event.target.value)} aria-label="Fin"/></td>
+        <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.risks || ''} onChange={event => updateDraft('risks', event.target.value)} placeholder="Riesgos" aria-label="Riesgos de no ejecutar"/></td>
+        <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.restrictions || ''} onChange={event => updateDraft('restrictions', event.target.value)} placeholder="Restricciones" aria-label="Restricciones"/></td>
+        <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.support || ''} onChange={event => updateDraft('support', event.target.value)} placeholder="Soporte" aria-label="Soporte"/></td>
+        <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.deliverables || ''} onChange={event => updateDraft('deliverables', event.target.value)} placeholder="Entregable" aria-label="Entregable"/></td>
+        <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.committee || ''} onChange={event => updateDraft('committee', event.target.value)} placeholder="Comité" aria-label="Comité"/></td>
+        {effectiveCanManage && <td className="matrix-central-sheet-cell matrix-central-sheet-cell--actions"><div className="matrix-v5-row-actions matrix-central-edit-actions"><button type="button" title="Cancelar" onClick={cancelRowEdit}><X size={14}/></button><button type="button" className="save" title="Guardar · Ctrl+Enter" onClick={() => void saveRow()} disabled={saving}>{saving ? <LoaderCircle className="spin" size={14}/> : <Check size={14}/>}</button></div></td>}
       </tr>
     </>
   }
@@ -480,12 +480,12 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
       <div className="matrix-v5-title"><span>Matriz de Plan de Acción</span><h2>PLAN DE ACCIÓN {year}</h2></div>
       <div className="matrix-v5-summary"><div><span>Área</span><strong>{selectedArea?.name || '—'}</strong></div><div><span>Unidad</span><strong>Central</strong></div><div><span>Responsable principal</span><strong>{firstResponsible}</strong></div></div>
 
-      <div className="matrix-v5-sheet-card"><div className="matrix-v5-sheet-scroll" style={zoomStyle}><table className="matrix-v5-sheet matrix-v10-central-excel"><thead><tr><th>Acción</th><th>Responsable</th><th>Prioridad</th><th>Hitos / Fechas</th><th>KPI (Cuantitativo)</th><th>Inicio</th><th>Fin</th><th>Riesgos de no ejecutar</th><th>Restricciones</th><th>Soporte</th><th>Entregable</th><th>Comité</th>{effectiveCanManage && <th>Acciones</th>}</tr></thead><tbody>
+      <div className="matrix-v5-sheet-card"><div className="matrix-v5-sheet-scroll" style={zoomStyle}><table className="matrix-v5-sheet matrix-v10-central-excel matrix-central-spreadsheet-grid"><thead><tr><th>Acción</th><th>Responsable</th><th>Prioridad</th><th>Hitos / Fechas</th><th>KPI (Cuantitativo)</th><th>Inicio</th><th>Fin</th><th>Riesgos de no ejecutar</th><th>Restricciones</th><th>Soporte</th><th>Entregable</th><th>Comité</th>{effectiveCanManage && <th>Acciones</th>}</tr></thead><tbody>
         {rowsLoading ? <tr><td colSpan={tableColSpan} className="matrix-v5-table-empty"><LoaderCircle className="spin" size={20}/> Cargando matriz...</td></tr> : rows.length === 0 && !rowFormOpen ? <tr><td colSpan={tableColSpan} className="matrix-v5-table-empty">La matriz está lista. Presiona “Nueva fila” para comenzar.</td></tr> : rows.map((row, index) => {
           const currentGroup = textValue(row.objective_group)
           const previousGroup = index > 0 ? textValue(rows[index - 1].objective_group) : ''
           const showGroup = Boolean(currentGroup && currentGroup !== previousGroup)
-          if (editingRowId === row.id) return <Fragment key={row.id}>{renderEditRows(`edit-${row.id}`)}</Fragment>
+          if (editingRowId === row.id) return <Fragment key={row.id}>{renderSpreadsheetDraftRows(`edit-${row.id}`)}</Fragment>
           const responsibleIds = centralResponsibleIdsByRow[row.id] || (row.responsible_manager_id ? [row.responsible_manager_id] : [])
           const responsibleNames = responsibleIds.map(id => managerById.get(id)?.name).filter(Boolean)
           return <Fragment key={row.id}>
@@ -500,7 +500,7 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
             </tr>
           </Fragment>
         })}
-        {rowFormOpen && !editingRowId && renderEditRows('new-central-action')}
+        {rowFormOpen && !editingRowId && <Fragment key="new-central-action">{renderSpreadsheetDraftRows('new-central-action')}</Fragment>}
       </tbody></table></div></div>
       <div className="matrix-v5-footer"><span>{rows.length} acción{rows.length === 1 ? '' : 'es'}</span><small>Edición tipo Excel · Tab para avanzar · Ctrl+Enter para guardar</small></div>
     </section>}
