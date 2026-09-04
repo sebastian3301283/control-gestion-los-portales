@@ -222,7 +222,7 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
     if (!keepEditor) setRowsLoading(true)
     const rowResult = await supabase.from('matrix_rows').select('*').eq('matrix_id', matrixId).order('sort_order').order('created_at')
     if (requestId !== loadRowsRequestRef.current) return
-    if (rowResult.error) { if (!keepEditor) setRowsLoading(false); onError('No pudimos cargar la matriz.'); return }
+    if (rowResult.error) { setRowsLoading(false); onError('No pudimos cargar la matriz.'); return }
     const nextRows = (rowResult.data || []) as MatrixRow[]
     const rowIds = nextRows.map(row => row.id)
     const [linksResult, subpointsResult] = rowIds.length
@@ -233,7 +233,7 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
       : [{ data: [], error: null }, { data: [], error: null }]
     if (requestId !== loadRowsRequestRef.current) return
     if (linksResult.error || subpointsResult.error) {
-      if (!keepEditor) setRowsLoading(false)
+      setRowsLoading(false)
       onError('No pudimos cargar responsables y subpuntos sin riesgo de perder información.')
       return
     }
@@ -256,7 +256,7 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
     setRows(nextRows)
     setCentralResponsibleIdsByRow(groupedResponsibleIds)
     setCentralSubpointsByRow(groupedSubpoints)
-    if (!keepEditor) setRowsLoading(false)
+    setRowsLoading(false)
   }
 
   function matrixForArea(areaId: string) {
