@@ -44,6 +44,7 @@ type Props = {
   canManage: boolean
   onError: (message: string) => void
   onNotice: (message: string) => void
+  onActiveMatrixChange?: (matrixId: string) => void
 }
 
 const XLSX_MODULE_URL = 'https://unpkg.com/xlsx@0.18.5/xlsx.mjs'
@@ -93,7 +94,7 @@ function splitResponsibleNames(value: unknown) {
   return String(value ?? '').split(/[;,\n|]+/).map(item => item.trim()).filter(Boolean)
 }
 
-export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName, canManage, onError, onNotice }: Props) {
+export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName, canManage, onError, onNotice, onActiveMatrixChange }: Props) {
   const [page, setPage] = useState<'areas' | 'sheet'>('areas')
   const [areas, setAreas] = useState<Area[]>([])
   const [processes, setProcesses] = useState<Process[]>([])
@@ -146,6 +147,10 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
     if (!selectedMatrixId) { setRows([]); setResponsibleIdsByRow({}); return }
     void loadRows(selectedMatrixId)
   }, [selectedMatrixId])
+  useEffect(() => {
+    onActiveMatrixChange?.(selectedMatrixId)
+    return () => onActiveMatrixChange?.('')
+  }, [onActiveMatrixChange, selectedMatrixId])
   useEffect(() => {
     const handleRealtimeDataChange = (event: Event) => {
       const detail = (event as CustomEvent<{ matrixId?: string }>).detail

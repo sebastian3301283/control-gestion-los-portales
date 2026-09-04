@@ -1,5 +1,5 @@
 import { BookOpenText, Users } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import CentralExcelWorkspace from './CentralExcelWorkspace'
 import UnitExcelWorkspace from './UnitExcelWorkspace'
 import { supabase } from './lib/supabase'
@@ -16,6 +16,7 @@ type Props = {
   onError: (message: string) => void
   onNotice: (message: string) => void
   onViewGuidelines?: () => void
+  onActiveMatrixChange?: (matrixId: string) => void
 }
 type RowLock = {
   row_id: string
@@ -41,7 +42,6 @@ function initials(value: string) {
 export default function MatrixWorkspaceV11(props: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
   const matrixIdRef = useRef('')
-  const areaNameRef = useRef('')
   const rowIdsRef = useRef<string[]>([])
   const locksRef = useRef<RowLock[]>([])
   const currentUserIdRef = useRef('')
@@ -51,7 +51,6 @@ export default function MatrixWorkspaceV11(props: Props) {
   const [revision, setRevision] = useState(0)
   const [matrixId, setMatrixId] = useState('')
   const [locks, setLocks] = useState<RowLock[]>([])
-  const [expanded, setExpanded] = useState(false)
   const { onViewGuidelines, ...workspaceProps } = props
 
   const activeEditors = useMemo(() => {
@@ -96,56 +95,21 @@ export default function MatrixWorkspaceV11(props: Props) {
     }
   }
 
-  async function resolveCurrentMatrix() {
-    const root = rootRef.current
-    if (!root || !supabase) return
-    setExpanded(Boolean(root.querySelector('.matrix-v5--expanded')))
-    const areaName = root.querySelector<HTMLElement>('.matrix-v5-summary > div:first-child strong')?.textContent?.trim() || ''
-    if (!areaName) {
-      areaNameRef.current = ''
-      matrixIdRef.current = ''
-      rowIdsRef.current = []
-      locksRef.current = []
-      setMatrixId('')
-      setLocks([])
-      return
-    }
-
-    if (areaName === areaNameRef.current && matrixIdRef.current) {
-      await loadRowsAndLocks(matrixIdRef.current)
-      return
-    }
-
-    if (lockedRowIdRef.current) await releaseLock(lockedRowIdRef.current)
-    areaNameRef.current = areaName
-
-    const { data: managementData } = await supabase.from('managements_global').select('id').ilike('name', areaName).eq('active', true)
-    const managementIds = (managementData || []).map(item => String(item.id))
-    if (!managementIds.length) return
-
-    const { data: processData } = await supabase.from('processes').select('id').eq('unit_code', props.unitCode).eq('active', true).in('management_id', managementIds)
-    const processIds = (processData || []).map(item => String(item.id))
-    if (!processIds.length) return
-
-    const { data: matrixData } = await supabase.from('matrices').select('id').eq('period_id', props.periodId).eq('unit_code', props.unitCode).eq('active', true).in('process_id', processIds).limit(1).maybeSingle()
-    const nextMatrixId = matrixData?.id ? String(matrixData.id) : ''
-    matrixIdRef.current = nextMatrixId
-    setMatrixId(nextMatrixId)
-    if (nextMatrixId) await loadRowsAndLocks(nextMatrixId)
-  }
+  const handleActiveMatrixChange = useCallback((nextMatrixId: string) => {
+    setMatrixId(current => current === nextMatrixId ? current : nextMatrixId)
+    props.onActiveMatrixChange?.(nextMatrixId)
+  }, [props.onActiveMatrixChange])
 
   useEffect(() => {
-    let stopped = false
-    let running = false
-    const tick = async () => {
-      if (stopped || running) return
-      running = true
-      try { await resolveCurrentMatrix() } finally { running = false }
-    }
-    void tick()
-    const timer = window.setInterval(() => void tick(), 3000)
-    return () => { stopped = true; window.clearInterval(timer) }
-  }, [props.periodId, props.unitCode, revision])
+    const lockedRowId = lockedRowIdRef.current
+    if (lockedRowId && supabase) void supabase.rpc('release_matrix_row_lock', { row_id_input: lockedRowId })
+    lockedRowIdRef.current = null
+    matrixIdRef.current = matrixId
+    rowIdsRef.current = []
+    locksRef.current = []
+    setLocks([])
+    if (matrixId) void loadRowsAndLocks(matrixId)
+  }, [matrixId])
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -350,12 +314,12 @@ export default function MatrixWorkspaceV11(props: Props) {
   }, [canRestore, props.periodId, props.unitCode, props.onError, props.onNotice])
 
   return <div ref={rootRef} className="matrix-v11-host" onClickCapture={handleRootClickCapture}>
-    {matrixId && <div className={`matrix-collab-presence ${expanded ? 'matrix-collab-presence--expanded' : ''}`}>
+    {matrixId && <div className="matrix-collab-presence">
       <span className="matrix-collab-icon"><Users size={17}/></span>
       <div className="matrix-collab-copy"><strong>Edición colaborativa</strong><small>{activeEditors.length ? `${activeEditors.length} usuario${activeEditors.length === 1 ? '' : 's'} editando ahora` : 'Ninguna fila está bloqueada'}</small></div>
       {activeEditors.length > 0 && <div className="matrix-collab-editors">{activeEditors.map(editor => <span className="matrix-collab-user" key={editor.user_id} title={editor.email}><i>{initials(editor.name)}</i><b>{editor.name}{editor.user_id === currentUserIdRef.current ? ' (tú)' : ''}</b></span>)}</div>}
     </div>}
     {onViewGuidelines && <div className="matrix-v11-guideline-shortcut"><button type="button" onClick={onViewGuidelines}><BookOpenText size={16}/> Ver lineamientos</button></div>}
-    {props.unitCode === 'CENTRAL' ? <CentralExcelWorkspace key={revision} {...workspaceProps} unitCode="CENTRAL" /> : <UnitExcelWorkspace key={revision} periodId={props.periodId} year={props.year} unitCode={props.unitCode} unitName={props.unitName} canManage={props.canManage} onError={props.onError} onNotice={props.onNotice} />}
+    {props.unitCode === 'CENTRAL' ? <CentralExcelWorkspace key={revision} {...workspaceProps} unitCode="CENTRAL" onActiveMatrixChange={handleActiveMatrixChange} /> : <UnitExcelWorkspace key={revision} periodId={props.periodId} year={props.year} unitCode={props.unitCode} unitName={props.unitName} canManage={props.canManage} onError={props.onError} onNotice={props.onNotice} onActiveMatrixChange={handleActiveMatrixChange} />}
   </div>
 }

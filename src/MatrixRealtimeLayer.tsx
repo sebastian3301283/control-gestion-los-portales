@@ -1,12 +1,13 @@
 import { Users } from 'lucide-react'
 import { useEffect, useRef, useState, type FocusEvent as ReactFocusEvent, type ReactNode } from 'react'
 import { supabase } from './lib/supabase'
+import { parentRowIdFromChange, sameCollaborationLocation, shouldRefreshMatrix } from './matrix-realtime-events.js'
 import { collaborationLocationLabel, flattenPresenceState, type CollaborationLocation, type MatrixPresenceUser } from './matrix-realtime-presence.js'
 import './matrix-realtime-layer.css'
 
-type UnitCode = 'HU' | 'DEP' | 'VS' | 'HOT' | 'CENTRAL'
-type Props = { children: ReactNode; periodId: string; unitCode: UnitCode }
+type Props = { children: ReactNode; matrixId: string }
 type PresencePayload = MatrixPresenceUser & { online_at: string }
+type SyncState = 'idle' | 'connecting' | 'synced' | 'reconnecting' | 'error'
 
 function initials(value: string) {
   const parts = value.trim().split(/[\s._@-]+/).filter(Boolean)
@@ -49,60 +50,30 @@ function locationFromTarget(target: HTMLElement): CollaborationLocation | null {
   return { field: editable.getAttribute('aria-label') || editable.getAttribute('placeholder') || 'Campo' }
 }
 
-export default function MatrixRealtimeLayer({ children, periodId, unitCode }: Props) {
+export default function MatrixRealtimeLayer({ children, matrixId }: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
   const channelRef = useRef<ReturnType<NonNullable<typeof supabase>['channel']> | null>(null)
   const identityRef = useRef<{ user_id: string; name: string; email: string } | null>(null)
   const clearLocationTimerRef = useRef<number | null>(null)
-  const [matrixId, setMatrixId] = useState('')
+  const publishedLocationRef = useRef<CollaborationLocation | null>(null)
   const [users, setUsers] = useState<MatrixPresenceUser[]>([])
   const [currentUserId, setCurrentUserId] = useState('')
-  const [connected, setConnected] = useState(false)
+  const [syncState, setSyncState] = useState<SyncState>('idle')
 
-  function requestRefresh() {
-    window.dispatchEvent(new CustomEvent('matrix-realtime-data-change', { detail: { matrixId } }))
+  function requestRefresh(table: string, eventType: string) {
+    window.dispatchEvent(new CustomEvent('matrix-realtime-data-change', { detail: { matrixId, table, eventType } }))
   }
 
   useEffect(() => {
-    if (!supabase) return
-    const root = rootRef.current
-    if (!root) return
-    let stopped = false
-    let running = false
-
-    const resolveMatrix = async () => {
-      if (stopped || running) return
-      const areaName = root.querySelector<HTMLElement>('.matrix-v5-summary > div:first-child strong')?.textContent?.trim() || ''
-      if (!areaName) { setMatrixId(''); return }
-      running = true
-      try {
-        const { data: managementData } = await supabase.from('managements_global').select('id').eq('unit_code', unitCode).eq('active', true).ilike('name', areaName)
-        const managementIds = (managementData || []).map(item => String(item.id))
-        if (!managementIds.length) return
-        const { data: processData } = await supabase.from('processes').select('id').eq('unit_code', unitCode).eq('active', true).in('management_id', managementIds)
-        const processIds = (processData || []).map(item => String(item.id))
-        if (!processIds.length) return
-        const { data: matrixData } = await supabase.from('matrices').select('id').eq('period_id', periodId).eq('unit_code', unitCode).eq('active', true).in('process_id', processIds).limit(1).maybeSingle()
-        const next = matrixData?.id ? String(matrixData.id) : ''
-        setMatrixId(current => current === next ? current : next)
-      } finally { running = false }
-    }
-
-    void resolveMatrix()
-    const timer = window.setInterval(() => void resolveMatrix(), 1200)
-    return () => { stopped = true; window.clearInterval(timer) }
-  }, [periodId, unitCode])
-
-
-  useEffect(() => {
-    if (!supabase || !matrixId) { setUsers([]); setConnected(false); return }
+    if (!supabase || !matrixId) { setUsers([]); setSyncState('idle'); return }
     let cancelled = false
     let channel: ReturnType<typeof supabase.channel> | null = null
+    setSyncState('connecting')
 
     void (async () => {
       const { data: authData } = await supabase.auth.getUser()
       const user = authData.user
-      if (!user || cancelled) return
+      if (!user || cancelled) { if (!cancelled) setSyncState('error'); return }
       const { data: profile } = await supabase.from('profiles').select('email,full_name').eq('user_id', user.id).maybeSingle()
       if (cancelled) return
       const email = String(profile?.email || user.email || '')
@@ -110,6 +81,7 @@ export default function MatrixRealtimeLayer({ children, periodId, unitCode }: Pr
       identityRef.current = { user_id: user.id, name, email }
       setCurrentUserId(user.id)
       await supabase.realtime.setAuth()
+      if (cancelled) return
 
       const sessionKey = `${user.id}:${typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : Date.now()}`
       channel = supabase.channel(`matrix-collab:${matrixId}`, { config: { private: true, presence: { key: sessionKey } } })
@@ -126,39 +98,49 @@ export default function MatrixRealtimeLayer({ children, periodId, unitCode }: Pr
           setUsers(current => current.map(item => item.user_id === incoming.user_id ? { ...item, location: incoming.location || null } : item))
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'matrix_rows' }, payload => {
-          const record = (payload.new && Object.keys(payload.new).length ? payload.new : payload.old) as Record<string, unknown>
-          const changedMatrix = String(record?.matrix_id || '')
-          if (!changedMatrix || changedMatrix === matrixId) requestRefresh()
+          if (shouldRefreshMatrix(payload, matrixId)) requestRefresh('matrix_rows', payload.eventType)
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'matrix_row_edit_locks' }, payload => {
-          const record = (payload.new && Object.keys(payload.new).length ? payload.new : payload.old) as Record<string, unknown>
-          const changedMatrix = String(record?.matrix_id || '')
-          if (!changedMatrix || changedMatrix === matrixId) window.dispatchEvent(new CustomEvent('matrix-realtime-lock-change', { detail: { matrixId } }))
+          if (shouldRefreshMatrix(payload, matrixId)) window.dispatchEvent(new CustomEvent('matrix-realtime-lock-change', { detail: { matrixId } }))
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'matrix_row_subpoints' }, payload => {
-          const record = (payload.new && Object.keys(payload.new).length ? payload.new : payload.old) as Record<string, unknown>
-          const rowId = String(record?.matrix_row_id || '')
-          if (!rowId) { requestRefresh(); return }
+          const rowId = parentRowIdFromChange(payload)
+          if (!rowId) { requestRefresh('matrix_row_subpoints', payload.eventType); return }
           void supabase.from('matrix_rows').select('matrix_id').eq('id', rowId).maybeSingle().then(({ data }) => {
-            if (String(data?.matrix_id || '') === matrixId) requestRefresh()
+            if (!cancelled && String(data?.matrix_id || '') === matrixId) requestRefresh('matrix_row_subpoints', payload.eventType)
+          })
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'matrix_row_responsibles' }, payload => {
+          const rowId = parentRowIdFromChange(payload)
+          if (!rowId) { requestRefresh('matrix_row_responsibles', payload.eventType); return }
+          void supabase.from('matrix_rows').select('matrix_id').eq('id', rowId).maybeSingle().then(({ data }) => {
+            if (!cancelled && String(data?.matrix_id || '') === matrixId) requestRefresh('matrix_row_responsibles', payload.eventType)
           })
         })
         .subscribe(async status => {
           if (cancelled || !channel) return
-          const online = status === 'SUBSCRIBED'
-          setConnected(online)
-          if (online && identityRef.current) {
+          if (status === 'SUBSCRIBED') {
+            setSyncState('synced')
+          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            setSyncState('error')
+          } else if (status === 'CLOSED') {
+            setSyncState('reconnecting')
+          }
+          if (status === 'SUBSCRIBED' && identityRef.current) {
             const presence: PresencePayload = { ...identityRef.current, location: null, online_at: new Date().toISOString() }
             await channel.track(presence)
           }
         })
-    })()
+    })().catch(() => { if (!cancelled) setSyncState('error') })
 
     return () => {
       cancelled = true
-      setConnected(false)
+      setSyncState('idle')
       setUsers([])
       identityRef.current = null
+      publishedLocationRef.current = null
+      if (clearLocationTimerRef.current) window.clearTimeout(clearLocationTimerRef.current)
+      clearLocationTimerRef.current = null
       if (channel) void supabase.removeChannel(channel)
       channelRef.current = null
     }
@@ -168,9 +150,9 @@ export default function MatrixRealtimeLayer({ children, periodId, unitCode }: Pr
     const channel = channelRef.current
     const identity = identityRef.current
     if (!channel || !identity) return
-    const presence: PresencePayload = { ...identity, location, online_at: new Date().toISOString() }
-    await channel.track(presence)
-    await channel.send({ type: 'broadcast', event: 'editing-location', payload: { user_id: identity.user_id, location } })
+    if (sameCollaborationLocation(publishedLocationRef.current, location)) return
+    const result = await channel.send({ type: 'broadcast', event: 'editing-location', payload: { user_id: identity.user_id, location } })
+    if (result === 'ok') publishedLocationRef.current = location
   }
 
   function handleFocusCapture(event: ReactFocusEvent<HTMLDivElement>) {
@@ -189,11 +171,16 @@ export default function MatrixRealtimeLayer({ children, periodId, unitCode }: Pr
   }
 
   const otherUsers = users.filter(user => user.user_id !== currentUserId)
+  const connected = syncState === 'synced'
+  const syncLabel = syncState === 'synced' ? `${Math.max(users.length, 1)} conectado${Math.max(users.length, 1) === 1 ? '' : 's'} · Sincronizado`
+    : syncState === 'error' ? 'Error de sincronización · reintentando'
+      : syncState === 'reconnecting' ? 'Reconectando...'
+        : 'Conectando...'
 
   return <div ref={rootRef} className="matrix-realtime-host" onFocusCapture={handleFocusCapture} onBlurCapture={handleBlurCapture}>
     {matrixId && <div className="matrix-realtime-bar">
-      <span className={`matrix-realtime-status ${connected ? 'is-online' : ''}`}><Users size={16}/></span>
-      <div className="matrix-realtime-copy"><strong>Colaboración en tiempo real</strong><small>{connected ? `${Math.max(users.length, 1)} conectado${Math.max(users.length, 1) === 1 ? '' : 's'} · cambios automáticos` : 'Conectando...'}</small></div>
+      <span className={`matrix-realtime-status ${connected ? 'is-online' : ''} ${syncState === 'error' ? 'is-error' : ''}`}><Users size={16}/></span>
+      <div className="matrix-realtime-copy"><strong>Colaboración en tiempo real</strong><small>{syncLabel}</small></div>
       <div className="matrix-realtime-users">
         {otherUsers.length === 0 ? <span className="matrix-realtime-empty">Solo tú por ahora</span> : otherUsers.map(user => {
           const location = collaborationLocationLabel(user.location)

@@ -10,6 +10,7 @@ type Props = {
   onError: (message: string) => void
   onNotice: (message: string) => void
   onViewGuidelines?: () => void
+  onActiveMatrixChange?: (matrixId: string) => void
 }
 
 export default function MatrixWorkspaceV12(props: Props) {
