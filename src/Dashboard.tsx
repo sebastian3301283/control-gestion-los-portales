@@ -331,7 +331,7 @@ function PlanningView({ access, units, initialYear, initialUnitCode }: {
 
     {step === 'guidelines' && selectedPeriod && selectedPlanningUnit && <section className="planning-panel planning-panel--wide"><PlanningGuidelines unit={{ code: selectedPlanningUnit.code, name: selectedPlanningUnit.name }} periodId={selectedPeriod.id} canManage={canManage} /></section>}
 
-    {step === 'matrices' && selectedPeriod && selectedPlanningUnit && <section className="planning-panel planning-panel--wide"><MatrixWorkspace periodId={selectedPeriod.id} year={selectedPeriod.year} unitCode={selectedPlanningUnit.code} unitName={selectedPlanningUnit.name} canManage={canManage} onError={setError} onNotice={setNotice} onViewGuidelines={() => { setStep('guidelines'); setError(''); setNotice('') }} /></section>}
+    {step === 'matrices' && selectedPeriod && selectedPlanningUnit && <section className="planning-panel planning-panel--wide"><MatrixWorkspace periodId={selectedPeriod.id} year={selectedPeriod.year} unitCode={selectedPlanningUnit.code} unitName={selectedPlanningUnit.name} canManage={canManage} onError={setError} onNotice={setNotice} onViewGuidelines={(target) => { if (selectedPlanningUnit.code === 'CENTRAL' && target?.managementId) sessionStorage.setItem('cg:guideline-target', JSON.stringify({ periodId: selectedPeriod.id, unitCode: selectedPlanningUnit.code, managementId: target.managementId, guidelineId: target.guidelineId, createdAt: Date.now() })); setStep('guidelines'); setError(''); setNotice('') }} /></section>}
   </div>
 }
 

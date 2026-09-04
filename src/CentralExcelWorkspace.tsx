@@ -1,5 +1,5 @@
-import { ChangeEvent, CSSProperties, Fragment, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, ArrowRight, Building2, Check, Download, History, LoaderCircle, Maximize2, Minimize2, Plus, RotateCcw, Trash2, Upload, X, ZoomIn, ZoomOut } from 'lucide-react'
+import { CSSProperties, Fragment, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowRight, Building2, Download, History, LoaderCircle, Maximize2, Minimize2, Plus, RotateCcw, Trash2, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { supabase } from './lib/supabase'
 import { actionPlanFromSubpoints, buildCentralSubpointDrafts, findIncompleteCentralSubpoint, normalizeCentralSubpointRows, type CentralSubpointDraft, type CentralSubpointRecord } from './central-subpoint-records.js'
 import './matrix-workspace-v5.css'
@@ -11,9 +11,10 @@ type Process = { id: string; management_id: string; unit_code: string }
 type Matrix = { id: string; name: string; process_id: string; status: string; guideline_id: string | null }
 type Manager = { id: string; name: string; cargo: string | null; unit_code: string; directory_group: string }
 type ManagerManagement = { manager_id: string; management_id: string }
-type Guideline = { id: string; management_id: string; responsible_manager_id: string | null; guideline_text: string }
+type Guideline = { id: string; management_id: string; code: string | null; responsible_manager_id: string | null; guideline_text: string }
 type MatrixRow = {
   id: string
+  guideline_id: string | null
   objective_group: string | null
   objective: string | null
   action_plan: string | null
@@ -46,11 +47,12 @@ type Props = {
   onError: (message: string) => void
   onNotice: (message: string) => void
   onActiveMatrixChange?: (matrixId: string) => void
+  onGuidelineContextChange?: (context: { managementId: string; guidelineId: string | null }) => void
 }
 
 const XLSX_MODULE_URL = 'https://unpkg.com/xlsx@0.18.5/xlsx.mjs'
 const emptyRow: RowDraft = {
-  objective_group: '', objective: '', action_plan: null, responsible_manager_id: null, responsible_text: '', priority: '', milestones: '', kpi: '', target: null,
+  guideline_id: null, objective_group: '', objective: '', action_plan: null, responsible_manager_id: null, responsible_text: '', priority: '', milestones: '', kpi: '', target: null,
   start_date: '', end_date: '', risks: '', restrictions: '', support: '', deliverables: '', committee: '', status: 'DRAFT',
 }
 const emptyCentralSubpoint = (): CentralSubpointDraft => ({ id: null, text: '', milestones: '', kpi: '', start_date: '', end_date: '' })
@@ -83,19 +85,8 @@ function historyActionLabel(value: string) {
   if (value === 'RESTORE') return 'Versión restaurada'
   return value.replaceAll('_', ' ').toLowerCase()
 }
-function dateToIso(value: unknown) {
-  if (!value) return null
-  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10)
-  const text = textValue(value)
-  const match = text.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/)
-  if (match) return `${match[3].length === 2 ? `20${match[3]}` : match[3]}-${match[2].padStart(2, '0')}-${match[1].padStart(2, '0')}`
-  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null
-}
-function splitResponsibleNames(value: unknown) {
-  return String(value ?? '').split(/[;,\n|]+/).map(item => item.trim()).filter(Boolean)
-}
 
-export default function CentralExcelWorkspace({ periodId, year, unitName, canManage, onError, onNotice, onActiveMatrixChange }: Props) {
+export default function CentralExcelWorkspace({ periodId, year, unitName, canManage, onError, onNotice, onActiveMatrixChange, onGuidelineContextChange }: Props) {
   const [page, setPage] = useState<'areas' | 'sheet'>('areas')
   const [areas, setAreas] = useState<Area[]>([])
   const [processes, setProcesses] = useState<Process[]>([])
@@ -112,35 +103,41 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
   const [rowsLoading, setRowsLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [exporting, setExporting] = useState(false)
-  const [importing, setImporting] = useState(false)
   const [editingRowId, setEditingRowId] = useState<string | null>(null)
   const [rowFormOpen, setRowFormOpen] = useState(false)
   const [rowDraft, setRowDraft] = useState<RowDraft>(emptyRow)
+  const [selectedRowGuidelineId, setSelectedRowGuidelineId] = useState<string | null>(null)
   const [selectedResponsibleIds, setSelectedResponsibleIds] = useState<string[]>([])
+  const [responsiblePickerOpen, setResponsiblePickerOpen] = useState(false)
   const [centralSubpointDrafts, setCentralSubpointDrafts] = useState<CentralSubpointDraft[]>([emptyCentralSubpoint()])
-  const [creatingObjectiveGroup, setCreatingObjectiveGroup] = useState(false)
   const [areaCanEdit, setAreaCanEdit] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [zoom, setZoom] = useState(1)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [historyLoading, setHistoryLoading] = useState(false)
   const [versions, setVersions] = useState<MatrixVersion[]>([])
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const responsiblePickerRef = useRef<HTMLDivElement | null>(null)
   const loadRowsRequestRef = useRef(0)
 
   const selectedArea = areas.find(item => item.id === selectedAreaId) || null
   const selectedMatrix = matrices.find(item => item.id === selectedMatrixId) || null
   const managerById = useMemo(() => new Map(managers.map(item => [item.id, item])), [managers])
-  const rowObjectiveGroups = useMemo(() => [...new Set(rows.map(row => textValue(row.objective_group)).filter(Boolean))], [rows])
+  const areaGuidelines = useMemo(() => guidelines.filter(item => item.management_id === selectedAreaId), [guidelines, selectedAreaId])
   const centralManagers = useMemo(() => {
     const allowed = new Set(managerManagements.filter(item => item.management_id === selectedAreaId).map(item => item.manager_id))
     return managers.filter(manager => allowed.has(manager.id)).sort((a, b) => a.name.localeCompare(b.name, 'es'))
   }, [managerManagements, managers, selectedAreaId])
   const effectiveCanManage = canManage || areaCanEdit
-  const tableColSpan = 12 + (effectiveCanManage ? 1 : 0)
+  const tableColSpan = 12
   const zoomStyle = { '--matrix-zoom': zoom } as CSSProperties
 
-  const selectedGuideline = useMemo(() => guidelines.find(item => item.management_id === selectedAreaId) || null, [guidelines, selectedAreaId])
+  const selectedGuideline = useMemo(() => areaGuidelines[0] || null, [areaGuidelines])
+  const guidelineContextId = useMemo(() => {
+    if (selectedRowGuidelineId) return selectedRowGuidelineId
+    const rowGuidelineIds = [...new Set(rows.map(row => row.guideline_id).filter((id): id is string => Boolean(id)))]
+    if (rowGuidelineIds.length === 1) return rowGuidelineIds[0]
+    return selectedMatrix?.guideline_id || null
+  }, [selectedRowGuidelineId, rows, selectedMatrix?.guideline_id])
   const firstResponsible = useMemo(() => {
     if (selectedGuideline?.responsible_manager_id) return managerById.get(selectedGuideline.responsible_manager_id)?.name || 'Sin asignar'
     const firstRow = rows.find(row => (centralResponsibleIdsByRow[row.id] || []).length || row.responsible_text)
@@ -162,6 +159,19 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
     onActiveMatrixChange?.(selectedMatrixId)
     return () => onActiveMatrixChange?.('')
   }, [onActiveMatrixChange, selectedMatrixId])
+  useEffect(() => {
+    onGuidelineContextChange?.({ managementId: selectedAreaId, guidelineId: selectedAreaId ? guidelineContextId : null })
+  }, [guidelineContextId, onGuidelineContextChange, selectedAreaId])
+  useEffect(() => {
+    if (!responsiblePickerOpen) return
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!responsiblePickerRef.current?.contains(event.target as Node)) setResponsiblePickerOpen(false)
+    }
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => { if (event.key === 'Escape') setResponsiblePickerOpen(false) }
+    document.addEventListener('pointerdown', handlePointerDown)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => { document.removeEventListener('pointerdown', handlePointerDown); window.removeEventListener('keydown', handleKeyDown) }
+  }, [responsiblePickerOpen])
   useEffect(() => {
     const handleRealtimeDataChange = (event: Event) => {
       const detail = (event as CustomEvent<{ matrixId?: string }>).detail
@@ -192,7 +202,7 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
         supabase.from('matrices').select('id,name,process_id,status,guideline_id').eq('period_id', periodId).eq('unit_code', 'CENTRAL').eq('active', true).order('created_at'),
         supabase.from('managers').select('id,name,cargo,unit_code,directory_group').eq('active', true).order('name'),
         supabase.from('manager_managements').select('manager_id,management_id'),
-        supabase.from('planning_guidelines').select('id,management_id,responsible_manager_id,guideline_text').eq('period_id', periodId).eq('unit_code', 'CENTRAL').eq('active', true).order('sort_order'),
+        supabase.from('planning_guidelines').select('id,management_id,code,responsible_manager_id,guideline_text').eq('period_id', periodId).eq('unit_code', 'CENTRAL').eq('active', true).order('sort_order'),
       ])
       if (catalogResult.error || areaResult.error || processResult.error || matrixResult.error || managerResult.error || mappingResult.error || guidelineResult.error) throw new Error('LOAD')
       const allAreas = (areaResult.data || []) as Area[]
@@ -268,40 +278,46 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
     if (!matrix) { onError(`La matriz de “${area.name}” todavía no está preparada o no tienes acceso.`); return }
     setSelectedAreaId(area.id); setSelectedMatrixId(matrix.id); cancelRowEdit(); setPage('sheet'); onError(''); onNotice('')
   }
-  function backToAreas() {
-    cancelRowEdit(); setSelectedAreaId(''); setSelectedMatrixId(''); setPage('areas'); onError(''); onNotice('')
-  }
 
   function startNewRow() {
     if (rowFormOpen || !effectiveCanManage) return
     setEditingRowId(null)
-    setRowDraft({ ...emptyRow, objective_group: rowObjectiveGroups.length === 1 ? rowObjectiveGroups[0] : '' })
+    setRowDraft({ ...emptyRow })
+    setSelectedRowGuidelineId(null)
     setSelectedResponsibleIds([])
+    setResponsiblePickerOpen(false)
     setCentralSubpointDrafts([emptyCentralSubpoint()])
-    setCreatingObjectiveGroup(rowObjectiveGroups.length === 0)
     setRowFormOpen(true); onError(''); onNotice('')
   }
   function startEditRow(row: MatrixRow) {
     if (!effectiveCanManage || rowFormOpen) return
+    const matchedGuidelineId = row.guideline_id || areaGuidelines.find(item => normalizeText(item.guideline_text) === normalizeText(row.objective_group))?.id || null
     setEditingRowId(row.id)
     setRowDraft({
-      objective_group: row.objective_group || '', objective: row.objective || '', action_plan: row.action_plan, responsible_manager_id: row.responsible_manager_id,
+      guideline_id: matchedGuidelineId, objective_group: row.objective_group || '', objective: row.objective || '', action_plan: row.action_plan, responsible_manager_id: row.responsible_manager_id,
       responsible_text: row.responsible_text || '', priority: row.priority || '', milestones: row.milestones || '', kpi: row.kpi || '', target: row.target,
       start_date: row.start_date || '', end_date: row.end_date || '', risks: row.risks || '', restrictions: row.restrictions || '', support: row.support || '',
       deliverables: row.deliverables || '', committee: row.committee || '', status: row.status || 'DRAFT',
     })
+    setSelectedRowGuidelineId(matchedGuidelineId)
     setSelectedResponsibleIds(centralResponsibleIdsByRow[row.id] || (row.responsible_manager_id ? [row.responsible_manager_id] : []))
+    setResponsiblePickerOpen(false)
     const subpoints = buildCentralSubpointDrafts(centralSubpointsByRow[row.id] || [], row)
     setCentralSubpointDrafts(subpoints.length ? subpoints : [emptyCentralSubpoint()])
-    setCreatingObjectiveGroup(false)
     setRowFormOpen(true); onError(''); onNotice('')
   }
   function cancelRowEdit() {
-    setEditingRowId(null); setRowFormOpen(false); setRowDraft(emptyRow); setSelectedResponsibleIds([]); setCentralSubpointDrafts([emptyCentralSubpoint()]); setCreatingObjectiveGroup(false)
+    setEditingRowId(null); setRowFormOpen(false); setRowDraft(emptyRow); setSelectedRowGuidelineId(null); setSelectedResponsibleIds([]); setResponsiblePickerOpen(false); setCentralSubpointDrafts([emptyCentralSubpoint()])
   }
   function updateDraft<K extends keyof RowDraft>(key: K, value: RowDraft[K]) { setRowDraft(current => ({ ...current, [key]: value })) }
   function toggleResponsible(managerId: string) {
     setSelectedResponsibleIds(current => current.includes(managerId) ? current.filter(id => id !== managerId) : [...current, managerId])
+  }
+  function selectGuideline(guidelineId: string) {
+    const guideline = areaGuidelines.find(item => item.id === guidelineId) || null
+    setSelectedRowGuidelineId(guideline?.id || null)
+    updateDraft('guideline_id', guideline?.id || null)
+    updateDraft('objective_group', guideline?.guideline_text || '')
   }
   function updateCentralSubpoint(index: number, key: keyof CentralSubpointDraft, value: string) {
     setCentralSubpointDrafts(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, [key]: value } : item))
@@ -320,6 +336,7 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
   const responsibleNames = selectedResponsibleIds.map(id => managerById.get(id)?.name).filter((name): name is string => Boolean(name))
   const payload = {
     matrix_id: selectedMatrix.id,
+    guideline_id: selectedRowGuidelineId || rowDraft.guideline_id || null,
     objective_group: textValue(rowDraft.objective_group) || null,
     objective: textValue(rowDraft.objective) || null,
     action_plan: actionPlanFromSubpoints(subpointRows) || null,
@@ -350,6 +367,7 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
     }
     if (!previousRow) return false
     const { error } = await supabase.from('matrix_rows').update({
+      guideline_id: previousRow.guideline_id,
       objective_group: previousRow.objective_group,
       objective: previousRow.objective,
       action_plan: previousRow.action_plan,
@@ -455,12 +473,17 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
     if (!supabase || !selectedMatrix || !effectiveCanManage) return
     const { error } = await supabase.from('matrix_rows').delete().eq('id', rowId)
     if (error) { onError('No pudimos eliminar la acción.'); return }
+    if (editingRowId === rowId) cancelRowEdit()
     onNotice('Acción eliminada.'); await loadRows(selectedMatrix.id)
   }
 
   function handleEditKeyDown(event: KeyboardEvent<HTMLTableRowElement>) {
     if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); void saveRow() }
-    if (event.key === 'Escape') { event.preventDefault(); cancelRowEdit() }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      if (responsiblePickerOpen) { setResponsiblePickerOpen(false); return }
+      cancelRowEdit()
+    }
   }
 
   async function exportExcel() {
@@ -489,86 +512,6 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
     } catch { onError('No pudimos exportar la matriz a Excel.') } finally { setExporting(false) }
   }
 
-  async function importExcel(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]; event.target.value = ''
-    if (!file || !selectedMatrix || !supabase || !effectiveCanManage) return
-    setImporting(true); onError(''); onNotice('')
-    const createdRowIds: string[] = []
-    try {
-      const XLSX = await import(/* @vite-ignore */ XLSX_MODULE_URL)
-      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true })
-      const sheetName = workbook.SheetNames[0]
-      if (!sheetName) throw new Error('NO_SHEET')
-      const grid = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: '', raw: true }) as unknown[][]
-      const headerIndex = grid.findIndex(row => {
-        const values = row.map(normalizeText)
-        return values.some(value => value === 'accion' || value === 'acción') && values.some(value => value.includes('responsable'))
-      })
-      if (headerIndex < 0) { onError('No encontramos los encabezados Acción y Responsable del formato Central.'); return }
-      const headers = grid[headerIndex].map(normalizeText)
-      const findCol = (items: string[]) => headers.findIndex(header => items.some(item => header === item || header.includes(item)))
-      const actionCol = findCol(['accion']); const responsibleCol = findCol(['responsable']); const priorityCol = findCol(['prioridad']); const milestoneCol = findCol(['hitos fechas','hitos']); const kpiCol = findCol(['kpi']); const startCol = findCol(['inicio']); const endCol = findCol(['fin']); const riskCol = findCol(['riesgos']); const restrictionCol = findCol(['restricciones']); const supportCol = findCol(['soporte']); const deliverableCol = findCol(['entregable']); const committeeCol = findCol(['comite'])
-      const at = (row: unknown[], col: number) => col >= 0 ? row[col] : ''
-      let currentGroup = ''
-      let imported = 0
-      let importedSubpoints = 0
-      let lastImportedRowId = ''
-      let lastImportedSubpointTexts: string[] = []
-      for (const sourceRow of grid.slice(headerIndex + 1)) {
-        const action = textValue(at(sourceRow, actionCol))
-        const otherValues = sourceRow.filter((_, index) => index !== actionCol).map(textValue).filter(Boolean)
-        const subpointMatch = action.match(/^S\d+\s*:\s*(.*)$/i)
-        if (subpointMatch && lastImportedRowId) {
-          const subpoint = {
-            matrix_row_id: lastImportedRowId,
-            text: textValue(subpointMatch[1]),
-            milestones: textValue(at(sourceRow, milestoneCol)) || null,
-            kpi: textValue(at(sourceRow, kpiCol)) || null,
-            start_date: dateToIso(at(sourceRow, startCol)),
-            end_date: dateToIso(at(sourceRow, endCol)),
-            sort_order: lastImportedSubpointTexts.length,
-          }
-          if (subpoint.text || subpoint.milestones || subpoint.kpi || subpoint.start_date || subpoint.end_date) {
-            const subpointResult = await supabase.from('matrix_row_subpoints').insert(subpoint)
-            if (subpointResult.error) throw subpointResult.error
-            lastImportedSubpointTexts.push(subpoint.text)
-            const mirrorResult = await supabase.from('matrix_rows').update({ action_plan: lastImportedSubpointTexts.filter(Boolean).join('\n') || null }).eq('id', lastImportedRowId)
-            if (mirrorResult.error) throw mirrorResult.error
-            importedSubpoints += 1
-          }
-          continue
-        }
-        if (action && otherValues.length === 0) { currentGroup = action; lastImportedRowId = ''; lastImportedSubpointTexts = []; continue }
-        if (!action) continue
-        const responsibleNames = splitResponsibleNames(at(sourceRow, responsibleCol))
-        const managerIds = responsibleNames.map(name => centralManagers.find(manager => normalizeText(manager.name) === normalizeText(name))?.id).filter((id): id is string => Boolean(id))
-        const names = managerIds.map(id => managerById.get(id)?.name).filter((name): name is string => Boolean(name))
-        const payload = {
-          matrix_id: selectedMatrix.id, objective_group: currentGroup || null, objective: action, action_plan: null,
-          responsible_manager_id: managerIds[0] || null, responsible_text: names.length ? names.join(', ') : textValue(at(sourceRow, responsibleCol)) || null,
-          priority: textValue(at(sourceRow, priorityCol)) || null, milestones: textValue(at(sourceRow, milestoneCol)) || null, kpi: textValue(at(sourceRow, kpiCol)) || null, target: null,
-          start_date: dateToIso(at(sourceRow, startCol)), end_date: dateToIso(at(sourceRow, endCol)), risks: textValue(at(sourceRow, riskCol)) || null, restrictions: textValue(at(sourceRow, restrictionCol)) || null,
-          support: textValue(at(sourceRow, supportCol)) || null, deliverables: textValue(at(sourceRow, deliverableCol)) || null, committee: textValue(at(sourceRow, committeeCol)) || null, status: 'DRAFT', sort_order: rows.length + imported,
-        }
-        const { data, error } = await supabase.from('matrix_rows').insert(payload).select('id').single()
-        if (error || !data?.id) throw error || new Error('INSERT')
-        const rowId = String(data.id)
-        createdRowIds.push(rowId)
-        lastImportedRowId = rowId
-        lastImportedSubpointTexts = []
-        if (managerIds.length) {
-          const linkResult = await supabase.from('matrix_row_responsibles').insert(managerIds.map((managerId, index) => ({ row_id: rowId, manager_id: managerId, sort_order: index })))
-          if (linkResult.error) throw linkResult.error
-        }
-        imported += 1
-      }
-      if (!imported) { onError('No encontramos acciones para importar.'); return }
-      await loadRows(selectedMatrix.id); onNotice(`${imported} acción${imported === 1 ? '' : 'es'} y ${importedSubpoints} subpunto${importedSubpoints === 1 ? '' : 's'} importados correctamente.`)
-    } catch {
-      if (createdRowIds.length) await supabase.from('matrix_rows').delete().in('id', createdRowIds)
-      onError('No pudimos importar el Excel de Central. No se conservaron filas parciales; revisa el formato y los nombres de responsables.')
-    } finally { setImporting(false) }
-  }
 
   async function openHistory() {
     if (!supabase || !selectedMatrix) return
@@ -581,19 +524,17 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
 
   function renderResponsiblePicker() {
     const selectedNames = selectedResponsibleIds.map(id => managerById.get(id)?.name).filter(Boolean)
-    return <details className="matrix-central-responsible-picker">
-      <summary>{selectedNames.length ? <span className="matrix-central-summary-chips">{selectedNames.map(name => <i key={name}>{name}</i>)}</span> : <span>Seleccionar responsables</span>}</summary>
-      <div className="matrix-central-responsible-menu">
+    return <div ref={responsiblePickerRef} className="matrix-central-responsible-picker">
+      <button type="button" className="matrix-central-responsible-trigger" aria-expanded={responsiblePickerOpen} onClick={() => setResponsiblePickerOpen(value => !value)}>{selectedNames.length ? <span className="matrix-central-summary-chips">{selectedNames.map(name => <i key={name}>{name}</i>)}</span> : <span>Seleccionar responsables</span>}</button>
+      {responsiblePickerOpen && <div className="matrix-central-responsible-menu">
+        <div className="matrix-central-responsible-menu-head"><strong>Responsables</strong><button type="button" className="matrix-central-responsible-close" title="Cerrar responsables" onClick={() => setResponsiblePickerOpen(false)}><X size={14}/></button></div>
         {centralManagers.length === 0 ? <small>No hay bonistas asignados a esta área.</small> : centralManagers.map(manager => <label key={manager.id}><input type="checkbox" checked={selectedResponsibleIds.includes(manager.id)} onChange={() => toggleResponsible(manager.id)}/><span><strong>{manager.name}</strong>{manager.cargo && <small>{manager.cargo}</small>}</span></label>)}
-      </div>
-    </details>
+      </div>}
+    </div>
   }
 
   function renderObjectiveGroupEditor() {
-    const groupEditor = creatingObjectiveGroup || rowObjectiveGroups.length === 0
-      ? <div className="matrix-central-objective-edit"><strong>OBJETIVO</strong><input value={rowDraft.objective_group || ''} onChange={event => updateDraft('objective_group', event.target.value)} placeholder="Ej. OB1: Consolidar el rol de Auditoría..."/>{rowObjectiveGroups.length > 0 && <button type="button" onClick={() => { setCreatingObjectiveGroup(false); updateDraft('objective_group', '') }}>Usar existente</button>}</div>
-      : <div className="matrix-central-objective-edit"><strong>OBJETIVO</strong><select value={rowDraft.objective_group || ''} onChange={event => { if (event.target.value === '__new__') { setCreatingObjectiveGroup(true); updateDraft('objective_group', '') } else updateDraft('objective_group', event.target.value) }}><option value="">Selecciona un objetivo</option>{rowObjectiveGroups.map(group => <option key={group} value={group}>{group}</option>)}<option value="__new__">+ Crear nuevo objetivo</option></select></div>
-    return <div className="matrix-central-objective-toolbar">{groupEditor}<button type="button" className="matrix-central-add-subpoint" onClick={() => setCentralSubpointDrafts(current => [...current, emptyCentralSubpoint()])}><Plus size={14}/> Añadir subpunto</button></div>
+    return <div className="matrix-central-objective-toolbar"><div className="matrix-central-objective-edit"><strong>LINEAMIENTO</strong><select value={selectedRowGuidelineId || ''} onChange={event => selectGuideline(event.target.value)}><option value="">Selecciona un lineamiento</option>{areaGuidelines.map(guideline => <option key={guideline.id} value={guideline.id}>{guideline.code ? `${guideline.code} · ` : ''}{guideline.guideline_text}</option>)}</select></div></div>
   }
 
   function renderSpreadsheetDraftRows(key: string) {
@@ -602,7 +543,7 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
       <tr className="matrix-v5-edit-row matrix-central-objective-editor-row" key={`${key}-group`}><td colSpan={tableColSpan}>{renderObjectiveGroupEditor()}</td></tr>
       <tr className="matrix-v5-edit-row matrix-v10-central-excel-row matrix-v10-central-excel-row--editing matrix-central-in-grid-draft" key={`${key}-row`} onKeyDown={handleEditKeyDown}>
         <td className="matrix-central-sheet-cell matrix-central-sheet-cell--action"><textarea rows={1} value={rowDraft.objective || ''} onChange={event => updateDraft('objective', event.target.value)} placeholder="Acción" aria-label="Acción" autoFocus/></td>
-        <td className="matrix-central-sheet-cell matrix-central-sheet-cell--responsible" rowSpan={sharedRowSpan}>{renderResponsiblePicker()}</td>
+        <td className="matrix-central-sheet-cell matrix-central-sheet-cell--responsible" rowSpan={sharedRowSpan}><div className="matrix-central-responsible-editor"><div className="matrix-central-responsible-editor-actions"><button type="button" onClick={() => setCentralSubpointDrafts(current => [...current, emptyCentralSubpoint()])}><Plus size={13}/> Añadir subpunto</button><button type="button" className="save" data-edit-action="save" onClick={() => void saveRow()} disabled={saving}>{saving && <LoaderCircle className="spin" size={13}/>} Guardar</button><button type="button" data-edit-action="cancel" onClick={cancelRowEdit}>Cancelar</button>{editingRowId && <button type="button" className="danger" data-edit-action="delete" onClick={() => void deleteRow(editingRowId)}><Trash2 size={13}/> Eliminar acción</button>}</div>{renderResponsiblePicker()}</div></td>
         <td className="matrix-central-sheet-cell" rowSpan={sharedRowSpan}><select value={rowDraft.priority || ''} onChange={event => updateDraft('priority', event.target.value)} aria-label="Prioridad"><option value="">—</option><option>Alta</option><option>Media</option><option>Baja</option></select></td>
         <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.milestones || ''} onChange={event => updateDraft('milestones', event.target.value)} placeholder="Hito o fecha" aria-label="Hitos o fechas"/></td>
         <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.kpi || ''} onChange={event => updateDraft('kpi', event.target.value)} placeholder="KPI" aria-label="KPI cuantitativo"/></td>
@@ -613,7 +554,6 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
         <td className="matrix-central-sheet-cell" rowSpan={sharedRowSpan}><textarea rows={1} value={rowDraft.support || ''} onChange={event => updateDraft('support', event.target.value)} placeholder="Soporte" aria-label="Soporte"/></td>
         <td className="matrix-central-sheet-cell" rowSpan={sharedRowSpan}><textarea rows={1} value={rowDraft.deliverables || ''} onChange={event => updateDraft('deliverables', event.target.value)} placeholder="Entregable" aria-label="Entregable"/></td>
         <td className="matrix-central-sheet-cell" rowSpan={sharedRowSpan}><textarea rows={1} value={rowDraft.committee || ''} onChange={event => updateDraft('committee', event.target.value)} placeholder="Comité" aria-label="Comité"/></td>
-        {effectiveCanManage && <td className="matrix-central-sheet-cell matrix-central-sheet-cell--actions" rowSpan={sharedRowSpan}><div className="matrix-v5-row-actions matrix-central-edit-actions"><button type="button" title="Cancelar" onClick={cancelRowEdit}><X size={14}/></button><button type="button" className="save" title="Guardar · Ctrl+Enter" onClick={() => void saveRow()} disabled={saving}>{saving ? <LoaderCircle className="spin" size={14}/> : <Check size={14}/>}</button></div></td>}
       </tr>
       {centralSubpointDrafts.map((subpoint, index) => <tr className="matrix-v5-edit-row matrix-central-subpoint-row matrix-central-subpoint-row--editing" key={`${key}-subpoint-${subpoint.id || 'new'}-${index}`} onKeyDown={handleEditKeyDown}>
         <td className="matrix-central-sheet-cell matrix-central-subpoint-cell"><div><span className="matrix-central-subpoint-badge">S{index + 1}</span><textarea rows={1} value={subpoint.text} onChange={event => updateCentralSubpoint(index, 'text', event.target.value)} placeholder={`Subpunto ${index + 1}`} aria-label={`Subpunto ${index + 1}`}/><button type="button" title="Eliminar subpunto" disabled={centralSubpointDrafts.length === 1} onClick={() => setCentralSubpointDrafts(current => current.length === 1 ? current : current.filter((_, itemIndex) => itemIndex !== index))}><Trash2 size={13}/></button></div></td>
@@ -633,11 +573,9 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
 
     {page === 'sheet' && selectedMatrix && <section className="matrix-v5-plan-shell">
       <div className="matrix-v5-toolbar"><div className="matrix-v5-toolbar-actions">
-        <button className="matrix-v5-secondary" onClick={backToAreas}><ArrowLeft size={16}/> Áreas</button>
         <button className="matrix-v5-secondary" onClick={() => setExpanded(value => !value)}>{expanded ? <Minimize2 size={16}/> : <Maximize2 size={16}/>} {expanded ? 'Salir de pantalla completa' : 'Expandir matriz'}</button>
         {expanded && <div className="matrix-v5-zoom"><button title="Alejar" onClick={() => setZoom(value => Math.max(.75, +(value - .1).toFixed(2)))}><ZoomOut size={15}/></button><span>{Math.round(zoom * 100)}%</span><button title="Acercar" onClick={() => setZoom(value => Math.min(1.4, +(value + .1).toFixed(2)))}><ZoomIn size={15}/></button><button title="Restablecer zoom" onClick={() => setZoom(1)}><RotateCcw size={14}/></button></div>}
         <button className="matrix-v5-secondary" onClick={() => void openHistory()}><History size={16}/> Historial</button>
-        {effectiveCanManage && <><input ref={fileInputRef} type="file" accept=".xlsx,.xls" hidden onChange={event => void importExcel(event)}/><button className="matrix-v5-secondary" onClick={() => fileInputRef.current?.click()} disabled={importing}><Upload size={16}/>{importing ? 'Importando...' : 'Importar Excel'}</button></>}
         <button className="matrix-v5-secondary" onClick={() => void exportExcel()} disabled={exporting}><Download size={16}/>{exporting ? 'Exportando...' : 'Exportar Excel'}</button>
         {effectiveCanManage && <button className="matrix-v5-primary" onClick={startNewRow}><Plus size={16}/> Nueva fila</button>}
       </div></div>
@@ -645,7 +583,7 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
       <div className="matrix-v5-title"><span>Matriz de Plan de Acción</span><h2>PLAN DE ACCIÓN {year}</h2></div>
       <div className="matrix-v5-summary"><div><span>Área</span><strong>{selectedArea?.name || '—'}</strong></div><div><span>Unidad</span><strong>Central</strong></div><div><span>Responsable principal</span><strong>{firstResponsible}</strong></div></div>
 
-      <div className="matrix-v5-sheet-card"><div className="matrix-v5-sheet-scroll" style={zoomStyle}><table className="matrix-v5-sheet matrix-v10-central-excel matrix-central-spreadsheet-grid"><thead><tr><th>Acción</th><th>Responsable</th><th>Prioridad</th><th>Hitos / Fechas</th><th>KPI (Cuantitativo)</th><th>Inicio</th><th>Fin</th><th>Riesgos de no ejecutar</th><th>Restricciones</th><th>Soporte</th><th>Entregable</th><th>Comité</th>{effectiveCanManage && <th>Acciones</th>}</tr></thead><tbody>
+      <div className="matrix-v5-sheet-card"><div className="matrix-v5-sheet-scroll" style={zoomStyle}><table className="matrix-v5-sheet matrix-v10-central-excel matrix-central-spreadsheet-grid"><thead><tr><th>Acción</th><th>Responsable</th><th>Prioridad</th><th>Hitos / Fechas</th><th>KPI (Cuantitativo)</th><th>Inicio</th><th>Fin</th><th>Riesgos de no ejecutar</th><th>Restricciones</th><th>Soporte</th><th>Entregable</th><th>Comité</th></tr></thead><tbody>
         {rowsLoading ? <tr><td colSpan={tableColSpan} className="matrix-v5-table-empty"><LoaderCircle className="spin" size={20}/> Cargando matriz...</td></tr> : rows.length === 0 && !rowFormOpen ? <tr><td colSpan={tableColSpan} className="matrix-v5-table-empty">La matriz está lista. Presiona “Nueva fila” para comenzar.</td></tr> : rows.map((row, index) => {
           const currentGroup = textValue(row.objective_group)
           const previousGroup = index > 0 ? textValue(rows[index - 1].objective_group) : ''
@@ -663,7 +601,6 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
               <td rowSpan={sharedRowSpan}>{row.priority ? <span className={`matrix-v5-priority matrix-v5-priority--${priorityClass(row.priority)}`}>{row.priority}</span> : '—'}</td>
               <td>{row.milestones || '—'}</td><td>{row.kpi || '—'}</td><td>{formatDate(row.start_date)}</td><td>{formatDate(row.end_date)}</td>
               <td rowSpan={sharedRowSpan}>{row.risks || '—'}</td><td rowSpan={sharedRowSpan}>{row.restrictions || '—'}</td><td rowSpan={sharedRowSpan}>{row.support || '—'}</td><td rowSpan={sharedRowSpan}>{row.deliverables || '—'}</td><td rowSpan={sharedRowSpan}>{row.committee || '—'}</td>
-              {effectiveCanManage && <td rowSpan={sharedRowSpan}><div className="matrix-v5-row-actions"><button type="button" title="Eliminar acción" className="danger" onClick={event => { event.stopPropagation(); void deleteRow(row.id) }}><Trash2 size={14}/></button></div></td>}
             </tr>
             {subpoints.map((subpoint, subpointIndex) => <tr data-matrix-row-id={row.id} className={`matrix-central-subpoint-row ${effectiveCanManage ? 'matrix-central-subpoint-row--editable' : ''}`} onClick={() => startEditRow(row)} key={`${row.id}-subpoint-${subpoint.id || subpointIndex}`}>
               <td className="matrix-v5-action-cell matrix-central-subpoint-cell"><div><span className="matrix-central-subpoint-badge">S{subpointIndex + 1}</span><span>{subpoint.text || '—'}</span></div></td>

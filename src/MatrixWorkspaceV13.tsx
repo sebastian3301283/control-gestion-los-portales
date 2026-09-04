@@ -12,7 +12,7 @@ type Props = {
   canManage: boolean
   onError: (message: string) => void
   onNotice: (message: string) => void
-  onViewGuidelines?: () => void
+  onViewGuidelines?: (target?: { managementId: string; guidelineId: string | null }) => void
 }
 
 export default function MatrixWorkspaceV13(props: Props) {

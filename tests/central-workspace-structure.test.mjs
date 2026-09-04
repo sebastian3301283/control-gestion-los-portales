@@ -8,9 +8,10 @@ const v12 = await readFile(new URL('../src/MatrixWorkspaceV12.tsx', import.meta.
 const v11Css = await readFile(new URL('../src/matrix-workspace-v11.css', import.meta.url), 'utf8')
 
 test('Central conserva la toolbar completa y sigue pasando por MatrixWorkspaceV11', () => {
-  for (const label of ['Expandir matriz', 'Historial', 'Importar Excel', 'Exportar Excel', 'Nueva fila']) {
+  for (const label of ['Expandir matriz', 'Historial', 'Exportar Excel', 'Nueva fila']) {
     assert.match(central, new RegExp(label))
   }
+  assert.doesNotMatch(central, /Importar Excel/)
   assert.match(v11, /CentralExcelWorkspace/)
   assert.match(v12, /<MatrixWorkspaceV11/)
 })

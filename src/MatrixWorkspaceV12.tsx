@@ -10,7 +10,7 @@ type Props = {
   canManage: boolean
   onError: (message: string) => void
   onNotice: (message: string) => void
-  onViewGuidelines?: () => void
+  onViewGuidelines?: (target?: { managementId: string; guidelineId: string | null }) => void
   onActiveMatrixChange?: (matrixId: string) => void
 }
 

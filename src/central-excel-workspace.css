@@ -11,7 +11,6 @@
 .matrix-v10-central-excel thead th:nth-child(10){width:210px}
 .matrix-v10-central-excel thead th:nth-child(11){width:200px}
 .matrix-v10-central-excel thead th:nth-child(12){width:190px}
-.matrix-v10-central-excel thead th:last-child{width:82px}
 .matrix-v10-central-excel td{padding:7px 8px;border-right:1px solid #c7d4df;border-bottom:1px solid #c7d4df;background:#fff;vertical-align:middle;line-height:1.35;font-size:12px;white-space:normal;overflow-wrap:anywhere}
 .matrix-v10-central-excel-row{cursor:cell}
 .matrix-v10-central-excel-row--editable:hover td{background:#f6fbff}
@@ -34,8 +33,6 @@
 .matrix-central-responsible-chips{display:flex;flex-wrap:wrap;gap:4px}
 .matrix-central-responsible-chips span,.matrix-central-summary-chips i{display:inline-flex;align-items:center;padding:3px 6px;border-radius:3px;background:#e8f3eb;color:#1e6e3b;font-size:10px;font-weight:800;font-style:normal;line-height:1.25}
 .matrix-central-responsible-picker{position:relative;width:100%;height:100%}
-.matrix-central-responsible-picker>summary{list-style:none;min-height:48px;height:100%;display:flex;align-items:center;border:0;border-radius:0;background:transparent;padding:6px 8px;cursor:pointer;color:#17324a;box-sizing:border-box}
-.matrix-central-responsible-picker>summary::-webkit-details-marker{display:none}
 .matrix-central-summary-chips{display:flex;flex-wrap:wrap;gap:4px}
 .matrix-central-responsible-menu{position:absolute;left:0;top:calc(100% + 2px);z-index:20;width:max(300px,100%);max-height:270px;overflow:auto;border:1px solid #9fbfd7;border-radius:4px;background:#fff;box-shadow:0 12px 28px rgba(15,45,70,.16);padding:6px}
 .matrix-central-responsible-menu label{display:flex;align-items:flex-start;gap:8px;padding:7px 6px;border-radius:3px;cursor:pointer}
@@ -60,3 +57,16 @@
 .matrix-central-spreadsheet-grid tbody tr:not(.matrix-central-objective-group):not(.matrix-central-objective-editor-row){min-height:48px}
 .matrix-v5--expanded .matrix-v10-central-excel thead th{top:0}
 @media(max-width:900px){.matrix-central-objective-toolbar,.matrix-central-objective-edit{align-items:stretch;flex-direction:column}.matrix-central-objective-edit input,.matrix-central-objective-edit select{min-width:0;width:100%}.matrix-central-responsible-menu{width:280px}}
+
+.matrix-central-sheet-cell--responsible{vertical-align:top!important}
+.matrix-central-responsible-editor{display:flex;flex-direction:column;gap:6px;min-height:100%;padding:6px;box-sizing:border-box}
+.matrix-central-responsible-editor-actions{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.matrix-central-responsible-editor-actions button{display:inline-flex;align-items:center;justify-content:center;gap:4px;min-height:30px;border:1px solid #b8cddd;border-radius:5px;background:#fff;color:#31566f;padding:0 8px;font-size:9.5px;font-weight:850;cursor:pointer}
+.matrix-central-responsible-editor-actions button.save{background:#1f6fae;border-color:#1f6fae;color:#fff}
+.matrix-central-responsible-editor-actions button.danger{border-color:#efb7b7;color:#b33434;background:#fff8f8}
+.matrix-central-responsible-editor-actions button:disabled{opacity:.55;cursor:wait}
+.matrix-central-responsible-picker{position:relative;width:100%;height:auto}
+.matrix-central-responsible-trigger{width:100%;min-height:40px;display:flex;align-items:center;text-align:left;border:1px solid #d3e0e9;border-radius:5px;background:#fff;padding:6px 8px;cursor:pointer;color:#17324a;box-sizing:border-box}
+.matrix-central-responsible-menu-head{position:sticky;top:-6px;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:8px;background:#fff;border-bottom:1px solid #e2ebf2;padding:6px 4px 8px;margin:0 0 4px}
+.matrix-central-responsible-menu-head>strong{font-size:10px;color:#17324a}
+.matrix-central-responsible-close{display:grid;place-items:center;width:27px;height:27px;border:1px solid #cad9e4;border-radius:5px;background:#fff;color:#4f687b;cursor:pointer}
