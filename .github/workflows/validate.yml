@@ -1,24 +1,15 @@
-name: Validate application
+name: Central patch runner
 
 on:
   push:
     branches:
-      - main
       - auditoria-codex-parcial
-  pull_request:
-    branches:
-      - main
 
 permissions:
   contents: write
 
-concurrency:
-  group: validate-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  test-and-build:
-    name: Tests and production build
+  finalize:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -38,7 +29,6 @@ jobs:
         run: npm ci
 
       - name: Apply approved Central patch
-        if: github.event_name == 'push' && github.ref == 'refs/heads/auditoria-codex-parcial'
         run: |
           if ! grep -q 'function startNewRowForGuideline' src/CentralExcelWorkspace.tsx; then
             python scripts/central_guideline_editor_patch.py
