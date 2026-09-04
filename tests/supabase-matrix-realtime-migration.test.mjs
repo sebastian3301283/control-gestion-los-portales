@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
-const migrationUrl = new URL('../supabase/migrations/20260904153000_complete_matrix_realtime_publication.sql', import.meta.url)
+const migrationUrl = new URL('../supabase/migrations/20260904141755_complete_matrix_realtime_publication.sql', import.meta.url)
 
 test('publishes every collaborative matrix relation idempotently', async () => {
   const sql = await readFile(migrationUrl, 'utf8')
