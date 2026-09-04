@@ -1,6 +1,7 @@
 import { ChangeEvent, CSSProperties, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, ArrowRight, Building2, Check, Download, History, LoaderCircle, Maximize2, Minimize2, Plus, RotateCcw, Trash2, Upload, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { supabase } from './lib/supabase'
+import { filterGerenteManagers, toggleResponsibleId } from './unit-excel-model.js'
 import './matrix-workspace-v5.css'
 import './matrix-workspace-v10.css'
 import './central-excel-workspace.css'
@@ -56,12 +57,6 @@ function normalizeText(value: unknown) {
   return String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase().replace(/\s+/g, ' ')
 }
 function textValue(value: unknown) { return String(value ?? '').trim() }
-function isGerenteManager(manager: Manager) {
-  if (manager.active === false) return false
-  const cargo = normalizeText(manager.cargo)
-  if (!cargo || /(?:^|\s)subgerente(?:\s|$)/.test(cargo)) return false
-  return /(?:^|\s)gerente(?:\s|$)/.test(cargo)
-}
 function formatDate(value: string | null) {
   if (!value) return '—'
   const [year, month, day] = value.split('-')
@@ -128,7 +123,7 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
   const selectedArea = areas.find(item => item.id === selectedAreaId) || null
   const selectedMatrix = matrices.find(item => item.id === selectedMatrixId) || null
   const managerById = useMemo(() => new Map(managers.map(item => [item.id, item])), [managers])
-  const gerenteManagers = useMemo(() => managers.filter(isGerenteManager).sort((a, b) => a.name.localeCompare(b.name, 'es')), [managers])
+  const gerenteManagers = useMemo(() => filterGerenteManagers(managers).sort((a, b) => a.name.localeCompare(b.name, 'es')), [managers])
   const effectiveCanManage = canManage || areaCanEdit
   const tableColSpan = 13 + (effectiveCanManage ? 1 : 0)
   const zoomStyle = { '--matrix-zoom': zoom } as CSSProperties
@@ -265,7 +260,7 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
   }
   function updateDraft<K extends keyof RowDraft>(key: K, value: RowDraft[K]) { setRowDraft(current => ({ ...current, [key]: value })) }
   function toggleResponsible(managerId: string) {
-    setSelectedResponsibleIds(current => current.includes(managerId) ? current.filter(id => id !== managerId) : [...current, managerId])
+    setSelectedResponsibleIds(current => toggleResponsibleId(current, managerId))
   }
 
   async function saveRow() {
