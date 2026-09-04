@@ -1,0 +1,55 @@
+name: Central zoom lock finalizer
+
+on:
+  push:
+    branches:
+      - auditoria-codex-parcial
+    paths:
+      - scripts/.central_zoom_lock_trigger
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v7
+        with:
+          ref: auditoria-codex-parcial
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply Central zoom and lock fix
+        run: python scripts/fix_central_fullscreen_zoom_lock.py
+
+      - name: Run regression tests
+        run: node --test tests/*.test.mjs
+
+      - name: Check TypeScript
+        run: npm run check
+
+      - name: Build production application
+        run: npm run build
+
+      - name: Commit implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/CentralExcelWorkspace.tsx src/MatrixWorkspaceV11.tsx tests/central-fullscreen-zoom-lock-release.test.mjs
+          if git diff --cached --quiet; then
+            echo "No implementation changes to commit"
+          else
+            git commit -m "fix: release Central row lock after top actions"
+            git push origin HEAD:auditoria-codex-parcial
+          fi
