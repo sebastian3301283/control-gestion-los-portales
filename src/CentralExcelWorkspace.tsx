@@ -688,7 +688,7 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
 })}
         </>}
       </tbody></table></div></div>
-      <div className="matrix-central-zoom-dock" aria-label="Zoom de matriz"><button title="Alejar" onClick={() => setZoom(value => Math.max(.75, +(value - .1).toFixed(2)))}><ZoomOut size={15}/></button><span>{Math.round(zoom * 100)}%</span><button title="Acercar" onClick={() => setZoom(value => Math.min(1.4, +(value + .1).toFixed(2)))}><ZoomIn size={15}/></button><button title="Restablecer zoom" onClick={() => setZoom(1)}><RotateCcw size={14}/></button></div>
+      {expanded && <div className="matrix-central-zoom-dock" aria-label="Zoom de matriz"><button title="Alejar" onClick={() => setZoom(value => Math.max(.75, +(value - .1).toFixed(2)))}><ZoomOut size={15}/></button><span>{Math.round(zoom * 100)}%</span><button title="Acercar" onClick={() => setZoom(value => Math.min(1.4, +(value + .1).toFixed(2)))}><ZoomIn size={15}/></button><button title="Restablecer zoom" onClick={() => setZoom(1)}><RotateCcw size={14}/></button></div>}
       <div className="matrix-v5-footer"><span>{rows.length} acción{rows.length === 1 ? '' : 'es'}</span><small>Edición tipo Excel · Tab para avanzar · Ctrl+Enter para guardar</small></div>
     </section>}
 

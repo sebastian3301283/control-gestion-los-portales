@@ -242,8 +242,8 @@ export default function MatrixWorkspaceV11(props: Props) {
 
   function handleRootClickCapture(event: ReactMouseEvent<HTMLDivElement>) {
     const target = event.target as HTMLElement
-    const editorButton = target.closest<HTMLButtonElement>('.matrix-central-responsible-editor-actions button')
-    if (editorButton) {
+    const editorActionButton = target.closest<HTMLButtonElement>('.matrix-central-top-actions button[data-edit-action], .matrix-central-responsible-editor-actions button')
+    if (editorActionButton) {
       const rowId = lockedRowIdRef.current
       if (rowId) releaseWhenEditorCloses(rowId)
       return
