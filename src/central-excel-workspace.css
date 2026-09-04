@@ -89,13 +89,14 @@
 .matrix-central-history-changes article{margin-top:8px;background:#fff}
 @media (max-width:720px){.matrix-central-zoom-dock{right:12px;bottom:72px}.matrix-central-principal-responsible{min-width:190px}}
 
-.matrix-central-summary-edit-actions{display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-bottom:7px}
-.matrix-central-summary-edit-actions button{display:inline-flex;align-items:center;justify-content:center;gap:4px;min-height:30px;border:1px solid #b8cddd;border-radius:6px;background:#fff;color:#31566f;padding:0 9px;font-size:10px;font-weight:850;cursor:pointer}
-.matrix-central-summary-edit-actions button.save{background:#1f6fae;border-color:#1f6fae;color:#fff}
-.matrix-central-summary-edit-actions button.danger{border-color:#efb7b7;color:#b33434;background:#fff8f8}
-.matrix-central-summary-edit-actions button:disabled{opacity:.55;cursor:wait}
-.matrix-central-guideline-bar-content{display:flex;align-items:center;gap:8px;width:100%}
+.matrix-central-top-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:6px;padding:8px 4px 6px;min-height:38px}
+.matrix-central-top-actions button{display:inline-flex;align-items:center;justify-content:center;gap:4px;min-height:32px;border:1px solid #b8cddd;border-radius:6px;background:#fff;color:#31566f;padding:0 10px;font-size:10px;font-weight:850;cursor:pointer}
+.matrix-central-top-actions button.add-action{border-color:#78a9cf;color:#175c92}
+.matrix-central-top-actions button.add-action:hover:not(:disabled){background:#f5fbff}
+.matrix-central-top-actions button.save{background:#1f6fae;border-color:#1f6fae;color:#fff}
+.matrix-central-top-actions button.danger{border-color:#efb7b7;color:#b33434;background:#fff8f8}
+.matrix-central-top-actions button:disabled{opacity:.45;cursor:not-allowed}
+.matrix-central-guideline-bar-content{display:flex;align-items:center;width:100%}
 .matrix-central-guideline-bar-content .matrix-central-guideline-toggle{flex:1;min-width:0;width:auto}
-.matrix-central-guideline-add-action{display:inline-flex;align-items:center;justify-content:center;gap:5px;flex:0 0 auto;margin-right:10px;min-height:30px;border:1px solid #78a9cf;border-radius:6px;background:#fff;color:#175c92;padding:0 10px;font-size:10px;font-weight:850;cursor:pointer}
-.matrix-central-guideline-add-action:hover{background:#f5fbff}
-.matrix-central-guideline-add-action:disabled{opacity:.45;cursor:not-allowed}
+.matrix-central-guideline-bar--active>td{box-shadow:inset 4px 0 0 #1f6fae}
+@media(max-width:720px){.matrix-central-top-actions{justify-content:flex-start;padding-inline:0}}

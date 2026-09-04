@@ -17,8 +17,9 @@ test('Central does not create Subpunto 1 until the user explicitly adds a subobj
   assert.match(source, /Añadir subobjetivo/)
 })
 
-test('Central row edit actions live above Responsable principal instead of inside the spreadsheet responsible cell', () => {
-  assert.match(source, /matrix-central-summary-edit-actions/)
+test('Central row edit actions live outside the area summary and below the main toolbar', () => {
+  assert.match(source, /matrix-central-top-actions/)
+  assert.doesNotMatch(source, /matrix-central-summary-edit-actions/)
   assert.match(source, /Responsable principal/)
   assert.match(source, /Guardar/)
   assert.match(source, /Cancelar/)

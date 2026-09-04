@@ -110,6 +110,7 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
   const [versions, setVersions] = useState<MatrixVersion[]>([])
   const [principalSaving, setPrincipalSaving] = useState(false)
   const [expandedGuidelineKeys, setExpandedGuidelineKeys] = useState<Set<string>>(() => new Set())
+  const [activeGuidelineId, setActiveGuidelineId] = useState<string | null>(null)
   const [historyNamesByEmail, setHistoryNamesByEmail] = useState<Record<string, string>>({})
   const [expandedHistoryActors, setExpandedHistoryActors] = useState<Set<string>>(() => new Set())
   const responsiblePickerRef = useRef<HTMLDivElement | null>(null)
@@ -128,6 +129,7 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
   const zoomStyle = { '--matrix-zoom': zoom } as CSSProperties
 
   const highestAreaManagers = useMemo(() => filterHighestAreaManagers(centralManagers), [centralManagers])
+  const activeGuideline = useMemo(() => areaGuidelines.find(item => item.id === activeGuidelineId) || null, [activeGuidelineId, areaGuidelines])
   const guidelineGroups = useMemo(() => {
     const claimed = new Set<string>()
     const groups = areaGuidelines.map(guideline => {
@@ -300,12 +302,13 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
   function openArea(area: Area) {
     const matrix = matrixForArea(area.id)
     if (!matrix) { onError(`La matriz de “${area.name}” todavía no está preparada o no tienes acceso.`); return }
-    setSelectedAreaId(area.id); setSelectedMatrixId(matrix.id); cancelRowEdit(); setPage('sheet'); onError(''); onNotice('')
+    setSelectedAreaId(area.id); setSelectedMatrixId(matrix.id); setActiveGuidelineId(null); cancelRowEdit(); setPage('sheet'); onError(''); onNotice('')
   }
 
   function startNewRowForGuideline(guidelineId: string, guidelineText: string) {
     if (rowFormOpen || !effectiveCanManage) return
     setEditingRowId(null)
+    setActiveGuidelineId(guidelineId)
     setRowDraft({ ...emptyRow, guideline_id: guidelineId, objective_group: guidelineText })
     setSelectedRowGuidelineId(guidelineId)
     setSelectedResponsibleIds([])
@@ -318,6 +321,7 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
     if (!effectiveCanManage || rowFormOpen) return
     const matchedGuidelineId = row.guideline_id || areaGuidelines.find(item => normalizeText(item.guideline_text) === normalizeText(row.objective_group))?.id || null
     const groupKey = matchedGuidelineId || `legacy:${normalizeText(row.objective_group) || row.id}`
+    if (matchedGuidelineId) setActiveGuidelineId(matchedGuidelineId)
     setExpandedGuidelineKeys(current => { const next = new Set(current); next.add(groupKey); return next })
     setEditingRowId(row.id)
     setRowDraft({
@@ -605,7 +609,13 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
     </>
   }
 
+  function startNewRowForActiveGuideline() {
+    if (!activeGuideline) { onNotice('Selecciona primero el lineamiento donde quieres añadir la acción.'); return }
+    startNewRowForGuideline(activeGuideline.id, activeGuideline.guideline_text)
+  }
+
   function toggleGuidelineGroup(key: string, groupRows: MatrixRow[]) {
+    if (!key.startsWith('legacy:')) setActiveGuidelineId(key)
     setExpandedGuidelineKeys(current => {
       const next = new Set(current)
       if (next.has(key)) {
@@ -658,15 +668,20 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
         <button className="matrix-v5-secondary" onClick={() => void exportExcel()} disabled={exporting}><Download size={16}/>{exporting ? 'Exportando...' : 'Exportar Excel'}</button>
       </div></div>
 
+      <div className="matrix-central-top-actions" aria-label="Acciones de matriz">
+        {effectiveCanManage && <button type="button" className="add-action" onClick={startNewRowForActiveGuideline} disabled={rowFormOpen || !activeGuideline} title={activeGuideline ? `Añadir acción en ${activeGuideline.guideline_text}` : 'Selecciona primero un lineamiento'}><Plus size={13}/> Añadir acción</button>}
+        {rowFormOpen && <><button type="button" onClick={() => setCentralSubpointDrafts(current => [...current, emptyCentralSubpoint()])}><Plus size={13}/> Añadir subobjetivo</button><button type="button" className="save" data-edit-action="save" onClick={() => void saveRow()} disabled={saving}>{saving && <LoaderCircle className="spin" size={13}/>} Guardar</button><button type="button" data-edit-action="cancel" onClick={cancelRowEdit}>Cancelar</button>{editingRowId && <button type="button" className="danger" data-edit-action="delete" onClick={() => void deleteRow(editingRowId)}><Trash2 size={13}/> Eliminar acción</button>}</>}
+      </div>
+
       <div className="matrix-v5-title"><span>Matriz de Plan de Acción</span><h2>PLAN DE ACCIÓN {year}</h2></div>
-      <div className="matrix-v5-summary"><div><span>Área</span><strong>{selectedArea?.name || '—'}</strong></div><div><span>Unidad</span><strong>Central</strong></div><div>{rowFormOpen && <div className="matrix-central-summary-edit-actions"><button type="button" onClick={() => setCentralSubpointDrafts(current => [...current, emptyCentralSubpoint()])}><Plus size={13}/> Añadir subobjetivo</button><button type="button" className="save" data-edit-action="save" onClick={() => void saveRow()} disabled={saving}>{saving && <LoaderCircle className="spin" size={13}/>} Guardar</button><button type="button" data-edit-action="cancel" onClick={cancelRowEdit}>Cancelar</button>{editingRowId && <button type="button" className="danger" data-edit-action="delete" onClick={() => void deleteRow(editingRowId)}><Trash2 size={13}/> Eliminar acción</button>}</div>}<span>Responsable principal</span><label className="matrix-central-principal-responsible"><select value={selectedMatrix.principal_responsible_manager_id || ''} onChange={event => void savePrincipalResponsible(event.target.value)} disabled={!effectiveCanManage || principalSaving}><option value="">Sin asignar</option>{highestAreaManagers.map(manager => <option key={manager.id} value={manager.id}>{manager.name}{manager.cargo ? ` · ${manager.cargo}` : ''}</option>)}</select>{principalSaving && <LoaderCircle className="spin" size={14}/>}</label></div></div>
+      <div className="matrix-v5-summary"><div><span>Área</span><strong>{selectedArea?.name || '—'}</strong></div><div><span>Unidad</span><strong>Central</strong></div><div><span>Responsable principal</span><label className="matrix-central-principal-responsible"><select value={selectedMatrix.principal_responsible_manager_id || ''} onChange={event => void savePrincipalResponsible(event.target.value)} disabled={!effectiveCanManage || principalSaving}><option value="">Sin asignar</option>{highestAreaManagers.map(manager => <option key={manager.id} value={manager.id}>{manager.name}{manager.cargo ? ` · ${manager.cargo}` : ''}</option>)}</select>{principalSaving && <LoaderCircle className="spin" size={14}/>}</label></div></div>
 
       <div className="matrix-v5-sheet-card"><div className="matrix-v5-sheet-scroll" style={zoomStyle}><table className="matrix-v5-sheet matrix-v10-central-excel matrix-central-spreadsheet-grid"><thead><tr><th>Acción</th><th>Responsable</th><th>Prioridad</th><th>Hitos / Fechas</th><th>KPI (Cuantitativo)</th><th>Inicio</th><th>Fin</th><th>Riesgos de no ejecutar</th><th>Restricciones</th><th>Soporte</th><th>Entregable</th><th>Comité</th></tr></thead><tbody>
         {rowsLoading ? <tr><td colSpan={tableColSpan} className="matrix-v5-table-empty"><LoaderCircle className="spin" size={20}/> Cargando matriz...</td></tr> : guidelineGroups.length === 0 && !rowFormOpen ? <tr><td colSpan={tableColSpan} className="matrix-v5-table-empty">Aún no hay lineamientos disponibles para esta área.</td></tr> : <>
 {guidelineGroups.map(group => {
   const groupOpen = expandedGuidelineKeys.has(group.key)
   return <Fragment key={group.key}>
-    <tr className="matrix-v5-objective-row matrix-central-objective-group matrix-central-guideline-bar"><td colSpan={tableColSpan}><div className="matrix-central-guideline-bar-content"><button type="button" className="matrix-central-guideline-toggle" aria-expanded={groupOpen} onClick={() => toggleGuidelineGroup(group.key, group.rows)}><span aria-hidden="true">{groupOpen ? '▼' : '▶'}</span><strong>{group.code ? `${group.code} · ` : ''}{group.label}</strong><small>{group.rows.length} objetivo{group.rows.length === 1 ? '' : 's'}</small></button>{effectiveCanManage && !group.key.startsWith('legacy:') && <button type="button" className="matrix-central-guideline-add-action" onClick={() => startNewRowForGuideline(group.key, group.label)} disabled={rowFormOpen}><Plus size={13}/> Añadir acción</button>}</div></td></tr>
+    <tr className={`matrix-v5-objective-row matrix-central-objective-group matrix-central-guideline-bar ${activeGuidelineId === group.key ? 'matrix-central-guideline-bar--active' : ''}`}><td colSpan={tableColSpan}><div className="matrix-central-guideline-bar-content"><button type="button" className="matrix-central-guideline-toggle" aria-expanded={groupOpen} onClick={() => toggleGuidelineGroup(group.key, group.rows)}><span aria-hidden="true">{groupOpen ? '▼' : '▶'}</span><strong>{group.code ? `${group.code} · ` : ''}{group.label}</strong><small>{group.rows.length} objetivo{group.rows.length === 1 ? '' : 's'}</small></button></div></td></tr>
     {rowFormOpen && !editingRowId && selectedRowGuidelineId === group.key && <Fragment key={`new-${group.key}`}>{renderSpreadsheetDraftRows(`new-${group.key}`)}</Fragment>}
     {groupOpen && group.rows.map(row => <Fragment key={row.id}>{editingRowId === row.id ? renderSpreadsheetDraftRows(`edit-${row.id}`) : renderPersistedRow(row)}</Fragment>)}
   </Fragment>
