@@ -1,7 +1,7 @@
 import { BookOpenText, Users } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
-import MatrixWorkspaceV10 from './MatrixWorkspaceV10'
 import CentralExcelWorkspace from './CentralExcelWorkspace'
+import UnitExcelWorkspace from './UnitExcelWorkspace'
 import { supabase } from './lib/supabase'
 import './matrix-workspace-v11.css'
 import './matrix-collaboration.css'
@@ -228,8 +228,8 @@ export default function MatrixWorkspaceV11(props: Props) {
   function handleRootClickCapture(event: ReactMouseEvent<HTMLDivElement>) {
     const target = event.target as HTMLElement
     const button = target.closest<HTMLButtonElement>('.matrix-v5-row-actions button')
-    const centralRow = target.closest<HTMLTableRowElement>('tr[data-matrix-row-id]')
-    if (!button && !centralRow) return
+    const matrixRow = target.closest<HTMLTableRowElement>('tr[data-matrix-row-id]')
+    if (!button && !matrixRow) return
 
     if (bypassClickRef.current) {
       bypassClickRef.current = false
@@ -250,7 +250,7 @@ export default function MatrixWorkspaceV11(props: Props) {
       return
     }
 
-    const rowId = centralRow?.dataset.matrixRowId || (button ? rowIdForButton(button) : '')
+    const rowId = matrixRow?.dataset.matrixRowId || (button ? rowIdForButton(button) : '')
     if (!rowId) return
     const existing = locksRef.current.find(lock => lock.row_id === rowId)
     if (existing && existing.user_id !== currentUserIdRef.current) {
@@ -268,7 +268,7 @@ export default function MatrixWorkspaceV11(props: Props) {
       if (!ok) return
       bypassClickRef.current = true
       if (button) button.click()
-      else centralRow?.click()
+      else matrixRow?.click()
       if (deleting) window.setTimeout(() => void releaseLock(rowId), 1200)
     })()
   }
@@ -356,6 +356,6 @@ export default function MatrixWorkspaceV11(props: Props) {
       {activeEditors.length > 0 && <div className="matrix-collab-editors">{activeEditors.map(editor => <span className="matrix-collab-user" key={editor.user_id} title={editor.email}><i>{initials(editor.name)}</i><b>{editor.name}{editor.user_id === currentUserIdRef.current ? ' (tú)' : ''}</b></span>)}</div>}
     </div>}
     {onViewGuidelines && <div className="matrix-v11-guideline-shortcut"><button type="button" onClick={onViewGuidelines}><BookOpenText size={16}/> Ver lineamientos</button></div>}
-    {props.unitCode === 'CENTRAL' ? <CentralExcelWorkspace key={revision} {...workspaceProps} unitCode="CENTRAL" /> : <MatrixWorkspaceV10 key={revision} {...workspaceProps} />}
+    {props.unitCode === 'CENTRAL' ? <CentralExcelWorkspace key={revision} {...workspaceProps} unitCode="CENTRAL" /> : <UnitExcelWorkspace key={revision} periodId={props.periodId} year={props.year} unitCode={props.unitCode} unitName={props.unitName} canManage={props.canManage} onError={props.onError} onNotice={props.onNotice} />}
   </div>
 }
