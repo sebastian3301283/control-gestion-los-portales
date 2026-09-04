@@ -308,100 +308,149 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
   }
 
   async function saveRow() {
-    if (!supabase || !selectedMatrix || !effectiveCanManage || saving) return
-    const subpointRows = normalizeCentralSubpointRows(centralSubpointDrafts)
-    const incompleteSubpointIndex = findIncompleteCentralSubpoint(subpointRows)
-    if (incompleteSubpointIndex >= 0) {
-      onError(`Escribe el texto del subpunto S${incompleteSubpointIndex + 1} antes de guardar.`)
-      return
-    }
-    setSaving(true); onError(''); onNotice('')
-    const responsibleNames = selectedResponsibleIds.map(id => managerById.get(id)?.name).filter((name): name is string => Boolean(name))
-    const payload = {
-      matrix_id: selectedMatrix.id,
-      objective_group: textValue(rowDraft.objective_group) || null,
-      objective: textValue(rowDraft.objective) || null,
-      action_plan: actionPlanFromSubpoints(subpointRows) || null,
-      responsible_manager_id: selectedResponsibleIds[0] || null,
-      responsible_text: responsibleNames.length ? responsibleNames.join(', ') : null,
-      priority: rowDraft.priority || null,
-      milestones: rowDraft.milestones || null,
-      kpi: rowDraft.kpi || null,
-      target: null,
-      start_date: rowDraft.start_date || null,
-      end_date: rowDraft.end_date || null,
-      risks: rowDraft.risks || null,
-      restrictions: rowDraft.restrictions || null,
-      support: rowDraft.support || null,
-      deliverables: rowDraft.deliverables || null,
-      committee: rowDraft.committee || null,
-      status: rowDraft.status,
-      sort_order: editingRowId ? rows.find(row => row.id === editingRowId)?.sort_order || 0 : rows.length,
-    }
-
-    let rowId = editingRowId
-    let created = false
-    if (editingRowId) {
-      const { error } = await supabase.from('matrix_rows').update(payload).eq('id', editingRowId)
-      if (error) { setSaving(false); onError('No pudimos actualizar la acción.'); return }
-    } else {
-      const { data, error } = await supabase.from('matrix_rows').insert(payload).select('id').single()
-      if (error || !data?.id) { setSaving(false); onError('No pudimos agregar la acción.'); return }
-      rowId = String(data.id); created = true
-    }
-
-    if (rowId) {
-      const previousIds = centralResponsibleIdsByRow[rowId] || []
-      const previousSubpoints = centralSubpointsByRow[rowId] || []
-      const restoreResponsibles = async () => {
-        await supabase.from('matrix_row_responsibles').delete().eq('row_id', rowId)
-        if (previousIds.length) await supabase.from('matrix_row_responsibles').insert(previousIds.map((managerId, index) => ({ row_id: rowId, manager_id: managerId, sort_order: index })))
-      }
-      const deleteResult = await supabase.from('matrix_row_responsibles').delete().eq('row_id', rowId)
-      if (deleteResult.error) {
-        if (created) await supabase.from('matrix_rows').delete().eq('id', rowId)
-        setSaving(false); onError('No pudimos actualizar los responsables.'); return
-      }
-      if (selectedResponsibleIds.length) {
-        const insertResult = await supabase.from('matrix_row_responsibles').insert(selectedResponsibleIds.map((managerId, index) => ({ row_id: rowId, manager_id: managerId, sort_order: index })))
-        if (insertResult.error) {
-          await restoreResponsibles()
-          if (created) await supabase.from('matrix_rows').delete().eq('id', rowId)
-          setSaving(false); onError('No pudimos guardar los responsables seleccionados.'); return
-        }
-      }
-
-      const deleteSubpointsResult = await supabase.from('matrix_row_subpoints').delete().eq('matrix_row_id', rowId)
-      if (deleteSubpointsResult.error) {
-        await restoreResponsibles()
-        if (created) await supabase.from('matrix_rows').delete().eq('id', rowId)
-        setSaving(false); onError('No pudimos preparar los subpuntos para guardar.'); return
-      }
-      if (subpointRows.length) {
-        const insertSubpointsResult = await supabase.from('matrix_row_subpoints').insert(subpointRows.map(item => ({ ...item, matrix_row_id: rowId })))
-        if (insertSubpointsResult.error) {
-          if (previousSubpoints.length) {
-            await supabase.from('matrix_row_subpoints').insert(previousSubpoints.map(item => ({
-              matrix_row_id: rowId,
-              text: textValue(item.text),
-              milestones: textValue(item.milestones) || null,
-              kpi: textValue(item.kpi) || null,
-              start_date: textValue(item.start_date) || null,
-              end_date: textValue(item.end_date) || null,
-              sort_order: item.sort_order,
-            })))
-          }
-          await restoreResponsibles()
-          if (created) await supabase.from('matrix_rows').delete().eq('id', rowId)
-          setSaving(false); onError('No pudimos guardar los subpuntos.'); return
-        }
-      }
-    }
-
-    const wasEditing = Boolean(editingRowId)
-    setSaving(false); cancelRowEdit(); onNotice(wasEditing ? 'Acción actualizada.' : 'Acción agregada.'); await loadRows(selectedMatrix.id)
+  if (!supabase || !selectedMatrix || !effectiveCanManage || saving) return
+  const subpointRows = normalizeCentralSubpointRows(centralSubpointDrafts)
+  const incompleteSubpointIndex = findIncompleteCentralSubpoint(subpointRows)
+  if (incompleteSubpointIndex >= 0) {
+    onError(`Escribe el texto del subpunto S${incompleteSubpointIndex + 1} antes de guardar.`)
+    return
+  }
+  setSaving(true); onError(''); onNotice('')
+  const previousRow = editingRowId ? rows.find(row => row.id === editingRowId) || null : null
+  const responsibleNames = selectedResponsibleIds.map(id => managerById.get(id)?.name).filter((name): name is string => Boolean(name))
+  const payload = {
+    matrix_id: selectedMatrix.id,
+    objective_group: textValue(rowDraft.objective_group) || null,
+    objective: textValue(rowDraft.objective) || null,
+    action_plan: actionPlanFromSubpoints(subpointRows) || null,
+    responsible_manager_id: selectedResponsibleIds[0] || null,
+    responsible_text: responsibleNames.length ? responsibleNames.join(', ') : null,
+    priority: rowDraft.priority || null,
+    milestones: rowDraft.milestones || null,
+    kpi: rowDraft.kpi || null,
+    target: null,
+    start_date: rowDraft.start_date || null,
+    end_date: rowDraft.end_date || null,
+    risks: rowDraft.risks || null,
+    restrictions: rowDraft.restrictions || null,
+    support: rowDraft.support || null,
+    deliverables: rowDraft.deliverables || null,
+    committee: rowDraft.committee || null,
+    status: rowDraft.status,
+    sort_order: editingRowId ? previousRow?.sort_order || 0 : rows.length,
   }
 
+  let rowId = editingRowId
+  let created = false
+  const rollbackParentRow = async () => {
+    if (!rowId) return true
+    if (created) {
+      const { error } = await supabase.from('matrix_rows').delete().eq('id', rowId)
+      return !error
+    }
+    if (!previousRow) return false
+    const { error } = await supabase.from('matrix_rows').update({
+      objective_group: previousRow.objective_group,
+      objective: previousRow.objective,
+      action_plan: previousRow.action_plan,
+      responsible_manager_id: previousRow.responsible_manager_id,
+      responsible_text: previousRow.responsible_text,
+      priority: previousRow.priority,
+      milestones: previousRow.milestones,
+      kpi: previousRow.kpi,
+      target: previousRow.target,
+      start_date: previousRow.start_date,
+      end_date: previousRow.end_date,
+      risks: previousRow.risks,
+      restrictions: previousRow.restrictions,
+      support: previousRow.support,
+      deliverables: previousRow.deliverables,
+      committee: previousRow.committee,
+      status: previousRow.status,
+      sort_order: previousRow.sort_order,
+    }).eq('id', rowId)
+    return !error
+  }
+  if (editingRowId) {
+    const { error } = await supabase.from('matrix_rows').update(payload).eq('id', editingRowId)
+    if (error) { setSaving(false); onError('No pudimos actualizar la acción.'); return }
+  } else {
+    const { data, error } = await supabase.from('matrix_rows').insert(payload).select('id').single()
+    if (error || !data?.id) { setSaving(false); onError('No pudimos agregar la acción.'); return }
+    rowId = String(data.id); created = true
+  }
+
+  if (rowId) {
+    const previousIds = centralResponsibleIdsByRow[rowId] || []
+    const previousSubpoints = centralSubpointsByRow[rowId] || []
+    const restoreResponsibles = async () => {
+      const removeResult = await supabase.from('matrix_row_responsibles').delete().eq('row_id', rowId)
+      if (removeResult.error) return false
+      if (!previousIds.length) return true
+      const restoreResult = await supabase.from('matrix_row_responsibles').insert(previousIds.map((managerId, index) => ({ row_id: rowId, manager_id: managerId, sort_order: index })))
+      return !restoreResult.error
+    }
+    const restoreSubpoints = async () => {
+      const removeResult = await supabase.from('matrix_row_subpoints').delete().eq('matrix_row_id', rowId)
+      if (removeResult.error) return false
+      if (!previousSubpoints.length) return true
+      const restoreResult = await supabase.from('matrix_row_subpoints').insert(previousSubpoints.map(item => ({
+        matrix_row_id: rowId,
+        text: textValue(item.text),
+        milestones: textValue(item.milestones) || null,
+        kpi: textValue(item.kpi) || null,
+        start_date: textValue(item.start_date) || null,
+        end_date: textValue(item.end_date) || null,
+        sort_order: item.sort_order,
+      })))
+      return !restoreResult.error
+    }
+    const deleteResult = await supabase.from('matrix_row_responsibles').delete().eq('row_id', rowId)
+    if (deleteResult.error) {
+      const parentRestored = await rollbackParentRow()
+      setSaving(false)
+      await loadRows(selectedMatrix.id, true)
+      onError(parentRestored ? 'No pudimos actualizar los responsables. No se conservaron cambios parciales.' : 'No pudimos actualizar los responsables ni confirmar la reversión. Recarga la matriz antes de continuar.')
+      return
+    }
+    if (selectedResponsibleIds.length) {
+      const insertResult = await supabase.from('matrix_row_responsibles').insert(selectedResponsibleIds.map((managerId, index) => ({ row_id: rowId, manager_id: managerId, sort_order: index })))
+      if (insertResult.error) {
+        const responsiblesRestored = await restoreResponsibles()
+        const parentRestored = await rollbackParentRow()
+        setSaving(false)
+        await loadRows(selectedMatrix.id, true)
+        onError(responsiblesRestored && parentRestored ? 'No pudimos guardar los responsables seleccionados. No se conservaron cambios parciales.' : 'No pudimos guardar los responsables ni confirmar la reversión completa. Recarga la matriz antes de continuar.')
+        return
+      }
+    }
+
+    const deleteSubpointsResult = await supabase.from('matrix_row_subpoints').delete().eq('matrix_row_id', rowId)
+    if (deleteSubpointsResult.error) {
+      const responsiblesRestored = await restoreResponsibles()
+      const parentRestored = await rollbackParentRow()
+      setSaving(false)
+      await loadRows(selectedMatrix.id, true)
+      onError(responsiblesRestored && parentRestored ? 'No pudimos preparar los subpuntos para guardar. No se conservaron cambios parciales.' : 'No pudimos preparar los subpuntos ni confirmar la reversión completa. Recarga la matriz antes de continuar.')
+      return
+    }
+    if (subpointRows.length) {
+      const insertSubpointsResult = await supabase.from('matrix_row_subpoints').insert(subpointRows.map(item => ({ ...item, matrix_row_id: rowId })))
+      if (insertSubpointsResult.error) {
+        const subpointsRestored = await restoreSubpoints()
+        const responsiblesRestored = await restoreResponsibles()
+        const parentRestored = await rollbackParentRow()
+        setSaving(false)
+        await loadRows(selectedMatrix.id, true)
+        onError(subpointsRestored && responsiblesRestored && parentRestored ? 'No pudimos guardar los subpuntos. No se conservaron cambios parciales.' : 'No pudimos guardar los subpuntos ni confirmar la reversión completa. Recarga la matriz antes de continuar.')
+        return
+      }
+    }
+  }
+
+  const wasEditing = Boolean(editingRowId)
+  setSaving(false); cancelRowEdit(); onNotice(wasEditing ? 'Acción actualizada.' : 'Acción agregada.'); await loadRows(selectedMatrix.id)
+}
   async function deleteRow(rowId: string) {
     if (!supabase || !selectedMatrix || !effectiveCanManage) return
     const { error } = await supabase.from('matrix_rows').delete().eq('id', rowId)
