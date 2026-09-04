@@ -10,27 +10,37 @@ permissions:
 
 jobs:
   apply:
-    if: github.event.head_commit.message == 'chore: apply Central UX finalizer'
+    name: Apply and verify Central UX
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+
     steps:
-      - uses: actions/checkout@v7
+      - name: Checkout repository
+        uses: actions/checkout@v7
         with:
-          ref: auditoria-codex-parcial
           fetch-depth: 0
-      - uses: actions/setup-node@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
+
       - name: Apply patch
         run: python scripts/central_ux_patch.py
+
       - name: Install dependencies
         run: npm ci
+
       - name: Run regression tests
         run: node --test tests/*.test.mjs
+
       - name: Check TypeScript
         run: npm run check
+
       - name: Build production application
         run: npm run build
+
       - name: Commit verified implementation
         run: |
           rm .github/workflows/central-ux-finalizer.yml scripts/central_ux_patch.py
