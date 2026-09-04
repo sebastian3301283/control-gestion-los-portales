@@ -3,7 +3,6 @@ export type UnitExcelManager = {
   name: string
   cargo?: string | null
   active?: boolean
-  [key: string]: unknown
 }
 
 export function filterGerenteManagers<T extends UnitExcelManager>(managers: T[]): T[]
