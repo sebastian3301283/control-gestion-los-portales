@@ -1,3 +1,4 @@
+// Contrato de regresión para la experiencia Central acordada y validada visualmente.
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile, readdir } from 'node:fs/promises'
