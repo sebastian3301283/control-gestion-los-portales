@@ -81,3 +81,15 @@ test('the latest matrix reload always releases the loading spinner, including Re
     assert.match(source, /setRowsLoading\(false\)/)
   }
 })
+
+test('editing an existing row has a compensating rollback when relation persistence fails', async () => {
+  const unitSource = await readFile(new URL('../src/UnitExcelWorkspace.tsx', import.meta.url), 'utf8')
+  const centralSource = await readFile(new URL('../src/CentralExcelWorkspace.tsx', import.meta.url), 'utf8')
+
+  for (const source of [unitSource, centralSource]) {
+    assert.match(source, /previousRow/)
+    assert.match(source, /rollbackParentRow/)
+    assert.match(source, /await rollbackParentRow\(\)/)
+    assert.match(source, /await loadRows\(selectedMatrix\.id, true\)/)
+  }
+})
