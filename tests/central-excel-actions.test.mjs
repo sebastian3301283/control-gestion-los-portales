@@ -43,7 +43,7 @@ test('Central keeps the action spreadsheet and renders persisted subpoints as re
   assert.match(source, /centralSubpointsByRow/)
   assert.match(source, /centralSubpointDrafts/)
   assert.match(source, /matrix-central-subpoint-row/)
-  assert.match(source, /Añadir subpunto/)
+  assert.match(source, /Añadir subobjetivo/)
   assert.match(v11, /CentralExcelWorkspace/)
   assert.match(v11, /props\.unitCode === 'CENTRAL'/)
 })

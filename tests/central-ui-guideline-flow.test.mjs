@@ -24,7 +24,7 @@ test('Central simplifica la toolbar y mueve las acciones de edición junto a Res
   assert.doesNotMatch(central, /Importar Excel/)
   assert.doesNotMatch(central, /<th>Acciones<\/th>/)
   assert.match(central, /matrix-central-responsible-editor-actions/)
-  for (const label of ['Añadir subpunto', 'Guardar', 'Cancelar', 'Eliminar acción']) assert.match(central, new RegExp(label))
+  for (const label of ['Añadir subobjetivo', 'Guardar', 'Cancelar', 'Eliminar acción']) assert.match(central, new RegExp(label))
 })
 
 test('Central usa Lineamiento desde planning_guidelines y deja de crear objetivos desde la matriz', () => {

@@ -11,6 +11,7 @@ type Props = {
   unit: Unit
   periodId: string
   canManage: boolean
+  onOpenMatrixForArea?: (managementId: string) => void
 }
 type PendingDelete = {
   button: HTMLButtonElement
@@ -19,7 +20,7 @@ type PendingDelete = {
 type SelectedArea = { id: string; name: string } | null
 type GuidelineTarget = { periodId: string; unitCode: string; managementId: string; guidelineId: string | null; createdAt: number }
 
-export default function PlanningGuidelines({ unit, periodId, canManage }: Props) {
+export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMatrixForArea }: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
   const bypassDeleteRef = useRef(false)
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
@@ -121,20 +122,7 @@ export default function PlanningGuidelines({ unit, periodId, canManage }: Props)
       createdAt: Date.now(),
     }))
     setFullscreen(false)
-    const flow = rootRef.current?.closest<HTMLElement>('.planning-flow')
-    const backButton = flow?.querySelector<HTMLButtonElement>('.planning-back')
-    if (!flow || !backButton) return
-    const openMatrixChoice = () => {
-      const matrixButton = flow.querySelector<HTMLButtonElement>('.planning-module-choice--matrices')
-      if (!matrixButton) return false
-      matrixButton.click()
-      return true
-    }
-    const observer = new MutationObserver(() => { if (openMatrixChoice()) observer.disconnect() })
-    observer.observe(flow, { childList: true, subtree: true })
-    backButton.click()
-    window.setTimeout(() => { if (openMatrixChoice()) observer.disconnect() }, 80)
-    window.setTimeout(() => observer.disconnect(), 2500)
+    onOpenMatrixForArea?.(selectedArea.id)
   }
 
   return <div ref={rootRef} className={`planning-guidelines-host ${fullscreen ? 'planning-guidelines-host--fullscreen' : ''} ${isCentral ? 'planning-guidelines-host--central' : ''}`} onClickCapture={handleClickCapture}>
