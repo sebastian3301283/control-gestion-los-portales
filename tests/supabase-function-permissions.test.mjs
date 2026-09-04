@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
-const migrationUrl = new URL('../supabase/migrations/20260904163000_harden_function_execution_permissions.sql', import.meta.url)
+const migrationUrl = new URL('../supabase/migrations/20260904152048_harden_function_execution_permissions.sql', import.meta.url)
 
 test('pre-auth keeps only the email authorization RPC explicitly available to anon', async () => {
   const sql = (await readFile(migrationUrl, 'utf8')).toLowerCase()
