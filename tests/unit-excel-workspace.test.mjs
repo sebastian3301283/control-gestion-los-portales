@@ -49,7 +49,7 @@ test('unit Excel workspace preserves spreadsheet toolbar, direct row editing and
   assert.match(source, /selectedResponsibleIds/)
   assert.match(source, /data-matrix-row-id=\{row\.id\}/)
   assert.match(source, /matrix-central-sheet-cell/)
-  assert.match(css, /matrix-v10-unit-excel/)
+  assert.match(css, /matrix-unit-excel/)
   assert.doesNotMatch(source, /manager_managements/)
   assert.doesNotMatch(source, /filterManagersForArea/)
 })
