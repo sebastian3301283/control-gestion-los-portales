@@ -125,7 +125,7 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
     return managers.filter(manager => allowed.has(manager.id)).sort((a, b) => a.name.localeCompare(b.name, 'es'))
   }, [managerManagements, managers, selectedAreaId])
   const effectiveCanManage = canManage || areaCanEdit
-  const tableColSpan = 12
+  const tableColSpan = 9
   const zoomStyle = { '--matrix-zoom': zoom } as CSSProperties
 
   const highestAreaManagers = useMemo(() => filterHighestAreaManagers(centralManagers), [centralManagers])
@@ -590,21 +590,15 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
         <td className="matrix-central-sheet-cell matrix-central-sheet-cell--responsible" rowSpan={sharedRowSpan}><div className="matrix-central-responsible-editor">{renderResponsiblePicker()}</div></td>
         <td className="matrix-central-sheet-cell" rowSpan={sharedRowSpan}><select value={rowDraft.priority || ''} onChange={event => updateDraft('priority', event.target.value)} aria-label="Prioridad"><option value="">—</option><option>Alta</option><option>Media</option><option>Baja</option></select></td>
         <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.milestones || ''} onChange={event => updateDraft('milestones', event.target.value)} placeholder="Hito o fecha" aria-label="Hitos o fechas"/></td>
-        <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.kpi || ''} onChange={event => updateDraft('kpi', event.target.value)} placeholder="KPI" aria-label="KPI cuantitativo"/></td>
-        <td className="matrix-central-sheet-cell"><input type="date" value={rowDraft.start_date || ''} onChange={event => updateDraft('start_date', event.target.value)} aria-label="Inicio"/></td>
-        <td className="matrix-central-sheet-cell"><input type="date" value={rowDraft.end_date || ''} onChange={event => updateDraft('end_date', event.target.value)} aria-label="Fin"/></td>
+        <td className="matrix-central-sheet-cell" rowSpan={sharedRowSpan}><textarea rows={1} value={rowDraft.deliverables || ''} onChange={event => updateDraft('deliverables', event.target.value)} placeholder="Entregable" aria-label="Entregable"/></td>
         <td className="matrix-central-sheet-cell" rowSpan={sharedRowSpan}><textarea rows={1} value={rowDraft.risks || ''} onChange={event => updateDraft('risks', event.target.value)} placeholder="Riesgos" aria-label="Riesgos de no ejecutar"/></td>
         <td className="matrix-central-sheet-cell" rowSpan={sharedRowSpan}><textarea rows={1} value={rowDraft.restrictions || ''} onChange={event => updateDraft('restrictions', event.target.value)} placeholder="Restricciones" aria-label="Restricciones"/></td>
         <td className="matrix-central-sheet-cell" rowSpan={sharedRowSpan}><textarea rows={1} value={rowDraft.support || ''} onChange={event => updateDraft('support', event.target.value)} placeholder="Soporte" aria-label="Soporte"/></td>
-        <td className="matrix-central-sheet-cell" rowSpan={sharedRowSpan}><textarea rows={1} value={rowDraft.deliverables || ''} onChange={event => updateDraft('deliverables', event.target.value)} placeholder="Entregable" aria-label="Entregable"/></td>
         <td className="matrix-central-sheet-cell" rowSpan={sharedRowSpan}><textarea rows={1} value={rowDraft.committee || ''} onChange={event => updateDraft('committee', event.target.value)} placeholder="Comité" aria-label="Comité"/></td>
       </tr>
       {centralSubpointDrafts.map((subpoint, index) => <tr className="matrix-v5-edit-row matrix-central-subpoint-row matrix-central-subpoint-row--editing" key={`${key}-subpoint-${subpoint.id || 'new'}-${index}`} onKeyDown={handleEditKeyDown}>
         <td className="matrix-central-sheet-cell matrix-central-subpoint-cell"><div><span className="matrix-central-subpoint-badge">S{index + 1}</span><textarea rows={1} value={subpoint.text} onChange={event => updateCentralSubpoint(index, 'text', event.target.value)} placeholder={`Subobjetivo ${index + 1}`} aria-label={`Subobjetivo ${index + 1}`}/><button type="button" title="Eliminar subobjetivo" onClick={() => setCentralSubpointDrafts(current => current.filter((_, itemIndex) => itemIndex !== index))}><Trash2 size={13}/></button></div></td>
         <td className="matrix-central-sheet-cell"><textarea rows={1} value={subpoint.milestones} onChange={event => updateCentralSubpoint(index, 'milestones', event.target.value)} placeholder="Hito o fecha" aria-label={`Hito del subpunto ${index + 1}`}/></td>
-        <td className="matrix-central-sheet-cell"><textarea rows={1} value={subpoint.kpi} onChange={event => updateCentralSubpoint(index, 'kpi', event.target.value)} placeholder="KPI" aria-label={`KPI del subpunto ${index + 1}`}/></td>
-        <td className="matrix-central-sheet-cell"><input type="date" value={subpoint.start_date} onChange={event => updateCentralSubpoint(index, 'start_date', event.target.value)} aria-label={`Inicio del subpunto ${index + 1}`}/></td>
-        <td className="matrix-central-sheet-cell"><input type="date" value={subpoint.end_date} onChange={event => updateCentralSubpoint(index, 'end_date', event.target.value)} aria-label={`Fin del subpunto ${index + 1}`}/></td>
       </tr>)}
     </>
   }
@@ -645,12 +639,16 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
         <td className="matrix-v5-action-cell">{row.objective || '—'}</td>
         <td rowSpan={sharedRowSpan}>{responsibleNames.length ? <div className="matrix-central-responsible-chips">{responsibleNames.map(name => <span key={name}>{name}</span>)}</div> : row.responsible_text || '—'}</td>
         <td rowSpan={sharedRowSpan}>{row.priority ? <span className={`matrix-v5-priority matrix-v5-priority--${priorityClass(row.priority)}`}>{row.priority}</span> : '—'}</td>
-        <td>{row.milestones || '—'}</td><td>{row.kpi || '—'}</td><td>{formatDate(row.start_date)}</td><td>{formatDate(row.end_date)}</td>
-        <td rowSpan={sharedRowSpan}>{row.risks || '—'}</td><td rowSpan={sharedRowSpan}>{row.restrictions || '—'}</td><td rowSpan={sharedRowSpan}>{row.support || '—'}</td><td rowSpan={sharedRowSpan}>{row.deliverables || '—'}</td><td rowSpan={sharedRowSpan}>{row.committee || '—'}</td>
+        <td>{row.milestones || '—'}</td>
+        <td rowSpan={sharedRowSpan}>{row.deliverables || '—'}</td>
+        <td rowSpan={sharedRowSpan}>{row.risks || '—'}</td>
+        <td rowSpan={sharedRowSpan}>{row.restrictions || '—'}</td>
+        <td rowSpan={sharedRowSpan}>{row.support || '—'}</td>
+        <td rowSpan={sharedRowSpan}>{row.committee || '—'}</td>
       </tr>
       {subpoints.map((subpoint, subpointIndex) => <tr data-matrix-row-id={row.id} className={`matrix-central-subpoint-row ${effectiveCanManage ? 'matrix-central-subpoint-row--editable' : ''}`} onClick={() => startEditRow(row)} key={`${row.id}-subpoint-${subpoint.id || subpointIndex}`}>
         <td className="matrix-v5-action-cell matrix-central-subpoint-cell"><div><span className="matrix-central-subpoint-badge">S{subpointIndex + 1}</span><span>{subpoint.text || '—'}</span></div></td>
-        <td>{subpoint.milestones || '—'}</td><td>{subpoint.kpi || '—'}</td><td>{formatDate(subpoint.start_date || null)}</td><td>{formatDate(subpoint.end_date || null)}</td>
+        <td>{subpoint.milestones || '—'}</td>
       </tr>)}
     </>
   }
@@ -662,21 +660,27 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
     </>}
 
     {page === 'sheet' && selectedMatrix && <section className="matrix-v5-plan-shell">
-      <div className="matrix-v5-toolbar"><div className="matrix-v5-toolbar-actions">
-        <button className="matrix-v5-secondary" onClick={() => setExpanded(value => !value)}>{expanded ? <Minimize2 size={16}/> : <Maximize2 size={16}/>} {expanded ? 'Salir de pantalla completa' : 'Expandir matriz'}</button>
-        <button className="matrix-v5-secondary" onClick={() => void openHistory()}><History size={16}/> Historial</button>
-        <button className="matrix-v5-secondary" onClick={() => void exportExcel()} disabled={exporting}><Download size={16}/>{exporting ? 'Exportando...' : 'Exportar Excel'}</button>
-      </div></div>
-
-      <div className="matrix-central-top-actions" aria-label="Acciones de matriz">
-        {effectiveCanManage && <button type="button" className="add-action" onClick={startNewRowForActiveGuideline} disabled={rowFormOpen || !activeGuideline} title={activeGuideline ? `Añadir acción en ${activeGuideline.guideline_text}` : 'Selecciona primero un lineamiento'}><Plus size={13}/> Añadir acción</button>}
-        {rowFormOpen && <><button type="button" onClick={() => setCentralSubpointDrafts(current => [...current, emptyCentralSubpoint()])}><Plus size={13}/> Añadir subobjetivo</button><button type="button" className="save" data-edit-action="save" onClick={() => void saveRow()} disabled={saving}>{saving && <LoaderCircle className="spin" size={13}/>} Guardar</button><button type="button" data-edit-action="cancel" onClick={cancelRowEdit}>Cancelar</button>{editingRowId && <button type="button" className="danger" data-edit-action="delete" onClick={() => void deleteRow(editingRowId)}><Trash2 size={13}/> Eliminar acción</button>}</>}
+      <div className="matrix-central-page-head">
+        <div className="matrix-v5-title"><span>Matriz de Plan de Acción</span><h2>PLAN DE ACCIÓN {year}</h2></div>
+        <div className="matrix-central-commandbar" aria-label="Controles de matriz">
+          <div className="matrix-central-commandbar-primary">
+            <button className="matrix-v5-secondary" onClick={() => setExpanded(value => !value)}>{expanded ? <Minimize2 size={16}/> : <Maximize2 size={16}/>} {expanded ? 'Salir de pantalla completa' : 'Expandir matriz'}</button>
+            <button className="matrix-v5-secondary" onClick={() => void openHistory()}><History size={16}/> Historial</button>
+            <button className="matrix-v5-secondary" onClick={() => void exportExcel()} disabled={exporting}><Download size={16}/>{exporting ? 'Exportando...' : 'Exportar Excel'}</button>
+            {effectiveCanManage && <button type="button" className="matrix-central-add-action" onClick={startNewRowForActiveGuideline} disabled={rowFormOpen || !activeGuideline} title={activeGuideline ? `Añadir acción en ${activeGuideline.guideline_text}` : 'Selecciona primero un lineamiento'}><Plus size={14}/> Añadir acción</button>}
+          </div>
+          {rowFormOpen && <div className="matrix-central-commandbar-context">
+            <button type="button" onClick={() => setCentralSubpointDrafts(current => [...current, emptyCentralSubpoint()])}><Plus size={13}/> Añadir subobjetivo</button>
+            <button type="button" className="save" data-edit-action="save" onClick={() => void saveRow()} disabled={saving}>{saving && <LoaderCircle className="spin" size={13}/>} Guardar</button>
+            <button type="button" data-edit-action="cancel" onClick={cancelRowEdit}>Cancelar</button>
+            {editingRowId && <button type="button" className="danger" data-edit-action="delete" onClick={() => void deleteRow(editingRowId)}><Trash2 size={13}/> Eliminar acción</button>}
+          </div>}
+        </div>
       </div>
 
-      <div className="matrix-v5-title"><span>Matriz de Plan de Acción</span><h2>PLAN DE ACCIÓN {year}</h2></div>
       <div className="matrix-v5-summary"><div><span>Área</span><strong>{selectedArea?.name || '—'}</strong></div><div><span>Unidad</span><strong>Central</strong></div><div><span>Responsable principal</span><label className="matrix-central-principal-responsible"><select value={selectedMatrix.principal_responsible_manager_id || ''} onChange={event => void savePrincipalResponsible(event.target.value)} disabled={!effectiveCanManage || principalSaving}><option value="">Sin asignar</option>{highestAreaManagers.map(manager => <option key={manager.id} value={manager.id}>{manager.name}{manager.cargo ? ` · ${manager.cargo}` : ''}</option>)}</select>{principalSaving && <LoaderCircle className="spin" size={14}/>}</label></div></div>
 
-      <div className="matrix-v5-sheet-card"><div className="matrix-v5-sheet-scroll" style={zoomStyle}><table className="matrix-v5-sheet matrix-v10-central-excel matrix-central-spreadsheet-grid"><thead><tr><th>Acción</th><th>Responsable</th><th>Prioridad</th><th>Hitos / Fechas</th><th>KPI (Cuantitativo)</th><th>Inicio</th><th>Fin</th><th>Riesgos de no ejecutar</th><th>Restricciones</th><th>Soporte</th><th>Entregable</th><th>Comité</th></tr></thead><tbody>
+      <div className="matrix-v5-sheet-card"><div className="matrix-v5-sheet-scroll" style={zoomStyle}><table className="matrix-v5-sheet matrix-v10-central-excel matrix-central-spreadsheet-grid"><thead><tr><th>Acción</th><th>Responsable</th><th>Prioridad</th><th>Hitos / Fechas</th><th>Entregable</th><th>Riesgos de no ejecutar</th><th>Restricciones</th><th>Soporte</th><th>Comité</th></tr></thead><tbody>
         {rowsLoading ? <tr><td colSpan={tableColSpan} className="matrix-v5-table-empty"><LoaderCircle className="spin" size={20}/> Cargando matriz...</td></tr> : guidelineGroups.length === 0 && !rowFormOpen ? <tr><td colSpan={tableColSpan} className="matrix-v5-table-empty">Aún no hay lineamientos disponibles para esta área.</td></tr> : <>
 {guidelineGroups.map(group => {
   const groupOpen = expandedGuidelineKeys.has(group.key)

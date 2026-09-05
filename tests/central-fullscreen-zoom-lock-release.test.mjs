@@ -11,6 +11,6 @@ test('Central only renders the zoom dock while the matrix is fullscreen', () => 
 
 test('top edit actions release the collaborative row lock after save cancel or delete', () => {
   assert.match(v11, /data-edit-action/)
-  assert.match(v11, /matrix-central-top-actions/)
+  assert.match(v11, /matrix-central-commandbar-context/)
   assert.match(v11, /releaseWhenEditorCloses\(rowId\)/)
 })

@@ -217,8 +217,8 @@ export default function MatrixWorkspaceV11(props: Props) {
     if (mode === 'stay') { setPendingRowSwitch(null); return }
     const root = rootRef.current
     const actionButton = root?.querySelector<HTMLButtonElement>(mode === 'save'
-      ? '.matrix-v5-edit-row button[data-edit-action="save"], .matrix-v5-edit-row button[title^="Guardar"]'
-      : '.matrix-v5-edit-row button[data-edit-action="cancel"], .matrix-v5-edit-row button[title="Cancelar"]')
+      ? '.matrix-central-commandbar-context button[data-edit-action="save"], .matrix-v5-edit-row button[data-edit-action="save"], .matrix-v5-edit-row button[title^="Guardar"]'
+      : '.matrix-central-commandbar-context button[data-edit-action="cancel"], .matrix-v5-edit-row button[data-edit-action="cancel"], .matrix-v5-edit-row button[title="Cancelar"]')
     if (!actionButton) { setPendingRowSwitch(null); props.onError('No pudimos identificar los controles de la edición actual.'); return }
     const previousLock = lockedRowIdRef.current
     setPendingRowSwitch(null)
@@ -242,7 +242,7 @@ export default function MatrixWorkspaceV11(props: Props) {
 
   function handleRootClickCapture(event: ReactMouseEvent<HTMLDivElement>) {
     const target = event.target as HTMLElement
-    const editorActionButton = target.closest<HTMLButtonElement>('.matrix-central-top-actions button[data-edit-action], .matrix-central-responsible-editor-actions button')
+    const editorActionButton = target.closest<HTMLButtonElement>('.matrix-central-commandbar-context button[data-edit-action], .matrix-central-responsible-editor-actions button')
     if (editorActionButton) {
       const rowId = lockedRowIdRef.current
       if (rowId) releaseWhenEditorCloses(rowId)

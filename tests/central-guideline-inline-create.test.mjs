@@ -18,7 +18,7 @@ test('Central does not create Subpunto 1 until the user explicitly adds a subobj
 })
 
 test('Central row edit actions live outside the area summary and below the main toolbar', () => {
-  assert.match(source, /matrix-central-top-actions/)
+  assert.match(source, /matrix-central-commandbar-context/)
   assert.doesNotMatch(source, /matrix-central-summary-edit-actions/)
   assert.match(source, /Responsable principal/)
   assert.match(source, /Guardar/)

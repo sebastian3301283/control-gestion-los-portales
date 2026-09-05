@@ -24,7 +24,7 @@ test('Central simplifica la toolbar y ubica las acciones de edición fuera del r
   assert.doesNotMatch(central, /<ArrowLeft size=\{16\}\/> Áreas/)
   assert.doesNotMatch(central, /Importar Excel/)
   assert.doesNotMatch(central, /<th>Acciones<\/th>/)
-  assert.match(central, /matrix-central-top-actions/)
+  assert.match(central, /matrix-central-commandbar-context/)
   assert.doesNotMatch(central, /matrix-central-summary-edit-actions/)
   for (const label of ['Añadir subobjetivo', 'Guardar', 'Cancelar', 'Eliminar acción']) assert.match(central, new RegExp(label))
 })

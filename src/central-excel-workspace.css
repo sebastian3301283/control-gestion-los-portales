@@ -1,16 +1,14 @@
-.matrix-v10-central-excel{border-collapse:separate;border-spacing:0;min-width:1940px;width:max(100%,1940px);table-layout:fixed}
+.matrix-v10-central-excel{border-collapse:separate;border-spacing:0;min-width:1580px;width:max(100%,1580px);table-layout:fixed}
 .matrix-v10-central-excel thead th{position:sticky;top:0;z-index:6;background:#1f6fae;color:#fff;border-right:1px solid rgba(255,255,255,.35);white-space:normal;text-align:center;font-size:12px;font-weight:850;padding:10px 8px}
-.matrix-v10-central-excel thead th:nth-child(1){width:470px}
-.matrix-v10-central-excel thead th:nth-child(2){width:230px}
-.matrix-v10-central-excel thead th:nth-child(3){width:120px}
-.matrix-v10-central-excel thead th:nth-child(4){width:220px}
-.matrix-v10-central-excel thead th:nth-child(5){width:220px}
-.matrix-v10-central-excel thead th:nth-child(6),.matrix-v10-central-excel thead th:nth-child(7){width:135px}
-.matrix-v10-central-excel thead th:nth-child(8){width:240px}
-.matrix-v10-central-excel thead th:nth-child(9){width:210px}
-.matrix-v10-central-excel thead th:nth-child(10){width:210px}
-.matrix-v10-central-excel thead th:nth-child(11){width:200px}
-.matrix-v10-central-excel thead th:nth-child(12){width:190px}
+.matrix-v10-central-excel thead th:nth-child(1){width:320px}
+.matrix-v10-central-excel thead th:nth-child(2){width:200px}
+.matrix-v10-central-excel thead th:nth-child(3){width:95px}
+.matrix-v10-central-excel thead th:nth-child(4){width:170px}
+.matrix-v10-central-excel thead th:nth-child(5){width:190px}
+.matrix-v10-central-excel thead th:nth-child(6){width:185px}
+.matrix-v10-central-excel thead th:nth-child(7){width:165px}
+.matrix-v10-central-excel thead th:nth-child(8){width:155px}
+.matrix-v10-central-excel thead th:nth-child(9){width:150px}
 .matrix-v10-central-excel td{padding:7px 8px;border-right:1px solid #c7d4df;border-bottom:1px solid #c7d4df;background:#fff;vertical-align:middle;line-height:1.35;font-size:12px;white-space:normal;overflow-wrap:anywhere}
 .matrix-v10-central-excel-row{cursor:cell}
 .matrix-v10-central-excel-row--editable:hover td{background:#f6fbff}
@@ -100,3 +98,22 @@
 .matrix-central-guideline-bar-content .matrix-central-guideline-toggle{flex:1;min-width:0;width:auto}
 .matrix-central-guideline-bar--active>td{box-shadow:inset 4px 0 0 #1f6fae}
 @media(max-width:720px){.matrix-central-top-actions{justify-content:flex-start;padding-inline:0}}
+
+
+/* Compact Central matrix header */
+.matrix-central-page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;padding:2px 0 12px}
+.matrix-central-page-head .matrix-v5-title{margin:0;min-width:260px}
+.matrix-central-page-head .matrix-v5-title h2{margin:2px 0 0;line-height:1.05}
+.matrix-central-commandbar{display:flex;flex-direction:column;align-items:flex-end;gap:7px;min-width:0}
+.matrix-central-commandbar-primary,.matrix-central-commandbar-context{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap}
+.matrix-central-commandbar-primary button,.matrix-central-commandbar-context button{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:34px;border:1px solid #c8d8e5;border-radius:8px;background:#fff;color:#31566f;padding:0 11px;font-size:10px;font-weight:850;cursor:pointer;white-space:nowrap}
+.matrix-central-commandbar-primary button:hover:not(:disabled),.matrix-central-commandbar-context button:hover:not(:disabled){background:#f4f9fd;border-color:#9dbfd8}
+.matrix-central-commandbar-primary .matrix-central-add-action{background:#1f6fae;border-color:#1f6fae;color:#fff;box-shadow:0 4px 10px rgba(31,111,174,.12)}
+.matrix-central-commandbar-primary .matrix-central-add-action:hover:not(:disabled){background:#185f97;border-color:#185f97}
+.matrix-central-commandbar-context{padding:6px 7px;border:1px solid #d8e5ef;border-radius:10px;background:#f7fbfe;box-shadow:0 3px 10px rgba(18,59,91,.05)}
+.matrix-central-commandbar-context button.save{background:#1f6fae;border-color:#1f6fae;color:#fff}
+.matrix-central-commandbar-context button.danger{border-color:#efb7b7;color:#b33434;background:#fff8f8}
+.matrix-central-commandbar-primary button:disabled,.matrix-central-commandbar-context button:disabled{opacity:.45;cursor:not-allowed}
+.matrix-v5--central .matrix-v5-summary{margin-top:0;border-radius:10px;overflow:hidden}
+.matrix-v5--central .matrix-v5-sheet-card{margin-top:10px}
+@media(max-width:980px){.matrix-central-page-head{align-items:stretch;flex-direction:column}.matrix-central-commandbar{align-items:flex-start}.matrix-central-commandbar-primary,.matrix-central-commandbar-context{justify-content:flex-start}}
