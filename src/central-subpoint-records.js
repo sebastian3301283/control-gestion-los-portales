@@ -54,3 +54,7 @@ export function normalizeCentralSubpointRows(drafts) {
 export function actionPlanFromSubpoints(rows) {
   return (rows || []).map(item => text(item.text)).filter(Boolean).join('\n')
 }
+
+export function findIncompleteCentralSubpoint(rows) {
+  return (rows || []).findIndex(item => !text(item.text))
+}

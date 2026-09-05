@@ -52,8 +52,11 @@ export default function App() {
 
       const { data, error } = await supabase.rpc('current_access')
       const currentAccess = data as AccessContext | null
-      if (!mounted || error || !currentAccess?.active) return
-      if (!currentAccess.global_access && (!currentAccess.units || currentAccess.units.length === 0)) return
+      if (!mounted || error) return
+      if (!currentAccess?.active || (!currentAccess.global_access && (!currentAccess.units || currentAccess.units.length === 0))) {
+        await supabase.auth.signOut()
+        return
+      }
       setAccess(currentAccess)
     }
 
@@ -161,12 +164,28 @@ export default function App() {
   async function signIn(event: FormEvent) {
     event.preventDefault()
     setStatus('')
-    if (!email.trim() || !password) return setStatus('Completa correo y contraseña.', 'error')
+    const normalizedEmail = email.trim().toLowerCase()
+    if (!normalizedEmail || !password) return setStatus('Completa correo y contraseña.', 'error')
     if (!isSupabaseConfigured || !supabase) return setStatus('No se pudo conectar con Supabase.', 'error')
     setBusy(true)
-    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
+    const { error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password })
+    if (error) {
+      setBusy(false)
+      return setStatus('El correo o la contraseña no son válidos.', 'error')
+    }
+
+    const { data, error: accessError } = await supabase.rpc('current_access')
+    const currentAccess = data as AccessContext | null
+    if (accessError || !currentAccess?.active || (!currentAccess.global_access && (!currentAccess.units || currentAccess.units.length === 0))) {
+      await supabase.auth.signOut()
+      setBusy(false)
+      return setStatus('Tu cuenta no tiene un perfil activo con unidades asignadas.', 'error')
+    }
+
     setBusy(false)
-    setStatus(error ? error.message : 'Sesión iniciada correctamente.', error ? 'error' : 'success')
+    setEmail(normalizedEmail)
+    setAccess(currentAccess)
+    setStatus('Sesión iniciada correctamente.', 'success')
   }
 
   const resetView = (next: View) => {

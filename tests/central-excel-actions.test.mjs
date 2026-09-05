@@ -31,7 +31,7 @@ test('Central supports selecting several responsible managers on one action', as
   assert.deepEqual(toggleResponsibleId(['m1', 'm2'], 'm1'), ['m2'])
 })
 
-test('Central workspace is an action matrix, not the old subpoint editor', async () => {
+test('Central keeps the action spreadsheet and renders persisted subpoints as real rows', async () => {
   const source = await readFile(new URL('../src/CentralExcelWorkspace.tsx', import.meta.url), 'utf8')
   const v11 = await readFile(new URL('../src/MatrixWorkspaceV11.tsx', import.meta.url), 'utf8')
   assert.match(source, /manager_managements/)
@@ -39,7 +39,11 @@ test('Central workspace is an action matrix, not the old subpoint editor', async
   assert.match(source, /centralResponsibleIdsByRow/)
   assert.match(source, /<th>Acción<\/th>/)
   assert.match(source, /matrix-v10-central-excel-row/)
-  assert.doesNotMatch(source, /Subpunto|renderCentralInlineEditor/)
+  assert.match(source, /matrix_row_subpoints/)
+  assert.match(source, /centralSubpointsByRow/)
+  assert.match(source, /centralSubpointDrafts/)
+  assert.match(source, /matrix-central-subpoint-row/)
+  assert.match(source, /Añadir subobjetivo/)
   assert.match(v11, /CentralExcelWorkspace/)
   assert.match(v11, /props\.unitCode === 'CENTRAL'/)
 })

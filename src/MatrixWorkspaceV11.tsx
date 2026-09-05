@@ -1,5 +1,5 @@
 import { BookOpenText, Users } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import CentralExcelWorkspace from './CentralExcelWorkspace'
 import UnitExcelWorkspace from './UnitExcelWorkspace'
 import { supabase } from './lib/supabase'
@@ -15,7 +15,8 @@ type Props = {
   canManage: boolean
   onError: (message: string) => void
   onNotice: (message: string) => void
-  onViewGuidelines?: () => void
+  onViewGuidelines?: (target?: { managementId: string; guidelineId: string | null }) => void
+  onActiveMatrixChange?: (matrixId: string) => void
 }
 type RowLock = {
   row_id: string
@@ -41,9 +42,9 @@ function initials(value: string) {
 export default function MatrixWorkspaceV11(props: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
   const matrixIdRef = useRef('')
-  const areaNameRef = useRef('')
   const rowIdsRef = useRef<string[]>([])
   const locksRef = useRef<RowLock[]>([])
+  const loadRowsAndLocksRequestRef = useRef(0)
   const currentUserIdRef = useRef('')
   const lockedRowIdRef = useRef<string | null>(null)
   const bypassClickRef = useRef(false)
@@ -51,7 +52,8 @@ export default function MatrixWorkspaceV11(props: Props) {
   const [revision, setRevision] = useState(0)
   const [matrixId, setMatrixId] = useState('')
   const [locks, setLocks] = useState<RowLock[]>([])
-  const [expanded, setExpanded] = useState(false)
+  const [guidelineContext, setGuidelineContext] = useState<{ managementId: string; guidelineId: string | null }>({ managementId: '', guidelineId: null })
+  const [pendingRowSwitch, setPendingRowSwitch] = useState<string | null>(null)
   const { onViewGuidelines, ...workspaceProps } = props
 
   const activeEditors = useMemo(() => {
@@ -83,11 +85,13 @@ export default function MatrixWorkspaceV11(props: Props) {
 
   async function loadRowsAndLocks(nextMatrixId: string) {
     if (!supabase || !nextMatrixId) return
+    const requestId = ++loadRowsAndLocksRequestRef.current
     const now = new Date().toISOString()
     const [rowResult, lockResult] = await Promise.all([
       supabase.from('matrix_rows').select('id').eq('matrix_id', nextMatrixId).order('sort_order').order('created_at'),
       supabase.from('matrix_row_edit_locks').select('row_id,matrix_id,user_id,user_email,display_name,expires_at').eq('matrix_id', nextMatrixId).gt('expires_at', now).order('locked_at'),
     ])
+    if (requestId !== loadRowsAndLocksRequestRef.current || nextMatrixId !== matrixIdRef.current) return
     if (!rowResult.error) rowIdsRef.current = (rowResult.data || []).map(item => String(item.id))
     if (!lockResult.error) {
       const nextLocks = (lockResult.data || []) as RowLock[]
@@ -96,56 +100,22 @@ export default function MatrixWorkspaceV11(props: Props) {
     }
   }
 
-  async function resolveCurrentMatrix() {
-    const root = rootRef.current
-    if (!root || !supabase) return
-    setExpanded(Boolean(root.querySelector('.matrix-v5--expanded')))
-    const areaName = root.querySelector<HTMLElement>('.matrix-v5-summary > div:first-child strong')?.textContent?.trim() || ''
-    if (!areaName) {
-      areaNameRef.current = ''
-      matrixIdRef.current = ''
-      rowIdsRef.current = []
-      locksRef.current = []
-      setMatrixId('')
-      setLocks([])
-      return
-    }
-
-    if (areaName === areaNameRef.current && matrixIdRef.current) {
-      await loadRowsAndLocks(matrixIdRef.current)
-      return
-    }
-
-    if (lockedRowIdRef.current) await releaseLock(lockedRowIdRef.current)
-    areaNameRef.current = areaName
-
-    const { data: managementData } = await supabase.from('managements_global').select('id').ilike('name', areaName).eq('active', true)
-    const managementIds = (managementData || []).map(item => String(item.id))
-    if (!managementIds.length) return
-
-    const { data: processData } = await supabase.from('processes').select('id').eq('unit_code', props.unitCode).eq('active', true).in('management_id', managementIds)
-    const processIds = (processData || []).map(item => String(item.id))
-    if (!processIds.length) return
-
-    const { data: matrixData } = await supabase.from('matrices').select('id').eq('period_id', props.periodId).eq('unit_code', props.unitCode).eq('active', true).in('process_id', processIds).limit(1).maybeSingle()
-    const nextMatrixId = matrixData?.id ? String(matrixData.id) : ''
-    matrixIdRef.current = nextMatrixId
-    setMatrixId(nextMatrixId)
-    if (nextMatrixId) await loadRowsAndLocks(nextMatrixId)
-  }
+  const handleActiveMatrixChange = useCallback((nextMatrixId: string) => {
+    setMatrixId(current => current === nextMatrixId ? current : nextMatrixId)
+    props.onActiveMatrixChange?.(nextMatrixId)
+  }, [props.onActiveMatrixChange])
 
   useEffect(() => {
-    let stopped = false
-    let running = false
-    const tick = async () => {
-      if (stopped || running) return
-      running = true
-      try { await resolveCurrentMatrix() } finally { running = false }
-    }
-    void tick()
-    const timer = window.setInterval(() => void tick(), 3000)
-    return () => { stopped = true; window.clearInterval(timer) }
-  }, [props.periodId, props.unitCode, revision])
+    const lockedRowId = lockedRowIdRef.current
+    if (lockedRowId && supabase) void supabase.rpc('release_matrix_row_lock', { row_id_input: lockedRowId })
+    lockedRowIdRef.current = null
+    loadRowsAndLocksRequestRef.current += 1
+    matrixIdRef.current = matrixId
+    rowIdsRef.current = []
+    locksRef.current = []
+    setLocks([])
+    if (matrixId) void loadRowsAndLocks(matrixId)
+  }, [matrixId])
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -173,8 +143,19 @@ export default function MatrixWorkspaceV11(props: Props) {
       if (!currentMatrixId || (changedMatrixId && changedMatrixId !== currentMatrixId)) return
       void loadRowsAndLocks(currentMatrixId)
     }
+    const handleRealtimeLockChange = (event: Event) => {
+      const detail = (event as CustomEvent<{ matrixId?: string }>).detail
+      const changedMatrixId = String(detail?.matrixId || '')
+      const currentMatrixId = matrixIdRef.current
+      if (!currentMatrixId || (changedMatrixId && changedMatrixId !== currentMatrixId)) return
+      void loadRowsAndLocks(currentMatrixId)
+    }
     window.addEventListener('matrix-realtime-data-change', handleRealtimeDataChange)
-    return () => window.removeEventListener('matrix-realtime-data-change', handleRealtimeDataChange)
+    window.addEventListener('matrix-realtime-lock-change', handleRealtimeLockChange)
+    return () => {
+      window.removeEventListener('matrix-realtime-data-change', handleRealtimeDataChange)
+      window.removeEventListener('matrix-realtime-lock-change', handleRealtimeLockChange)
+    }
   }, [])
 
   async function acquireLock(rowId: string) {
@@ -225,8 +206,48 @@ export default function MatrixWorkspaceV11(props: Props) {
     }, 450)
   }
 
+  function findMatrixRow(rowId: string) {
+    const rows = Array.from(rootRef.current?.querySelectorAll<HTMLTableRowElement>('tr[data-matrix-row-id]') || [])
+    return rows.find(row => row.dataset.matrixRowId === rowId) || null
+  }
+
+  async function finishCurrentAndSwitch(mode: 'save' | 'discard' | 'stay') {
+    const targetRowId = pendingRowSwitch
+    if (!targetRowId) return
+    if (mode === 'stay') { setPendingRowSwitch(null); return }
+    const root = rootRef.current
+    const actionButton = root?.querySelector<HTMLButtonElement>(mode === 'save'
+      ? '.matrix-central-commandbar-context button[data-edit-action="save"], .matrix-v5-edit-row button[data-edit-action="save"], .matrix-v5-edit-row button[title^="Guardar"]'
+      : '.matrix-central-commandbar-context button[data-edit-action="cancel"], .matrix-v5-edit-row button[data-edit-action="cancel"], .matrix-v5-edit-row button[title="Cancelar"]')
+    if (!actionButton) { setPendingRowSwitch(null); props.onError('No pudimos identificar los controles de la edición actual.'); return }
+    const previousLock = lockedRowIdRef.current
+    setPendingRowSwitch(null)
+    actionButton.click()
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      if (!rootRef.current?.querySelector('.matrix-v5-edit-row')) break
+      await new Promise(resolve => window.setTimeout(resolve, 150))
+    }
+    if (rootRef.current?.querySelector('.matrix-v5-edit-row')) {
+      props.onError(mode === 'save' ? 'No se pudo cambiar de fila porque la edición actual todavía no se guardó.' : 'No se pudo cerrar la edición actual.')
+      return
+    }
+    if (previousLock && lockedRowIdRef.current === previousLock) await releaseLock(previousLock)
+    const targetRow = findMatrixRow(targetRowId)
+    if (!targetRow) { props.onError('La fila que querías editar cambió. Inténtalo nuevamente.'); return }
+    const ok = await acquireLock(targetRowId)
+    if (!ok) return
+    bypassClickRef.current = true
+    targetRow.click()
+  }
+
   function handleRootClickCapture(event: ReactMouseEvent<HTMLDivElement>) {
     const target = event.target as HTMLElement
+    const editorActionButton = target.closest<HTMLButtonElement>('.matrix-central-commandbar-context button[data-edit-action], .matrix-central-responsible-editor-actions button')
+    if (editorActionButton) {
+      const rowId = lockedRowIdRef.current
+      if (rowId) releaseWhenEditorCloses(rowId)
+      return
+    }
     const button = target.closest<HTMLButtonElement>('.matrix-v5-row-actions button')
     const matrixRow = target.closest<HTMLTableRowElement>('tr[data-matrix-row-id]')
     if (!button && !matrixRow) return
@@ -243,15 +264,16 @@ export default function MatrixWorkspaceV11(props: Props) {
       return
     }
 
+    const rowId = matrixRow?.dataset.matrixRowId || (button ? rowIdForButton(button) : '')
+    if (!rowId) return
+
     if (rootRef.current?.querySelector('.matrix-v5-edit-row')) {
       event.preventDefault()
       event.stopPropagation()
-      props.onError('Termina o cancela la edición actual antes de editar otra fila.')
+      setPendingRowSwitch(rowId)
       return
     }
 
-    const rowId = matrixRow?.dataset.matrixRowId || (button ? rowIdForButton(button) : '')
-    if (!rowId) return
     const existing = locksRef.current.find(lock => lock.row_id === rowId)
     if (existing && existing.user_id !== currentUserIdRef.current) {
       event.preventDefault()
@@ -350,12 +372,13 @@ export default function MatrixWorkspaceV11(props: Props) {
   }, [canRestore, props.periodId, props.unitCode, props.onError, props.onNotice])
 
   return <div ref={rootRef} className="matrix-v11-host" onClickCapture={handleRootClickCapture}>
-    {matrixId && <div className={`matrix-collab-presence ${expanded ? 'matrix-collab-presence--expanded' : ''}`}>
+    {matrixId && <div className="matrix-collab-presence">
       <span className="matrix-collab-icon"><Users size={17}/></span>
       <div className="matrix-collab-copy"><strong>Edición colaborativa</strong><small>{activeEditors.length ? `${activeEditors.length} usuario${activeEditors.length === 1 ? '' : 's'} editando ahora` : 'Ninguna fila está bloqueada'}</small></div>
       {activeEditors.length > 0 && <div className="matrix-collab-editors">{activeEditors.map(editor => <span className="matrix-collab-user" key={editor.user_id} title={editor.email}><i>{initials(editor.name)}</i><b>{editor.name}{editor.user_id === currentUserIdRef.current ? ' (tú)' : ''}</b></span>)}</div>}
     </div>}
-    {onViewGuidelines && <div className="matrix-v11-guideline-shortcut"><button type="button" onClick={onViewGuidelines}><BookOpenText size={16}/> Ver lineamientos</button></div>}
-    {props.unitCode === 'CENTRAL' ? <CentralExcelWorkspace key={revision} {...workspaceProps} unitCode="CENTRAL" /> : <UnitExcelWorkspace key={revision} periodId={props.periodId} year={props.year} unitCode={props.unitCode} unitName={props.unitName} canManage={props.canManage} onError={props.onError} onNotice={props.onNotice} />}
+    {onViewGuidelines && <div className="matrix-v11-guideline-shortcut"><button type="button" onClick={() => onViewGuidelines?.(guidelineContext)}><BookOpenText size={16}/> Ver lineamientos</button></div>}
+    {props.unitCode === 'CENTRAL' ? <CentralExcelWorkspace key={revision} {...workspaceProps} unitCode="CENTRAL" onActiveMatrixChange={handleActiveMatrixChange} onGuidelineContextChange={setGuidelineContext} /> : <UnitExcelWorkspace key={revision} periodId={props.periodId} year={props.year} unitCode={props.unitCode} unitName={props.unitName} canManage={props.canManage} onError={props.onError} onNotice={props.onNotice} onActiveMatrixChange={handleActiveMatrixChange} />}
+    {pendingRowSwitch && <div className="matrix-v11-switch-backdrop" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target) setPendingRowSwitch(null) }}><section className="matrix-v11-switch-dialog" role="dialog" aria-modal="true"><h3>Cambiar de fila</h3><p>Tienes una edición abierta. Elige qué hacer antes de continuar.</p><div><button type="button" className="primary" onClick={() => void finishCurrentAndSwitch('save')}>Guardar y cambiar</button><button type="button" onClick={() => void finishCurrentAndSwitch('discard')}>Descartar y cambiar</button><button type="button" onClick={() => void finishCurrentAndSwitch('stay')}>Seguir editando</button></div></section></div>}
   </div>
 }

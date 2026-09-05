@@ -11,14 +11,16 @@ type Props = {
   unit: Unit
   periodId: string
   canManage: boolean
+  onOpenMatrixForArea?: (managementId: string) => void
 }
 type PendingDelete = {
   button: HTMLButtonElement
   text: string
 }
 type SelectedArea = { id: string; name: string } | null
+type GuidelineTarget = { periodId: string; unitCode: string; managementId: string; guidelineId: string | null; createdAt: number }
 
-export default function PlanningGuidelines({ unit, periodId, canManage }: Props) {
+export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMatrixForArea }: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
   const bypassDeleteRef = useRef(false)
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
@@ -27,9 +29,20 @@ export default function PlanningGuidelines({ unit, periodId, canManage }: Props)
   const [importNotice, setImportNotice] = useState('')
   const [fullscreen, setFullscreen] = useState(false)
   const [selectedArea, setSelectedArea] = useState<SelectedArea>(null)
+  const [guidelineTarget, setGuidelineTarget] = useState<GuidelineTarget | null>(null)
   const isCentral = unit.code === 'CENTRAL'
 
   useEffect(() => { setSelectedArea(null) }, [periodId, unit.code])
+  useEffect(() => {
+    if (!isCentral) { setGuidelineTarget(null); return }
+    try {
+      const raw = sessionStorage.getItem('cg:guideline-target')
+      const target = raw ? JSON.parse(raw) as GuidelineTarget : null
+      if (target && target.periodId === periodId && target.unitCode === unit.code && Date.now() - target.createdAt <= 30000) setGuidelineTarget(target)
+      else setGuidelineTarget(null)
+    } catch { setGuidelineTarget(null) }
+    finally { sessionStorage.removeItem('cg:guideline-target') }
+  }, [isCentral, periodId, unit.code])
 
   useEffect(() => {
     if (isCentral) return
@@ -109,20 +122,7 @@ export default function PlanningGuidelines({ unit, periodId, canManage }: Props)
       createdAt: Date.now(),
     }))
     setFullscreen(false)
-    const flow = rootRef.current?.closest<HTMLElement>('.planning-flow')
-    const backButton = flow?.querySelector<HTMLButtonElement>('.planning-back')
-    if (!flow || !backButton) return
-    const openMatrixChoice = () => {
-      const matrixButton = flow.querySelector<HTMLButtonElement>('.planning-module-choice--matrices')
-      if (!matrixButton) return false
-      matrixButton.click()
-      return true
-    }
-    const observer = new MutationObserver(() => { if (openMatrixChoice()) observer.disconnect() })
-    observer.observe(flow, { childList: true, subtree: true })
-    backButton.click()
-    window.setTimeout(() => { if (openMatrixChoice()) observer.disconnect() }, 80)
-    window.setTimeout(() => observer.disconnect(), 2500)
+    onOpenMatrixForArea?.(selectedArea.id)
   }
 
   return <div ref={rootRef} className={`planning-guidelines-host ${fullscreen ? 'planning-guidelines-host--fullscreen' : ''} ${isCentral ? 'planning-guidelines-host--central' : ''}`} onClickCapture={handleClickCapture}>
@@ -138,7 +138,7 @@ export default function PlanningGuidelines({ unit, periodId, canManage }: Props)
     {canManage && <div className="planning-guideline-admin-note"><strong>Administración de lineamientos</strong><span>Puedes importar lineamientos desde Excel, PDF, PowerPoint o imagen; siempre se revisan antes de guardar.</span></div>}
     {importNotice && <div className="planning-guideline-import-notice">{importNotice}</div>}
 
-    {isCentral ? <CentralGuidelineWorkspace key={catalogRevision} periodId={periodId} canManage={canManage} onAreaChange={setSelectedArea} /> : <GuidelineCatalogV2 key={catalogRevision} units={[unit]} canManage={canManage} />}
+    {isCentral ? <CentralGuidelineWorkspace key={catalogRevision} periodId={periodId} canManage={canManage} initialAreaId={guidelineTarget?.managementId} focusGuidelineId={guidelineTarget?.guidelineId} onAreaChange={setSelectedArea} /> : <GuidelineCatalogV2 key={catalogRevision} units={[unit]} canManage={canManage} />}
 
     <GuidelinePptPanel unit={unit} periodId={periodId} canManage={canManage} managementId={isCentral ? selectedArea?.id : null} managementName={isCentral ? selectedArea?.name : null} />
 

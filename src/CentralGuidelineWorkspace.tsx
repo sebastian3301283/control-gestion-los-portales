@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, LoaderCircle, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { supabase } from './lib/supabase'
 import './central-guideline-workspace.css'
@@ -20,23 +20,26 @@ type GuidelineAreaLink = { management_id: string }
 type Props = {
   periodId: string
   canManage: boolean
+  initialAreaId?: string
+  focusGuidelineId?: string | null
   onAreaChange?: (area: { id: string; name: string } | null) => void
 }
 
-export default function CentralGuidelineWorkspace({ periodId, canManage, onAreaChange }: Props) {
+export default function CentralGuidelineWorkspace({ periodId, canManage, initialAreaId, focusGuidelineId, onAreaChange }: Props) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [guidelines, setGuidelines] = useState<Guideline[]>([])
   const [managements, setManagements] = useState<Management[]>([])
-  const [selectedAreaId, setSelectedAreaId] = useState('')
+  const [selectedAreaId, setSelectedAreaId] = useState(initialAreaId || '')
   const [editing, setEditing] = useState<Guideline | null>(null)
   const [creating, setCreating] = useState(false)
   const [formCategory, setFormCategory] = useState('')
   const [formCode, setFormCode] = useState('')
   const [formText, setFormText] = useState('')
   const [pendingDelete, setPendingDelete] = useState<Guideline | null>(null)
+  const focusRowRef = useRef<HTMLTableRowElement | null>(null)
 
   const areas = useMemo(() => [...managements].sort((a, b) => a.name.localeCompare(b.name, 'es')), [managements])
   const selectedArea = useMemo(() => areas.find(item => item.id === selectedAreaId) || null, [areas, selectedAreaId])
@@ -46,6 +49,7 @@ export default function CentralGuidelineWorkspace({ periodId, canManage, onAreaC
   [guidelines, selectedAreaId])
 
   useEffect(() => { void load() }, [periodId, canManage])
+  useEffect(() => { if (initialAreaId) setSelectedAreaId(initialAreaId) }, [initialAreaId, periodId])
 
   useEffect(() => {
     if (!selectedAreaId && areas.length) setSelectedAreaId(areas[0].id)
@@ -55,6 +59,11 @@ export default function CentralGuidelineWorkspace({ periodId, canManage, onAreaC
   useEffect(() => {
     onAreaChange?.(selectedArea ? { id: selectedArea.id, name: selectedArea.name } : null)
   }, [selectedArea?.id, selectedArea?.name, onAreaChange])
+  useEffect(() => {
+    if (!focusGuidelineId || !visibleGuidelines.some(item => item.id === focusGuidelineId)) return
+    const timer = window.setTimeout(() => focusRowRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 80)
+    return () => window.clearTimeout(timer)
+  }, [focusGuidelineId, selectedAreaId, visibleGuidelines])
 
   async function load() {
     if (!supabase) return
@@ -211,7 +220,7 @@ export default function CentralGuidelineWorkspace({ periodId, canManage, onAreaC
         <table className="central-guideline-table central-guideline-table--simple">
           <thead><tr><th>Categoría</th><th>N°</th><th>Lineamientos</th></tr></thead>
           <tbody>
-            {visibleGuidelines.length === 0 ? <tr><td colSpan={3} className="central-guideline-empty">No hay lineamientos para esta área.</td></tr> : visibleGuidelines.map(item => <tr key={item.id}>
+            {visibleGuidelines.length === 0 ? <tr><td colSpan={3} className="central-guideline-empty">No hay lineamientos para esta área.</td></tr> : visibleGuidelines.map(item => <tr key={item.id} ref={item.id === focusGuidelineId ? focusRowRef : undefined} className={item.id === focusGuidelineId ? 'central-guideline-row--focused' : ''}>
               <td className="central-guideline-category">{item.category || ''}</td>
               <td className="central-guideline-number">{item.code || ''}</td>
               <td className="central-guideline-text central-guideline-text-with-actions"><span>{item.guideline_text || ''}</span>{canManage && <div className="central-guideline-inline-actions"><button type="button" title="Editar" onClick={() => beginEdit(item)}><Pencil size={15}/></button><button type="button" className="danger" title="Eliminar" onClick={() => setPendingDelete(item)}><Trash2 size={15}/></button></div>}</td>

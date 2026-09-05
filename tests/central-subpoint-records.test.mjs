@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { actionPlanFromSubpoints, buildCentralSubpointDrafts, normalizeCentralSubpointRows } from '../src/central-subpoint-records.js'
+import { actionPlanFromSubpoints, buildCentralSubpointDrafts, findIncompleteCentralSubpoint, normalizeCentralSubpointRows } from '../src/central-subpoint-records.js'
 
 test('usa los registros detalle existentes con sus hitos, KPI y fechas', () => {
   const drafts = buildCentralSubpointDrafts([
@@ -58,4 +58,14 @@ test('recupera una fila parcial guardada aunque el texto del subpunto esté vac�
   assert.equal(drafts.length, 1)
   assert.equal(drafts[0].milestones, 'Kickoff pendiente')
   assert.equal(drafts[0].text, '')
+})
+
+test('detecta el primer subpunto con detalle pero sin texto antes de persistir', () => {
+  assert.equal(findIncompleteCentralSubpoint([
+    { text: 'Completo', milestones: null, kpi: null, start_date: null, end_date: null, sort_order: 0 },
+    { text: '', milestones: 'Hito huérfano', kpi: null, start_date: null, end_date: null, sort_order: 1 },
+  ]), 1)
+  assert.equal(findIncompleteCentralSubpoint([
+    { text: 'Completo', milestones: null, kpi: null, start_date: null, end_date: null, sort_order: 0 },
+  ]), -1)
 })

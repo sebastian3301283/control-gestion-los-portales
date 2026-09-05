@@ -60,8 +60,9 @@ export default function PeriodCatalog({ canManage }: Props) {
       }
       setFormOpen(false); setEditing(null); await loadPeriods(); setNotice(editing ? `Periodo ${parsedYear} actualizado.` : `Periodo ${parsedYear} creado.`)
       window.dispatchEvent(new CustomEvent('planning-periods-changed'))
-    } catch (cause: any) {
-      setError(cause?.code === '23505' ? 'Ese periodo ya existe.' : 'No pudimos guardar el periodo.')
+    } catch (cause: unknown) {
+      const code = cause && typeof cause === 'object' && 'code' in cause ? String(cause.code) : ''
+      setError(code === '23505' ? 'Ese periodo ya existe.' : 'No pudimos guardar el periodo.')
     } finally { setSaving(false) }
   }
 

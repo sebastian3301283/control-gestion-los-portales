@@ -44,6 +44,7 @@ type Props = {
   canManage: boolean
   onError: (message: string) => void
   onNotice: (message: string) => void
+  onActiveMatrixChange?: (matrixId: string) => void
 }
 
 const XLSX_MODULE_URL = 'https://unpkg.com/xlsx@0.18.5/xlsx.mjs'
@@ -93,7 +94,7 @@ function splitResponsibleNames(value: unknown) {
   return String(value ?? '').split(/[;,\n|]+/).map(item => item.trim()).filter(Boolean)
 }
 
-export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName, canManage, onError, onNotice }: Props) {
+export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName, canManage, onError, onNotice, onActiveMatrixChange }: Props) {
   const [page, setPage] = useState<'areas' | 'sheet'>('areas')
   const [areas, setAreas] = useState<Area[]>([])
   const [processes, setProcesses] = useState<Process[]>([])
@@ -119,6 +120,7 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
   const [historyLoading, setHistoryLoading] = useState(false)
   const [versions, setVersions] = useState<MatrixVersion[]>([])
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const loadRowsRequestRef = useRef(0)
 
   const selectedArea = areas.find(item => item.id === selectedAreaId) || null
   const selectedMatrix = matrices.find(item => item.id === selectedMatrixId) || null
@@ -146,6 +148,10 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
     if (!selectedMatrixId) { setRows([]); setResponsibleIdsByRow({}); return }
     void loadRows(selectedMatrixId)
   }, [selectedMatrixId])
+  useEffect(() => {
+    onActiveMatrixChange?.(selectedMatrixId)
+    return () => onActiveMatrixChange?.('')
+  }, [onActiveMatrixChange, selectedMatrixId])
   useEffect(() => {
     const handleRealtimeDataChange = (event: Event) => {
       const detail = (event as CustomEvent<{ matrixId?: string }>).detail
@@ -204,26 +210,33 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
 
   async function loadRows(matrixId: string, keepEditor = false) {
     if (!supabase) return
+    const requestId = ++loadRowsRequestRef.current
     if (!keepEditor) setRowsLoading(true)
     const rowResult = await supabase.from('matrix_rows').select('*').eq('matrix_id', matrixId).order('sort_order').order('created_at')
-    if (rowResult.error) { if (!keepEditor) setRowsLoading(false); onError('No pudimos cargar la matriz.'); return }
+    if (requestId !== loadRowsRequestRef.current) return
+    if (rowResult.error) { setRowsLoading(false); onError('No pudimos cargar la matriz.'); return }
     const nextRows = (rowResult.data || []) as MatrixRow[]
-    setRows(nextRows)
     const grouped: Record<string, string[]> = {}
     if (nextRows.length) {
       const linksResult = await supabase.from('matrix_row_responsibles').select('row_id,manager_id,sort_order').in('row_id', nextRows.map(row => row.id)).order('sort_order')
-      if (!linksResult.error) {
-        ;((linksResult.data || []) as RowResponsible[]).forEach(link => {
-          if (!grouped[link.row_id]) grouped[link.row_id] = []
-          grouped[link.row_id].push(link.manager_id)
-        })
+      if (requestId !== loadRowsRequestRef.current) return
+      if (linksResult.error) {
+        setRowsLoading(false)
+        onError('No pudimos cargar los responsables sin riesgo de perder información.')
+        return
       }
+      ;((linksResult.data || []) as RowResponsible[]).forEach(link => {
+        if (!grouped[link.row_id]) grouped[link.row_id] = []
+        grouped[link.row_id].push(link.manager_id)
+      })
       nextRows.forEach(row => {
         if (!grouped[row.id]?.length && row.responsible_manager_id) grouped[row.id] = [row.responsible_manager_id]
       })
     }
+    if (requestId !== loadRowsRequestRef.current) return
+    setRows(nextRows)
     setResponsibleIdsByRow(grouped)
-    if (!keepEditor) setRowsLoading(false)
+    setRowsLoading(false)
   }
 
   function matrixForArea(areaId: string) {
@@ -264,60 +277,102 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
   }
 
   async function saveRow() {
-    if (!supabase || !selectedMatrix || !effectiveCanManage || saving) return
-    setSaving(true); onError(''); onNotice('')
-    const responsibleNames = selectedResponsibleIds.map(id => managerById.get(id)?.name).filter((name): name is string => Boolean(name))
-    const payload = {
-      matrix_id: selectedMatrix.id,
-      objective_group: textValue(rowDraft.objective_group) || null,
-      objective: textValue(rowDraft.objective) || null,
-      action_plan: null,
-      responsible_manager_id: selectedResponsibleIds[0] || null,
-      responsible_text: responsibleNames.length ? responsibleNames.join(', ') : null,
-      priority: rowDraft.priority || null,
-      milestones: rowDraft.milestones || null,
-      kpi: rowDraft.kpi || null,
-      target: null,
-      start_date: rowDraft.start_date || null,
-      end_date: rowDraft.end_date || null,
-      risks: rowDraft.risks || null,
-      restrictions: rowDraft.restrictions || null,
-      support: rowDraft.support || null,
-      deliverables: rowDraft.deliverables || null,
-      committee: rowDraft.committee || null,
-      status: rowDraft.status,
-      sort_order: editingRowId ? rows.find(row => row.id === editingRowId)?.sort_order || 0 : rows.length,
-    }
-    let rowId = editingRowId
-    let created = false
-    if (editingRowId) {
-      const { error } = await supabase.from('matrix_rows').update(payload).eq('id', editingRowId)
-      if (error) { setSaving(false); onError('No pudimos actualizar la fila.'); return }
-    } else {
-      const { data, error } = await supabase.from('matrix_rows').insert(payload).select('id').single()
-      if (error || !data?.id) { setSaving(false); onError('No pudimos agregar la fila.'); return }
-      rowId = String(data.id); created = true
-    }
-    if (rowId) {
-      const previousIds = responsibleIdsByRow[rowId] || []
-      const deleteResult = await supabase.from('matrix_row_responsibles').delete().eq('row_id', rowId)
-      if (deleteResult.error) {
-        if (created) await supabase.from('matrix_rows').delete().eq('id', rowId)
-        setSaving(false); onError('No pudimos actualizar los responsables.'); return
-      }
-      if (selectedResponsibleIds.length) {
-        const insertResult = await supabase.from('matrix_row_responsibles').insert(selectedResponsibleIds.map((managerId, index) => ({ row_id: rowId, manager_id: managerId, sort_order: index })))
-        if (insertResult.error) {
-          if (previousIds.length) await supabase.from('matrix_row_responsibles').insert(previousIds.map((managerId, index) => ({ row_id: rowId, manager_id: managerId, sort_order: index })))
-          if (created) await supabase.from('matrix_rows').delete().eq('id', rowId)
-          setSaving(false); onError('No pudimos guardar los responsables seleccionados.'); return
-        }
-      }
-    }
-    const wasEditing = Boolean(editingRowId)
-    setSaving(false); cancelRowEdit(); onNotice(wasEditing ? 'Fila actualizada.' : 'Fila agregada.'); await loadRows(selectedMatrix.id)
+  if (!supabase || !selectedMatrix || !effectiveCanManage || saving) return
+  setSaving(true); onError(''); onNotice('')
+  const previousRow = editingRowId ? rows.find(row => row.id === editingRowId) || null : null
+  const responsibleNames = selectedResponsibleIds.map(id => managerById.get(id)?.name).filter((name): name is string => Boolean(name))
+  const payload = {
+    matrix_id: selectedMatrix.id,
+    objective_group: textValue(rowDraft.objective_group) || null,
+    objective: textValue(rowDraft.objective) || null,
+    action_plan: null,
+    responsible_manager_id: selectedResponsibleIds[0] || null,
+    responsible_text: responsibleNames.length ? responsibleNames.join(', ') : null,
+    priority: rowDraft.priority || null,
+    milestones: rowDraft.milestones || null,
+    kpi: rowDraft.kpi || null,
+    target: null,
+    start_date: rowDraft.start_date || null,
+    end_date: rowDraft.end_date || null,
+    risks: rowDraft.risks || null,
+    restrictions: rowDraft.restrictions || null,
+    support: rowDraft.support || null,
+    deliverables: rowDraft.deliverables || null,
+    committee: rowDraft.committee || null,
+    status: rowDraft.status,
+    sort_order: editingRowId ? previousRow?.sort_order || 0 : rows.length,
   }
-
+  let rowId = editingRowId
+  let created = false
+  const rollbackParentRow = async () => {
+    if (!rowId) return true
+    if (created) {
+      const { error } = await supabase.from('matrix_rows').delete().eq('id', rowId)
+      return !error
+    }
+    if (!previousRow) return false
+    const { error } = await supabase.from('matrix_rows').update({
+      objective_group: previousRow.objective_group,
+      objective: previousRow.objective,
+      action_plan: previousRow.action_plan,
+      responsible_manager_id: previousRow.responsible_manager_id,
+      responsible_text: previousRow.responsible_text,
+      priority: previousRow.priority,
+      milestones: previousRow.milestones,
+      kpi: previousRow.kpi,
+      target: previousRow.target,
+      start_date: previousRow.start_date,
+      end_date: previousRow.end_date,
+      risks: previousRow.risks,
+      restrictions: previousRow.restrictions,
+      support: previousRow.support,
+      deliverables: previousRow.deliverables,
+      committee: previousRow.committee,
+      status: previousRow.status,
+      sort_order: previousRow.sort_order,
+    }).eq('id', rowId)
+    return !error
+  }
+  if (editingRowId) {
+    const { error } = await supabase.from('matrix_rows').update(payload).eq('id', editingRowId)
+    if (error) { setSaving(false); onError('No pudimos actualizar la fila.'); return }
+  } else {
+    const { data, error } = await supabase.from('matrix_rows').insert(payload).select('id').single()
+    if (error || !data?.id) { setSaving(false); onError('No pudimos agregar la fila.'); return }
+    rowId = String(data.id); created = true
+  }
+  if (rowId) {
+    const previousIds = responsibleIdsByRow[rowId] || []
+    const restoreResponsibles = async () => {
+      const removeResult = await supabase.from('matrix_row_responsibles').delete().eq('row_id', rowId)
+      if (removeResult.error) return false
+      if (!previousIds.length) return true
+      const restoreResult = await supabase.from('matrix_row_responsibles').insert(previousIds.map((managerId, index) => ({ row_id: rowId, manager_id: managerId, sort_order: index })))
+      return !restoreResult.error
+    }
+    const deleteResult = await supabase.from('matrix_row_responsibles').delete().eq('row_id', rowId)
+    if (deleteResult.error) {
+      const parentRestored = await rollbackParentRow()
+      setSaving(false)
+      await loadRows(selectedMatrix.id, true)
+      onError(parentRestored ? 'No pudimos actualizar los responsables. No se conservaron cambios parciales.' : 'No pudimos actualizar los responsables ni confirmar la reversión. Recarga la matriz antes de continuar.')
+      return
+    }
+    if (selectedResponsibleIds.length) {
+      const insertResult = await supabase.from('matrix_row_responsibles').insert(selectedResponsibleIds.map((managerId, index) => ({ row_id: rowId, manager_id: managerId, sort_order: index })))
+      if (insertResult.error) {
+        const responsiblesRestored = await restoreResponsibles()
+        const parentRestored = await rollbackParentRow()
+        setSaving(false)
+        await loadRows(selectedMatrix.id, true)
+        onError(responsiblesRestored && parentRestored ? 'No pudimos guardar los responsables seleccionados. No se conservaron cambios parciales.' : 'No pudimos guardar los responsables ni confirmar la reversión completa. Recarga la matriz antes de continuar.')
+        return
+      }
+    }
+  }
+  const wasEditing = Boolean(editingRowId)
+  setSaving(false); cancelRowEdit(); onNotice(wasEditing ? 'Fila actualizada.' : 'Fila agregada.'); await loadRows(selectedMatrix.id)
+}
   async function deleteRow(rowId: string) {
     if (!supabase || !selectedMatrix || !effectiveCanManage) return
     const { error } = await supabase.from('matrix_rows').delete().eq('id', rowId)
@@ -352,6 +407,7 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
     const file = event.target.files?.[0]; event.target.value = ''
     if (!file || !selectedMatrix || !supabase || !effectiveCanManage) return
     setImporting(true); onError(''); onNotice('')
+    const createdRowIds: string[] = []
     try {
       const XLSX = await import(/* @vite-ignore */ XLSX_MODULE_URL)
       const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true })
@@ -385,6 +441,7 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
         const { data, error } = await supabase.from('matrix_rows').insert(payload).select('id').single()
         if (error || !data?.id) throw error || new Error('INSERT')
         const rowId = String(data.id)
+        createdRowIds.push(rowId)
         if (managerIds.length) {
           const linkResult = await supabase.from('matrix_row_responsibles').insert(managerIds.map((managerId, index) => ({ row_id: rowId, manager_id: managerId, sort_order: index })))
           if (linkResult.error) { await supabase.from('matrix_rows').delete().eq('id', rowId); throw linkResult.error }
@@ -393,7 +450,10 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
       }
       if (!imported) { onError('No encontramos filas para importar.'); return }
       await loadRows(selectedMatrix.id); onNotice(`${imported} fila${imported === 1 ? '' : 's'} importada${imported === 1 ? '' : 's'} correctamente.`)
-    } catch { onError(`No pudimos importar el Excel de ${unitName}. Revisa el formato y los nombres de responsables.`) } finally { setImporting(false) }
+    } catch {
+      if (createdRowIds.length) await supabase.from('matrix_rows').delete().in('id', createdRowIds)
+      onError(`No pudimos importar el Excel de ${unitName}. No se conservaron filas parciales; revisa el formato y los nombres de responsables.`)
+    } finally { setImporting(false) }
   }
 
   async function openHistory() {

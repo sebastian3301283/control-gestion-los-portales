@@ -1,0 +1,7 @@
+-- Operational migration already executed in production on 2026-09-04.
+-- It temporarily granted access only to seven test objects in planning-ppts
+-- so they could be removed through the Storage API. The access was removed
+-- immediately by migration 20260904182401.
+--
+-- Intentionally no-op on replay: test-object cleanup must not recreate
+-- temporary Storage policies in other environments.

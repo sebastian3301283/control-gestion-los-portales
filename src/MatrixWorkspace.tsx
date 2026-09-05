@@ -15,7 +15,7 @@ type Props = {
   canManage: boolean
   onError: (message: string) => void
   onNotice: (message: string) => void
-  onViewGuidelines?: () => void
+  onViewGuidelines?: (target?: { managementId: string; guidelineId: string | null }) => void
 }
 type MatrixTarget = {
   periodId: string
@@ -76,5 +76,5 @@ export default function MatrixWorkspace(props: Props) {
     }
   }, [props.periodId, props.unitCode])
 
-  return <div ref={hostRef}><MatrixWorkspaceV13 {...props}/></div>
+  return <div ref={hostRef} className="matrix-workspace-host"><MatrixWorkspaceV13 {...props}/></div>
 }
