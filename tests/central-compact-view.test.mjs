@@ -29,6 +29,6 @@ test('Central uses a compact command bar instead of stacked action rows', () => 
   assert.match(source, /matrix-central-commandbar-primary/)
   assert.match(source, /matrix-central-commandbar-context/)
   assert.match(css, /\.matrix-central-commandbar\{/)
-  assert.match(css, /\.matrix-central-commandbar-primary\{/)
+  assert.match(css, /\.matrix-central-commandbar-primary(?:,|\{)/)
   assert.match(css, /\.matrix-central-commandbar-context\{/)
 })
