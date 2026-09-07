@@ -79,7 +79,7 @@ function BrandMark() {
 }
 
 function roleLabel(access: DashboardAccess) {
-  if (access.global_role === 'GESTION_ESTRATÉGICA') return 'Gestión Estratégica'
+  if (access.global_role === 'GESTION_ESTRATEGICA') return 'Gestión Estratégica'
   if (access.global_role === 'GERENTE_GENERAL') return 'Gerente General'
   if (access.units.some(unit => unit.unit_role === 'GERENTE_UNIDAD')) return 'Gerente de Unidad'
   return 'Equipo de Unidad'
