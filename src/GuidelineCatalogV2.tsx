@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { BookOpenText, Check, ChevronDown, LoaderCircle, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
+import { ArrowRight, BookOpenText, Check, ChevronDown, LoaderCircle, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
 import { supabase } from './lib/supabase'
 import './guideline-catalog.css'
 import './guideline-catalog-v2.css'
@@ -20,7 +20,11 @@ type Guideline = {
   active: boolean
   sort_order: number
 }
-type Props = { units?: Unit[]; canManage: boolean }
+type Props = {
+  units?: Unit[]
+  canManage: boolean
+  onOpenMatrixForGuideline?: (managementId: string, guidelineId: string) => void
+}
 
 const fallbackUnits: Unit[] = [
   { code: 'CENTRAL', name: 'Central' },
@@ -66,7 +70,7 @@ function colorForArea(name: string) {
   return areaPalette[hash % areaPalette.length]
 }
 
-export default function GuidelineCatalogV2({ units, canManage }: Props) {
+export default function GuidelineCatalogV2({ units, canManage, onOpenMatrixForGuideline }: Props) {
   const unitOptions = units?.length ? units : fallbackUnits
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -253,7 +257,7 @@ export default function GuidelineCatalogV2({ units, canManage }: Props) {
             const parsed = splitGuideline(item.guideline_text, item.code)
             return <tr key={item.id} className={!item.active ? 'inactive-row' : ''}>
               <td className="guideline-number">{displayNumber(item, index)}</td>
-              <td className="guideline-text-cell">{parsed.code && <strong className="guideline-code">{parsed.code}: </strong>}<span>{parsed.text}</span></td>
+              <td className="guideline-text-cell"><div className="guideline-text-matrix-row"><span className="guideline-text-copy">{parsed.code && <strong className="guideline-code">{parsed.code}: </strong>}{parsed.text}</span>{unitCode !== 'CENTRAL' && onOpenMatrixForGuideline && <button type="button" className="guideline-row-matrix-arrow" onClick={() => onOpenMatrixForGuideline?.(item.management_id, item.id)} title="Abrir matriz de este lineamiento" aria-label={`Abrir matriz de ${parsed.code || `lineamiento ${index + 1}`}`}><ArrowRight size={18}/></button>}</div></td>
               <td className="guideline-management">{managementById.get(item.management_id)?.name || '—'}</td>
               <td>{responsible ? <div className="guideline-responsible"><strong>{responsible.name}</strong><small>{responsible.cargo || 'Bonista'}</small></div> : <span className="muted">Sin asignar</span>}</td>
               {canManage && <td><div className="guideline-actions"><button onClick={() => openEdit(item)} title="Editar"><Pencil size={14}/></button><button className="danger" onClick={() => void deleteGuideline(item)} title="Eliminar"><Trash2 size={14}/></button></div></td>}
