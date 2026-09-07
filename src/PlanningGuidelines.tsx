@@ -4,6 +4,7 @@ import GuidelineCatalogV2 from './GuidelineCatalogV2'
 import GuidelineMultiImport from './GuidelineMultiImport'
 import GuidelinePptPanel from './GuidelinePptPanel'
 import CentralGuidelineWorkspace from './CentralGuidelineWorkspace'
+import { supabase } from './lib/supabase'
 import './planning-guidelines.css'
 
 type Unit = { code: string; name: string }
@@ -17,8 +18,14 @@ type PendingDelete = {
   button: HTMLButtonElement
   text: string
 }
-type SelectedArea = { id: string; name: string } | null
+type AreaOption = { id: string; name: string }
+type SelectedArea = AreaOption | null
+type GuidelineAreaLink = { management_id: string }
 type GuidelineTarget = { periodId: string; unitCode: string; managementId: string; guidelineId: string | null; createdAt: number }
+
+function normalize(value: string) {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ').toLowerCase()
+}
 
 export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMatrixForArea }: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
@@ -29,12 +36,12 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
   const [importNotice, setImportNotice] = useState('')
   const [fullscreen, setFullscreen] = useState(false)
   const [selectedArea, setSelectedArea] = useState<SelectedArea>(null)
+  const [nonCentralAreas, setNonCentralAreas] = useState<AreaOption[]>([])
   const [guidelineTarget, setGuidelineTarget] = useState<GuidelineTarget | null>(null)
   const isCentral = unit.code === 'CENTRAL'
 
-  useEffect(() => { setSelectedArea(null) }, [periodId, unit.code])
+  useEffect(() => { setSelectedArea(null); setNonCentralAreas([]) }, [periodId, unit.code])
   useEffect(() => {
-    if (!isCentral) { setGuidelineTarget(null); return }
     try {
       const raw = sessionStorage.getItem('cg:guideline-target')
       const target = raw ? JSON.parse(raw) as GuidelineTarget : null
@@ -42,7 +49,57 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
       else setGuidelineTarget(null)
     } catch { setGuidelineTarget(null) }
     finally { sessionStorage.removeItem('cg:guideline-target') }
-  }, [isCentral, periodId, unit.code])
+  }, [periodId, unit.code])
+
+  useEffect(() => {
+    if (isCentral || !supabase) return
+    let active = true
+    void (async () => {
+      const guidelineResult = await supabase
+        .from('planning_guidelines')
+        .select('management_id')
+        .eq('period_id', periodId)
+        .eq('unit_code', unit.code)
+        .order('sort_order')
+      if (!active) return
+      if (guidelineResult.error) {
+        setNonCentralAreas([])
+        setSelectedArea(null)
+        return
+      }
+
+      const usedIds = [...new Set(((guidelineResult.data || []) as GuidelineAreaLink[]).map(item => String(item.management_id)).filter(Boolean))]
+      if (!usedIds.length) {
+        setNonCentralAreas([])
+        setSelectedArea(null)
+        return
+      }
+
+      const areaResult = await supabase
+        .from('managements_global')
+        .select('id,name')
+        .eq('unit_code', unit.code)
+        .eq('active', true)
+        .in('id', usedIds)
+        .order('name')
+      if (!active) return
+      if (areaResult.error) {
+        setNonCentralAreas([])
+        setSelectedArea(null)
+        return
+      }
+
+      const nextAreas = (areaResult.data || []) as AreaOption[]
+      setNonCentralAreas(nextAreas)
+      setSelectedArea(current => {
+        const targetArea = guidelineTarget?.managementId ? nextAreas.find(area => area.id === guidelineTarget.managementId) : null
+        if (targetArea) return targetArea
+        if (current && nextAreas.some(area => area.id === current.id)) return current
+        return nextAreas[0] || null
+      })
+    })()
+    return () => { active = false }
+  }, [periodId, unit.code, isCentral, catalogRevision, guidelineTarget?.managementId])
 
   useEffect(() => {
     if (isCentral) return
@@ -86,6 +143,13 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
   function handleClickCapture(event: ReactMouseEvent<HTMLDivElement>) {
     if (isCentral) return
     const target = event.target as HTMLElement
+    const row = target.closest<HTMLTableRowElement>('.guideline-v2-table tbody tr')
+    const areaName = row?.querySelector<HTMLElement>('.guideline-management')?.textContent?.trim() || ''
+    if (areaName) {
+      const area = nonCentralAreas.find(item => normalize(item.name) === normalize(areaName))
+      if (area) setSelectedArea(area)
+    }
+
     const button = target.closest<HTMLButtonElement>('.guideline-actions .danger')
     if (!button) return
     if (bypassDeleteRef.current) {
@@ -94,7 +158,6 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
     }
     event.preventDefault()
     event.stopPropagation()
-    const row = button.closest('tr')
     const text = row?.querySelector<HTMLElement>('.guideline-text-cell')?.textContent?.trim() || 'este lineamiento'
     setPendingDelete({ button, text })
   }
@@ -114,7 +177,7 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
   }
 
   function openMatrixForSelectedArea() {
-    if (!isCentral || !selectedArea) return
+    if (!selectedArea) return
     sessionStorage.setItem('cg:matrix-target-management', JSON.stringify({
       periodId,
       unitCode: unit.code,
@@ -129,8 +192,8 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
     <div className="planning-guidelines-heading">
       <div><span>Lineamientos estratégicos</span><h3>Lineamientos de {unit.name}</h3><p>{isCentral ? 'Selecciona un área de Central para revisar sus lineamientos y documentos de soporte.' : 'Los lineamientos y documentos de soporte quedan reunidos dentro de la planificación de esta unidad.'}</p></div>
       <div className="planning-guidelines-heading-actions">
-        {isCentral && selectedArea && <button className="planning-guideline-matrix-button" type="button" onClick={openMatrixForSelectedArea}><ClipboardList size={17}/> Ir a matriz de {selectedArea.name}</button>}
-        {isCentral && <button className="planning-guideline-fullscreen-button" type="button" onClick={() => setFullscreen(value => !value)}><span aria-hidden="true">{fullscreen ? '↙' : '↗'}</span>{fullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}</button>}
+        {selectedArea && <button className="planning-guideline-matrix-button" type="button" onClick={openMatrixForSelectedArea}><ClipboardList size={17}/> Ir a matriz de {selectedArea.name}</button>}
+        <button className="planning-guideline-fullscreen-button" type="button" onClick={() => setFullscreen(value => !value)}><span aria-hidden="true">{fullscreen ? '↙' : '↗'}</span>{fullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}</button>
         {canManage && <button className="planning-guideline-import-button" type="button" onClick={() => { setImportNotice(''); setImportOpen(true) }}><FileSpreadsheet size={17}/> Importar lineamientos</button>}
       </div>
     </div>
