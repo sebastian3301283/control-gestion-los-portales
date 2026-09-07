@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
-const migrationUrl = new URL('../supabase/migrations/20260907195000_noncentral_guideline_matrix_one_to_one.sql', import.meta.url)
+const migrationUrl = new URL('../supabase/migrations/20260907201259_noncentral_guideline_matrix_one_to_one.sql', import.meta.url)
 
 test('non-Central guidelines own exactly one matrix and clean obsolete test data', async () => {
   const sql = await readFile(migrationUrl, 'utf8')
