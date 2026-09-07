@@ -37,6 +37,17 @@ const CENTRAL_COLUMN_ORDER = [0, 1, 2, 3, 4, 7, 8, 5, 6]
 function text(value: string | null | undefined) {
   return String(value || '').trim() || '—'
 }
+function normalizeHeader(value: string | null | undefined) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+}
+function findHeaderIndex(headers: string[], candidates: string[]) {
+  return headers.findIndex(header => candidates.some(candidate => header === candidate || header.includes(candidate)))
+}
 function formatDateTime(value: string) {
   try { return new Intl.DateTimeFormat('es-PE', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) } catch { return value }
 }
@@ -77,27 +88,47 @@ export default function MatrixWorkspaceV12(props: Props) {
     props.onActiveMatrixChange?.(nextMatrixId)
   }, [props.onActiveMatrixChange])
 
-  function refreshCentralSummary() {
+  function refreshMatrixSummary() {
     const root = hostRef.current
     if (!root) return
-    const sheet = root.querySelector<HTMLTableElement>('.matrix-v5-sheet.matrix-central-spreadsheet-grid')
+    const sheet = root.querySelector<HTMLTableElement>('.matrix-v5-sheet')
     const ready = Boolean(root.querySelector('.matrix-v5-plan-shell') && sheet)
     setSheetReady(ready)
     if (!ready || !sheet) { setSummaryRows([]); return }
 
-    const nextRows = Array.from(sheet.querySelectorAll<HTMLTableRowElement>('tbody tr.matrix-v10-central-excel-row[data-matrix-row-id]'))
-      .filter(row => !row.classList.contains('matrix-v5-edit-row'))
+    const headers = Array.from(sheet.querySelectorAll<HTMLTableCellElement>('thead th')).map(cell => normalizeHeader(cell.textContent))
+    const actionIndex = findHeaderIndex(headers, ['accion'])
+    const responsibleIndex = findHeaderIndex(headers, ['responsable'])
+    const dateIndex = findHeaderIndex(headers, ['fechas', 'hitos / fechas', 'hitos'])
+    const deliverableIndex = findHeaderIndex(headers, ['entregable'])
+
+    if ([actionIndex, responsibleIndex, dateIndex, deliverableIndex].some(index => index < 0)) {
+      setSummaryRows([])
+      return
+    }
+
+    const nextRows = Array.from(sheet.querySelectorAll<HTMLTableRowElement>('tbody tr[data-matrix-row-id]'))
+      .filter(row =>
+        !row.classList.contains('matrix-v5-edit-row') &&
+        !row.classList.contains('matrix-central-subpoint-row') &&
+        !row.classList.contains('matrix-v5-objective-row'))
       .map(row => {
         const cells = Array.from(row.children) as HTMLTableCellElement[]
         return {
-          key: row.dataset.matrixRowId || `${cells[0]?.textContent}-${cells[1]?.textContent}`,
-          action: text(cells[0]?.textContent),
-          responsible: text(cells[1]?.textContent),
-          date: text(cells[3]?.textContent),
-          deliverable: text(cells[4]?.textContent),
+          key: row.dataset.matrixRowId || `${cells[actionIndex]?.textContent}-${cells[responsibleIndex]?.textContent}`,
+          action: text(cells[actionIndex]?.textContent),
+          responsible: text(cells[responsibleIndex]?.textContent),
+          date: text(cells[dateIndex]?.textContent),
+          deliverable: text(cells[deliverableIndex]?.textContent),
         }
       })
     setSummaryRows(nextRows)
+  }
+
+  // Alias kept as a regression-safe bridge for the Central-specific tests and callers
+  // while the summary implementation is now shared by every matrix unit.
+  function refreshCentralSummary() {
+    refreshMatrixSummary()
   }
 
   async function loadHistoryPage(offset: number, append: boolean) {
@@ -180,11 +211,36 @@ export default function MatrixWorkspaceV12(props: Props) {
     await loadHistoryPage(0, false)
   }
 
-  function enhanceCentralTable() {
+  function enhanceCommonControls() {
     const root = hostRef.current
     if (!root) return
+
+    const historyButton = Array.from(root.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.trim() === 'Historial' && !button.closest('.matrix-v12-history-dialog'))
+    if (historyButton) historyButton.setAttribute('data-matrix-history-trigger', 'true')
+
+    if (props.unitCode !== 'CENTRAL') {
+      const toolbar = root.querySelector<HTMLElement>('.matrix-v5-toolbar')
+      const toolbarActions = root.querySelector<HTMLElement>('.matrix-v5-toolbar-actions')
+      toolbar?.classList.add('matrix-central-commandbar', 'matrix-v12-unit-commandbar')
+      toolbarActions?.classList.add('matrix-central-commandbar-primary')
+
+      const addButton = Array.from(root.querySelectorAll<HTMLButtonElement>('button'))
+        .find(button => button.textContent?.trim() === 'Nueva fila')
+      if (addButton) {
+        addButton.setAttribute('data-matrix-add-action', 'true')
+        const textNode = Array.from(addButton.childNodes).find(node => node.nodeType === Node.TEXT_NODE && node.textContent?.includes('Nueva fila'))
+        if (textNode) textNode.textContent = ' Añadir acción'
+        else addButton.setAttribute('aria-label', 'Añadir acción')
+      }
+    }
+  }
+
+  function enhanceCentralTable() {
+    const root = hostRef.current
+    if (!root || props.unitCode !== 'CENTRAL') return
     const table = root.querySelector<HTMLTableElement>('.matrix-v5-sheet.matrix-central-spreadsheet-grid')
-    if (!table) { refreshCentralSummary(); return }
+    if (!table) return
 
     const headerRow = table.querySelector<HTMLTableRowElement>('thead tr')
     if (headerRow && headerRow.children.length === CENTRAL_COLUMN_ORDER.length && headerRow.dataset.centralColumnsOrdered !== 'true') {
@@ -201,13 +257,19 @@ export default function MatrixWorkspaceV12(props: Props) {
       CENTRAL_COLUMN_ORDER.forEach(index => row.appendChild(cells[index]))
       row.dataset.centralColumnsOrdered = 'true'
     })
-    refreshCentralSummary()
+  }
+
+  function enhanceMatrixExperience() {
+    enhanceCommonControls()
+    enhanceCentralTable()
+    refreshMatrixSummary()
   }
 
   function handleRootClickCapture(event: ReactMouseEvent<HTMLDivElement>) {
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('button')
     if (!button || button.closest('.matrix-v12-history-dialog')) return
-    if (button.textContent?.trim() !== 'Historial') return
+    const isHistoryTrigger = button.matches('[data-matrix-history-trigger]') || button.textContent?.trim() === 'Historial'
+    if (!isHistoryTrigger) return
     event.preventDefault()
     event.stopPropagation()
     void openHistory()
@@ -222,11 +284,11 @@ export default function MatrixWorkspaceV12(props: Props) {
   useEffect(() => {
     const root = hostRef.current
     if (!root) return
-    const observer = new MutationObserver(() => enhanceCentralTable())
+    const observer = new MutationObserver(() => enhanceMatrixExperience())
     observer.observe(root, { childList: true, subtree: true })
-    enhanceCentralTable()
+    enhanceMatrixExperience()
     return () => observer.disconnect()
-  }, [revision])
+  }, [revision, props.unitCode])
 
   const historyGroups = useMemo(() => {
     const groups: Array<{ key: string; name: string; versions: HistoryVersion[] }> = []
@@ -248,7 +310,7 @@ export default function MatrixWorkspaceV12(props: Props) {
   return <div ref={hostRef} className="matrix-v12-host" onClickCapture={handleRootClickCapture}>
     {sheetReady && <div className="matrix-v12-view-toggle" role="group" aria-label="Vista de matriz">
       <button type="button" className={viewMode === 'matrix' ? 'active' : ''} onClick={() => setViewMode('matrix')}>Matriz</button>
-      <button type="button" className={viewMode === 'summary' ? 'active' : ''} onClick={() => { refreshCentralSummary(); setViewMode('summary') }}>Resumen</button>
+      <button type="button" className={viewMode === 'summary' ? 'active' : ''} onClick={() => { refreshMatrixSummary(); setViewMode('summary') }}>Resumen</button>
     </div>}
 
     {sheetReady && viewMode === 'summary' && <section className="matrix-v12-summary" aria-label="Vista Resumen">
