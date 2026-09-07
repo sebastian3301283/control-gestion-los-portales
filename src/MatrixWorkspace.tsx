@@ -21,6 +21,7 @@ type MatrixTarget = {
   periodId: string
   unitCode: string
   managementId: string
+  guidelineId?: string | null
   createdAt: number
 }
 
@@ -38,6 +39,10 @@ export default function MatrixWorkspace(props: Props) {
     }
 
     if (!target || target.periodId !== props.periodId || target.unitCode !== props.unitCode || Date.now() - target.createdAt > 30000) return
+
+    // HU/DEP/VS/HOT resolve the exact matrix by guideline_id inside UnitExcelWorkspace.
+    // Keep the target untouched here so the unit workspace can consume it after its data loads.
+    if (props.unitCode !== 'CENTRAL' && target.guidelineId) return
 
     let stopped = false
     let observer: MutationObserver | null = null
