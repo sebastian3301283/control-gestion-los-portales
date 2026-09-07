@@ -1,5 +1,4 @@
-// Contrato de regresión para llevar HU/DEP/VS/HOT a la experiencia de Central
-// conservando únicamente su tabla de Lineamientos propia y el color de cada unidad.
+// Contrato de regresión para HU/DEP/VS/HOT: un lineamiento posee una matriz y soportes propios.
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
@@ -8,6 +7,7 @@ const planning = await readFile(new URL('../src/PlanningGuidelines.tsx', import.
 const catalog = await readFile(new URL('../src/GuidelineCatalogV2.tsx', import.meta.url), 'utf8')
 const support = await readFile(new URL('../src/GuidelinePptPanel.tsx', import.meta.url), 'utf8')
 const dashboard = await readFile(new URL('../src/Dashboard.tsx', import.meta.url), 'utf8')
+const matrixWorkspace = await readFile(new URL('../src/MatrixWorkspace.tsx', import.meta.url), 'utf8')
 const unitExcel = await readFile(new URL('../src/UnitExcelWorkspace.tsx', import.meta.url), 'utf8')
 const v11 = await readFile(new URL('../src/MatrixWorkspaceV11.tsx', import.meta.url), 'utf8')
 const planningCss = await readFile(new URL('../src/planning-guidelines.css', import.meta.url), 'utf8')
@@ -25,35 +25,47 @@ test('HU/DEP/VS/HOT muestran Nuevo lineamiento en la vista de planificación', (
   assert.doesNotMatch(planningCss, /\.planning-guidelines-host \.guideline-add\{display:none!important\}/)
 })
 
-test('cada lineamiento no Central tiene una flecha propia que abre su matriz usando gerencia y guideline', () => {
+test('cada lineamiento no Central es seleccionable y su flecha transporta el guideline exacto', () => {
+  assert.match(catalog, /selectedGuidelineId\?: string \| null/)
+  assert.match(catalog, /onSelectGuideline\?:/)
   assert.match(catalog, /onOpenMatrixForGuideline\?: \(managementId: string, guidelineId: string\) => void/)
+  assert.match(catalog, /onSelectGuideline\?\.\(\{ id: item\.id, managementId: item\.management_id, label:/)
   assert.match(catalog, /onOpenMatrixForGuideline\?\.\(item\.management_id, item\.id\)/)
   assert.match(catalog, /title="Abrir matriz de este lineamiento"/)
-  assert.match(planning, /onOpenMatrixForGuideline=\{openMatrixForGuideline\}/)
-  assert.match(planning, /guidelineId/)
-  assert.match(planning, /sessionStorage\.setItem\('cg:matrix-target-management'/)
+  assert.match(catalog, /guideline-selected/)
 })
 
-test('Lineamientos conserva los controles de Central sin añadir un selector de área para HU/DEP/VS/HOT', () => {
-  assert.match(planning, /Pantalla completa/)
-  assert.match(planning, /Importar lineamientos/)
-  assert.doesNotMatch(planning, /guideline-ppt-area-select/)
+test('PlanningGuidelines conserva el lineamiento seleccionado para soportes y navegación', () => {
+  assert.match(planning, /selectedGuideline/)
+  assert.match(planning, /onSelectGuideline=\{setSelectedGuideline\}/)
+  assert.match(planning, /selectedGuidelineId=/)
+  assert.match(planning, /guidelineId=\{selectedGuideline\?\.id/)
+  assert.match(planning, /guidelineLabel=\{selectedGuideline\?\.label/)
+  assert.match(planning, /onOpenMatrixForArea\?\.\(managementId, guidelineId\)/)
 })
 
-test('Documentos de soporte de HU/DEP/VS/HOT se muestran juntos sin selector ni filtro por gerencia', () => {
-  assert.doesNotMatch(support, /guideline-ppt-area-select/)
-  assert.doesNotMatch(support, /from\('planning_guidelines'\)/)
-  assert.match(support, /planning-ppts/)
-  assert.match(support, /unit\.code/)
-  assert.match(support, /periodId/)
-  assert.match(support, /guideline-ppt-panel/)
+test('Documentos de soporte de HU/DEP/VS/HOT quedan aislados por guidelineId', () => {
+  assert.match(support, /guidelineId\?: string \| null/)
+  assert.match(support, /guidelineLabel\?: string \| null/)
+  assert.match(support, /`\$\{baseFolder\}\/\$\{guidelineId\}`/)
+  assert.match(support, /Selecciona un lineamiento/)
+  assert.doesNotMatch(support, /Todos los documentos de soporte del periodo se muestran juntos/)
+  assert.doesNotMatch(support, /nestedResults/)
 })
 
-test('Matrices deja de ser una tarjeta dentro de HU/DEP/VS/HOT y se abre desde Lineamientos', () => {
+test('Dashboard transporta managementId y guidelineId desde Lineamientos', () => {
   assert.doesNotMatch(dashboard, /selectedPlanningUnit\.code !== 'CENTRAL' && <button className="planning-module-choice planning-module-choice--matrices"/)
+  assert.match(dashboard, /function openMatrixFromGuidelines\(managementId: string, guidelineId/)
+  assert.match(dashboard, /guidelineId,/)
   assert.match(dashboard, /onOpenMatrixForArea=\{openMatrixFromGuidelines\}/)
-  assert.match(dashboard, /sessionStorage\.setItem\('cg:matrix-target-management'/)
   assert.match(v11, /Ver lineamientos/)
+})
+
+test('el wrapper deja que UnitExcel consuma el target con guidelineId y Central conserva su apertura por área', () => {
+  assert.match(matrixWorkspace, /guidelineId\?: string \| null/)
+  assert.match(matrixWorkspace, /props\.unitCode !== 'CENTRAL'[\s\S]+target\.guidelineId/)
+  assert.match(unitExcel, /matrixForGuideline/)
+  assert.match(unitExcel, /item\.guideline_id === guidelineId/)
 })
 
 test('la matriz HU/DEP/VS/HOT usa exactamente los encabezados visibles de Central', () => {
@@ -62,7 +74,7 @@ test('la matriz HU/DEP/VS/HOT usa exactamente los encabezados visibles de Centra
   assert.doesNotMatch(unitExcel, /<th>KPI<\/th><th>Inicio<\/th><th>Fin<\/th>/)
 })
 
-test('la matriz no Central adopta la commandbar de Central pero mantiene su modelo de persistencia anterior', () => {
+test('la matriz no Central adopta la commandbar de Central pero mantiene su modelo de filas', () => {
   assert.match(unitExcel, /matrix-central-page-head/)
   assert.match(unitExcel, /matrix-central-commandbar/)
   assert.match(unitExcel, /Añadir acción/)
@@ -72,4 +84,8 @@ test('la matriz no Central adopta la commandbar de Central pero mantiene su mode
   assert.match(unitExcel, /start_date: rowDraft\.start_date \|\| null/)
   assert.match(unitExcel, /end_date: rowDraft\.end_date \|\| null/)
   assert.match(unitExcel, /matrix-v5--\$\{unitAccent\[unitCode\]\}/)
+})
+
+test('la sincronización antigua de matrices por proceso queda limitada a Central', () => {
+  assert.match(catalog, /if \(nextUnitCode !== 'CENTRAL'\) return/)
 })
