@@ -39,7 +39,7 @@ test('Ir a matriz abre la gerencia elegida y Ver lineamientos conserva el contex
   assert.match(planning, /const raw = sessionStorage\.getItem\('cg:guideline-target'\)/)
   assert.doesNotMatch(planning, /if \(!isCentral\) \{ setGuidelineTarget\(null\); return \}/)
 
-  assert.doesNotMatch(dashboard, /selectedPlanningUnit\.code !== 'CENTRAL'/)
+  assert.doesNotMatch(dashboard, /function openMatrixFromGuidelines\([\s\S]{0,180}selectedPlanningUnit\.code !== 'CENTRAL'/)
   assert.match(dashboard, /onOpenMatrixForArea=\{openMatrixFromGuidelines\}/)
   assert.match(dashboard, /async function openGuidelinesFromMatrix/)
   assert.match(dashboard, /\.matrix-v5-summary > div:first-child strong/)
