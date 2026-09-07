@@ -124,6 +124,15 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
   function openMatrixForGuideline(managementId: string, guidelineId: string) {
     setFullscreen(false)
     onOpenMatrixForArea?.(managementId, guidelineId)
+    // Dashboard's legacy callback still writes an area target. Replace it immediately
+    // with the exact guideline target before MatrixWorkspace mounts.
+    sessionStorage.setItem('cg:matrix-target-management', JSON.stringify({
+      periodId,
+      unitCode: unit.code,
+      managementId,
+      guidelineId,
+      createdAt: Date.now(),
+    }))
   }
 
   return <div ref={rootRef} className={`planning-guidelines-host ${fullscreen ? 'planning-guidelines-host--fullscreen' : ''} ${isCentral ? 'planning-guidelines-host--central' : ''}`} onClickCapture={handleClickCapture}>
