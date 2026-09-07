@@ -36,19 +36,22 @@ test('non-Central units use the Excel workspace while Central stays on its exist
   assert.doesNotMatch(source, /MatrixWorkspaceV10/)
 })
 
-test('unit Excel workspace preserves spreadsheet toolbar, direct row editing and multi-responsible persistence', async () => {
+test('unit Excel workspace adopts Central commandbar and visible columns while preserving direct editing and multi-responsible persistence', async () => {
   const source = await readFile(new URL('../src/UnitExcelWorkspace.tsx', import.meta.url), 'utf8')
   const css = await readFile(new URL('../src/unit-excel-workspace.css', import.meta.url), 'utf8')
-  for (const label of ['Áreas', 'Expandir', 'Historial', 'Importar Excel', 'Exportar Excel', 'Nueva fila']) {
+  for (const label of ['Expandir matriz', 'Historial', 'Exportar Excel', 'Añadir acción']) {
     assert.match(source, new RegExp(label))
   }
-  for (const header of ['Objetivo', 'Acción', 'Responsable', 'Prioridad', 'Hitos / Fechas', 'KPI', 'Inicio', 'Fin', 'Riesgos', 'Restricciones', 'Soporte', 'Entregable', 'Comité']) {
-    assert.match(source, new RegExp(header))
-  }
+  assert.doesNotMatch(source, />Importar Excel</)
+  assert.doesNotMatch(source, />Nueva fila</)
+  assert.match(source, /<thead><tr><th>Acción<\/th><th>Responsable<\/th><th>Prioridad<\/th><th>Hitos \/ Fechas<\/th><th>Entregable<\/th><th>Riesgos de no ejecutar<\/th><th>Restricciones<\/th><th>Soporte<\/th><th>Comité<\/th><\/tr><\/thead>/)
   assert.match(source, /matrix_row_responsibles/)
   assert.match(source, /selectedResponsibleIds/)
   assert.match(source, /data-matrix-row-id=\{row\.id\}/)
   assert.match(source, /matrix-central-sheet-cell/)
+  assert.match(source, /kpi: rowDraft\.kpi \|\| null/)
+  assert.match(source, /start_date: rowDraft\.start_date \|\| null/)
+  assert.match(source, /end_date: rowDraft\.end_date \|\| null/)
   assert.match(css, /matrix-unit-excel/)
   assert.doesNotMatch(source, /manager_managements/)
   assert.doesNotMatch(source, /filterManagersForArea/)
