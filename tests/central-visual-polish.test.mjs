@@ -13,9 +13,9 @@ const principalMigration = principalMigrationName
   : ''
 const model = await import('../src/central-matrix-view-model.js').catch(() => null)
 
-test('panel general elimina Todo listo y Central entra a matriz solo desde Lineamientos', () => {
+test('panel general elimina Todo listo y todas las unidades entran a matriz solo desde Lineamientos', () => {
   assert.doesNotMatch(dashboard, /Todo listo/)
-  assert.match(dashboard, /selectedPlanningUnit\.code !== 'CENTRAL'/)
+  assert.doesNotMatch(dashboard, /planning-module-choice--matrices/)
   assert.match(dashboard, /onOpenMatrixForArea/)
   assert.match(planningGuidelines, /onOpenMatrixForArea/)
   assert.doesNotMatch(planningGuidelines, /planning-module-choice--matrices/)
