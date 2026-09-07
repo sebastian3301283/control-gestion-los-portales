@@ -4,7 +4,6 @@ import GuidelineCatalogV2 from './GuidelineCatalogV2'
 import GuidelineMultiImport from './GuidelineMultiImport'
 import GuidelinePptPanel from './GuidelinePptPanel'
 import CentralGuidelineWorkspace from './CentralGuidelineWorkspace'
-import { supabase } from './lib/supabase'
 import './planning-guidelines.css'
 
 type Unit = { code: string; name: string }
@@ -12,7 +11,7 @@ type Props = {
   unit: Unit
   periodId: string
   canManage: boolean
-  onOpenMatrixForArea?: (managementId: string) => void
+  onOpenMatrixForArea?: (managementId: string, guidelineId?: string | null) => void
 }
 type PendingDelete = {
   button: HTMLButtonElement
@@ -20,12 +19,8 @@ type PendingDelete = {
 }
 type AreaOption = { id: string; name: string }
 type SelectedArea = AreaOption | null
-type GuidelineAreaLink = { management_id: string }
+type SelectedGuideline = { id: string; managementId: string; label: string } | null
 type GuidelineTarget = { periodId: string; unitCode: string; managementId: string; guidelineId: string | null; createdAt: number }
-
-function normalize(value: string) {
-  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ').toLowerCase()
-}
 
 export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMatrixForArea }: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
@@ -36,11 +31,11 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
   const [importNotice, setImportNotice] = useState('')
   const [fullscreen, setFullscreen] = useState(false)
   const [selectedArea, setSelectedArea] = useState<SelectedArea>(null)
-  const [nonCentralAreas, setNonCentralAreas] = useState<AreaOption[]>([])
+  const [selectedGuideline, setSelectedGuideline] = useState<SelectedGuideline>(null)
   const [guidelineTarget, setGuidelineTarget] = useState<GuidelineTarget | null>(null)
   const isCentral = unit.code === 'CENTRAL'
 
-  useEffect(() => { setSelectedArea(null); setNonCentralAreas([]) }, [periodId, unit.code])
+  useEffect(() => { setSelectedArea(null); setSelectedGuideline(null) }, [periodId, unit.code])
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem('cg:guideline-target')
@@ -50,56 +45,6 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
     } catch { setGuidelineTarget(null) }
     finally { sessionStorage.removeItem('cg:guideline-target') }
   }, [periodId, unit.code])
-
-  useEffect(() => {
-    if (isCentral || !supabase) return
-    let active = true
-    void (async () => {
-      const guidelineResult = await supabase
-        .from('planning_guidelines')
-        .select('management_id')
-        .eq('period_id', periodId)
-        .eq('unit_code', unit.code)
-        .order('sort_order')
-      if (!active) return
-      if (guidelineResult.error) {
-        setNonCentralAreas([])
-        setSelectedArea(null)
-        return
-      }
-
-      const usedIds = [...new Set(((guidelineResult.data || []) as GuidelineAreaLink[]).map(item => String(item.management_id)).filter(Boolean))]
-      if (!usedIds.length) {
-        setNonCentralAreas([])
-        setSelectedArea(null)
-        return
-      }
-
-      const areaResult = await supabase
-        .from('managements_global')
-        .select('id,name')
-        .eq('unit_code', unit.code)
-        .eq('active', true)
-        .in('id', usedIds)
-        .order('name')
-      if (!active) return
-      if (areaResult.error) {
-        setNonCentralAreas([])
-        setSelectedArea(null)
-        return
-      }
-
-      const nextAreas = (areaResult.data || []) as AreaOption[]
-      setNonCentralAreas(nextAreas)
-      setSelectedArea(current => {
-        const targetArea = guidelineTarget?.managementId ? nextAreas.find(area => area.id === guidelineTarget.managementId) : null
-        if (targetArea) return targetArea
-        if (current && nextAreas.some(area => area.id === current.id)) return current
-        return nextAreas[0] || null
-      })
-    })()
-    return () => { active = false }
-  }, [periodId, unit.code, isCentral, catalogRevision, guidelineTarget?.managementId])
 
   useEffect(() => {
     if (isCentral) return
@@ -144,12 +89,6 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
     if (isCentral) return
     const target = event.target as HTMLElement
     const row = target.closest<HTMLTableRowElement>('.guideline-v2-table tbody tr')
-    const areaName = row?.querySelector<HTMLElement>('.guideline-management')?.textContent?.trim() || ''
-    if (areaName) {
-      const area = nonCentralAreas.find(item => normalize(item.name) === normalize(areaName))
-      if (area) setSelectedArea(area)
-    }
-
     const button = target.closest<HTMLButtonElement>('.guideline-actions .danger')
     if (!button) return
     if (bypassDeleteRef.current) {
@@ -178,31 +117,18 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
 
   function openMatrixForSelectedArea() {
     if (!selectedArea) return
-    sessionStorage.setItem('cg:matrix-target-management', JSON.stringify({
-      periodId,
-      unitCode: unit.code,
-      managementId: selectedArea.id,
-      createdAt: Date.now(),
-    }))
     setFullscreen(false)
-    onOpenMatrixForArea?.(selectedArea.id)
+    onOpenMatrixForArea?.(selectedArea.id, null)
   }
 
   function openMatrixForGuideline(managementId: string, guidelineId: string) {
-    sessionStorage.setItem('cg:matrix-target-management', JSON.stringify({
-      periodId,
-      unitCode: unit.code,
-      managementId,
-      guidelineId,
-      createdAt: Date.now(),
-    }))
     setFullscreen(false)
-    onOpenMatrixForArea?.(managementId)
+    onOpenMatrixForArea?.(managementId, guidelineId)
   }
 
   return <div ref={rootRef} className={`planning-guidelines-host ${fullscreen ? 'planning-guidelines-host--fullscreen' : ''} ${isCentral ? 'planning-guidelines-host--central' : ''}`} onClickCapture={handleClickCapture}>
     <div className="planning-guidelines-heading">
-      <div><span>Lineamientos estratégicos</span><h3>Lineamientos de {unit.name}</h3><p>{isCentral ? 'Selecciona un área de Central para revisar sus lineamientos y documentos de soporte.' : 'Los lineamientos y documentos de soporte quedan reunidos dentro de la planificación de esta unidad.'}</p></div>
+      <div><span>Lineamientos estratégicos</span><h3>Lineamientos de {unit.name}</h3><p>{isCentral ? 'Selecciona un área de Central para revisar sus lineamientos y documentos de soporte.' : 'Selecciona un lineamiento para revisar sus soportes o usa la flecha para abrir su matriz exclusiva.'}</p></div>
       <div className="planning-guidelines-heading-actions">
         {isCentral && selectedArea && <button className="planning-guideline-matrix-button" type="button" onClick={openMatrixForSelectedArea}><ClipboardList size={17}/> Ir a matriz de {selectedArea.name}</button>}
         <button className="planning-guideline-fullscreen-button" type="button" onClick={() => setFullscreen(value => !value)}><span aria-hidden="true">{fullscreen ? '↙' : '↗'}</span>{fullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}</button>
@@ -210,12 +136,12 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
       </div>
     </div>
 
-    {canManage && <div className="planning-guideline-admin-note"><strong>Administración de lineamientos</strong><span>Puedes importar lineamientos desde Excel, PDF, PowerPoint o imagen; siempre se revisan antes de guardar.</span></div>}
+    {canManage && <div className="planning-guideline-admin-note"><strong>Administración de lineamientos</strong><span>Puedes importar lineamientos desde Excel, PDF, PowerPoint o imagen; cada lineamiento de HU/DEP/VS/HOT crea automáticamente su propia matriz.</span></div>}
     {importNotice && <div className="planning-guideline-import-notice">{importNotice}</div>}
 
-    {isCentral ? <CentralGuidelineWorkspace key={catalogRevision} periodId={periodId} canManage={canManage} initialAreaId={guidelineTarget?.managementId} focusGuidelineId={guidelineTarget?.guidelineId} onAreaChange={setSelectedArea} /> : <GuidelineCatalogV2 key={catalogRevision} units={[unit]} canManage={canManage} onOpenMatrixForGuideline={openMatrixForGuideline} />}
+    {isCentral ? <CentralGuidelineWorkspace key={catalogRevision} periodId={periodId} canManage={canManage} initialAreaId={guidelineTarget?.managementId} focusGuidelineId={guidelineTarget?.guidelineId} onAreaChange={setSelectedArea} /> : <GuidelineCatalogV2 key={catalogRevision} units={[unit]} canManage={canManage} selectedGuidelineId={selectedGuideline?.id || guidelineTarget?.guidelineId || null} onSelectGuideline={setSelectedGuideline} onOpenMatrixForGuideline={openMatrixForGuideline} />}
 
-    <GuidelinePptPanel unit={unit} periodId={periodId} canManage={canManage} managementId={isCentral ? selectedArea?.id : null} managementName={isCentral ? selectedArea?.name : null} />
+    <GuidelinePptPanel unit={unit} periodId={periodId} canManage={canManage} managementId={isCentral ? selectedArea?.id : null} managementName={isCentral ? selectedArea?.name : null} guidelineId={selectedGuideline?.id || null} guidelineLabel={selectedGuideline?.label || null} />
 
     <GuidelineMultiImport
       unit={unit}
@@ -224,6 +150,7 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
       defaultManagementId={isCentral ? selectedArea?.id : null}
       onClose={() => setImportOpen(false)}
       onImported={count => {
+        setSelectedGuideline(null)
         setCatalogRevision(value => value + 1)
         setImportNotice(`${count} lineamiento${count === 1 ? '' : 's'} importado${count === 1 ? '' : 's'} correctamente en este periodo.`)
       }}
@@ -235,7 +162,7 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
         <div className="planning-delete-copy">
           <span>Confirmar eliminación</span>
           <h3 id="planning-delete-title">¿Eliminar este lineamiento?</h3>
-          <p>Esta acción eliminará el lineamiento seleccionado de la planificación.</p>
+          <p>En HU, DEP, VS y HOT también se eliminarán su matriz exclusiva y sus documentos de soporte.</p>
           <div className="planning-delete-preview">{pendingDelete.text}</div>
         </div>
         <div className="planning-delete-actions">
