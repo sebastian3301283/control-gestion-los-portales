@@ -79,7 +79,7 @@ function BrandMark() {
 }
 
 function roleLabel(access: DashboardAccess) {
-  if (access.global_role === 'GESTION_ESTRATEGICA') return 'Gestión Estratégica'
+  if (access.global_role === 'GESTION_ESTRATÉGICA') return 'Gestión Estratégica'
   if (access.global_role === 'GERENTE_GENERAL') return 'Gerente General'
   if (access.units.some(unit => unit.unit_role === 'GERENTE_UNIDAD')) return 'Gerente de Unidad'
   return 'Equipo de Unidad'
@@ -250,12 +250,12 @@ function HomeView({ access, displayName, today, units, selectedUnit, selectedHom
       <div className="unit-grid friendly-unit-grid">{units.map(unit => <button key={unit.code} className={`unit-card unit-card--${unit.code.toLowerCase()} ${selectedUnit === unit.code ? 'selected' : ''}`} onClick={() => onSelectUnit(unit.code)}><div className="unit-card__top"><span className="unit-code">{unit.code}</span></div><div className="unit-icon"><Building2 size={26}/></div><h3>{unit.name}</h3><p>{unit.unit_role === 'GLOBAL' ? 'Acceso completo' : unit.unit_role === 'GERENTE_UNIDAD' ? 'Gerente de Unidad' : 'Equipo encargado'}</p><span className="unit-link">Entrar <ArrowRight size={16}/></span></button>)}</div>
     </section>
 
-    {selectedHomeUnit && <section className="dashboard-section unit-module-section"><div className="section-title-row"><div><span>{selectedHomeUnit.name}</span><h2>¿Qué quieres revisar?</h2></div></div><div className="unit-module-grid"><button className={`unit-module-card unit-module-card--${selectedHomeUnit.code.toLowerCase()}`} onClick={() => openPlanning(selectedHomeUnit.code)}><span className="unit-module-icon"><ClipboardList size={28}/></span><div><small>Periodo {selectedYear}</small><strong>Planificación</strong><p>Lineamientos, PPT y matrices de gestión.</p></div><ArrowRight size={20}/></button></div></section>}
+    {selectedHomeUnit && <section className="dashboard-section unit-module-section"><div className="section-title-row"><div><span>{selectedHomeUnit.name}</span><h2>¿Qué quieres revisar?</h2></div></div><div className="unit-module-grid"><button className={`unit-module-card unit-module-card--${selectedHomeUnit.code.toLowerCase()}`} onClick={() => openPlanning(selectedHomeUnit.code)}><span className="unit-module-icon"><ClipboardList size={28}/></span><div><small>Periodo {selectedYear}</small><strong>Planificación</strong><p>Lineamientos y documentos de soporte; la matriz se abre desde la gerencia correspondiente.</p></div><ArrowRight size={20}/></button></div></section>}
   </>
 }
 
 function sectionDescription(section: Section) {
-  if (section === 'planificacion') return 'Unidad → lineamientos o matrices.'
+  if (section === 'planificacion') return 'Unidad → lineamientos → matriz de la gerencia.'
   if (section === 'configuracion') return 'Administra periodos, áreas, bonistas y permisos de acceso.'
   return 'Consulta el avance y los resultados de gestión.'
 }
@@ -363,7 +363,7 @@ function PlanningView({ access, units, initialYear, initialUnitCode }: {
     setNotice('')
   }
 
-  const secondStepLabel = step === 'guidelines' ? '2. Lineamientos' : step === 'matrices' ? '2. Matrices' : '2. Planificación'
+  const secondStepLabel = step === 'guidelines' ? '2. Lineamientos' : step === 'matrices' ? '2. Matriz' : '2. Planificación'
 
   return <div className="planning-flow">
     <div className="planning-breadcrumbs"><button className={step === 'units' ? 'current' : ''} onClick={() => { setStep('units'); setSelectedPlanningUnit(null) }}>1. Unidad</button><span>→</span><button className={step !== 'units' ? 'current' : ''} disabled={!selectedPeriod || !selectedPlanningUnit} onClick={() => selectedPlanningUnit && setStep('modules')}>{secondStepLabel}</button></div>
@@ -371,9 +371,9 @@ function PlanningView({ access, units, initialYear, initialUnitCode }: {
     {error && <div className="planning-message">{error}</div>}
     {notice && <div className="planning-message planning-message--success">{notice}</div>}
 
-    {loading ? <div className="planning-loading"><LoaderCircle className="spin" size={24}/> Cargando planificación...</div> : step === 'units' && selectedPeriod ? <section className="planning-panel"><div className="planning-title-row"><div><span>Paso 1 · Periodo {selectedPeriod.year}</span><h2>Elige una unidad</h2><p>Selecciona la unidad y luego decide si quieres trabajar sus lineamientos o sus matrices.</p></div></div><div className="planning-unit-grid">{units.map(unit => <button key={unit.code} className={`planning-unit-card planning-unit-card--${unit.code.toLowerCase()}`} onClick={() => selectUnit(unit)}><span className="planning-unit-icon"><Building2 size={27}/></span><div><small>{unit.code}</small><strong>{unit.name}</strong></div><ArrowRight size={19}/></button>)}</div></section> : null}
+    {loading ? <div className="planning-loading"><LoaderCircle className="spin" size={24}/> Cargando planificación...</div> : step === 'units' && selectedPeriod ? <section className="planning-panel"><div className="planning-title-row"><div><span>Paso 1 · Periodo {selectedPeriod.year}</span><h2>Elige una unidad</h2><p>Selecciona la unidad para trabajar sus lineamientos y abrir la matriz desde la gerencia correspondiente.</p></div></div><div className="planning-unit-grid">{units.map(unit => <button key={unit.code} className={`planning-unit-card planning-unit-card--${unit.code.toLowerCase()}`} onClick={() => selectUnit(unit)}><span className="planning-unit-icon"><Building2 size={27}/></span><div><small>{unit.code}</small><strong>{unit.name}</strong></div><ArrowRight size={19}/></button>)}</div></section> : null}
 
-    {step === 'modules' && selectedPeriod && selectedPlanningUnit && <section className="planning-panel"><div className="planning-title-row"><div><span>{selectedPlanningUnit.code} · Periodo {selectedPeriod.year}</span><h2>{selectedPlanningUnit.name}</h2><p>Elige qué quieres trabajar dentro de esta unidad.</p></div></div><div className="planning-module-choice-grid"><button className="planning-module-choice planning-module-choice--guidelines" onClick={() => { setStep('guidelines'); setError(''); setNotice('') }}><span className="planning-module-choice__icon"><BookOpenText size={25}/></span><span className="planning-module-choice__copy"><small>Planificación estratégica</small><strong>Lineamientos</strong><p>Consulta los lineamientos y el PPT de soporte de la unidad.</p></span><ArrowRight size={20}/></button>{selectedPlanningUnit.code !== 'CENTRAL' && <button className="planning-module-choice planning-module-choice--matrices" onClick={() => { setStep('matrices'); setError(''); setNotice('') }}><span className="planning-module-choice__icon"><ClipboardList size={25}/></span><span className="planning-module-choice__copy"><small>Plan de acción</small><strong>Matrices</strong><p>Entra por área y trabaja la matriz de gestión.</p></span><ArrowRight size={20}/></button>}</div></section>}
+    {step === 'modules' && selectedPeriod && selectedPlanningUnit && <section className="planning-panel"><div className="planning-title-row"><div><span>{selectedPlanningUnit.code} · Periodo {selectedPeriod.year}</span><h2>{selectedPlanningUnit.name}</h2><p>Trabaja los lineamientos y desde ellos abre directamente la matriz de la gerencia.</p></div></div><div className="planning-module-choice-grid"><button className="planning-module-choice planning-module-choice--guidelines" onClick={() => { setStep('guidelines'); setError(''); setNotice('') }}><span className="planning-module-choice__icon"><BookOpenText size={25}/></span><span className="planning-module-choice__copy"><small>Planificación estratégica</small><strong>Lineamientos</strong><p>Consulta lineamientos, documentos de soporte y entra a la matriz de cada gerencia.</p></span><ArrowRight size={20}/></button></div></section>}
 
     {step === 'guidelines' && selectedPeriod && selectedPlanningUnit && <section className="planning-panel planning-panel--wide"><PlanningGuidelines unit={{ code: selectedPlanningUnit.code, name: selectedPlanningUnit.name }} periodId={selectedPeriod.id} canManage={canManage} onOpenMatrixForArea={openMatrixFromGuidelines} /></section>}
 
