@@ -13,7 +13,9 @@ async function read(url) {
 test('all matrix units use the V12 common experience shell while keeping one Realtime wrapper', async () => {
   const source = await read(v13Url)
   assert.match(source, /<MatrixRealtimeLayer matrixId=\{activeMatrixId\}>/)
-  assert.match(source, /<MatrixWorkspaceV12 \{\.\.\.props\} onActiveMatrixChange=\{setActiveMatrixId\}/)
+  assert.match(source, /function handleActiveMatrixChange\(matrixId: string\)/)
+  assert.match(source, /<MatrixWorkspaceV12 \{\.\.\.workspaceProps\} onActiveMatrixChange=\{handleActiveMatrixChange\}/)
+  assert.match(source, /props\.onActiveMatrixChange\?\.\(matrixId\)/)
   assert.doesNotMatch(source, /props\.unitCode === 'CENTRAL'[\s\S]*MatrixWorkspaceV11/)
 })
 
