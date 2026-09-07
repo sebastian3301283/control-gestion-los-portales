@@ -1,5 +1,5 @@
 import { ChangeEvent, CSSProperties, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, ArrowRight, Building2, Check, Download, History, LoaderCircle, Maximize2, Minimize2, Plus, RotateCcw, Trash2, Upload, X, ZoomIn, ZoomOut } from 'lucide-react'
+import { ArrowRight, Building2, Download, History, LoaderCircle, Maximize2, Minimize2, Plus, RotateCcw, Trash2, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { supabase } from './lib/supabase'
 import { filterGerenteManagers, toggleResponsibleId } from './unit-excel-model.js'
 import './matrix-workspace-v5.css'
@@ -58,11 +58,6 @@ function normalizeText(value: unknown) {
   return String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase().replace(/\s+/g, ' ')
 }
 function textValue(value: unknown) { return String(value ?? '').trim() }
-function formatDate(value: string | null) {
-  if (!value) return '—'
-  const [year, month, day] = value.split('-')
-  return year && month && day ? `${day}/${month}/${year}` : value
-}
 function formatDateTime(value: string) {
   try { return new Intl.DateTimeFormat('es-PE', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) } catch { return value }
 }
@@ -127,7 +122,7 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
   const managerById = useMemo(() => new Map(managers.map(item => [item.id, item])), [managers])
   const gerenteManagers = useMemo(() => filterGerenteManagers(managers).sort((a, b) => a.name.localeCompare(b.name, 'es')), [managers])
   const effectiveCanManage = canManage || areaCanEdit
-  const tableColSpan = 13 + (effectiveCanManage ? 1 : 0)
+  const tableColSpan = 9
   const zoomStyle = { '--matrix-zoom': zoom } as CSSProperties
   const firstResponsible = useMemo(() => {
     const firstRow = rows.find(row => (responsibleIdsByRow[row.id] || []).length || row.responsible_text)
@@ -248,9 +243,6 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
     if (!matrix) { onError(`La matriz de “${area.name}” todavía no está preparada o no tienes acceso.`); return }
     setSelectedAreaId(area.id); setSelectedMatrixId(matrix.id); cancelRowEdit(); setPage('sheet'); onError(''); onNotice('')
   }
-  function backToAreas() {
-    cancelRowEdit(); setSelectedAreaId(''); setSelectedMatrixId(''); setPage('areas'); onError(''); onNotice('')
-  }
 
   function startNewRow() {
     if (rowFormOpen || !effectiveCanManage) return
@@ -277,107 +269,108 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
   }
 
   async function saveRow() {
-  if (!supabase || !selectedMatrix || !effectiveCanManage || saving) return
-  setSaving(true); onError(''); onNotice('')
-  const previousRow = editingRowId ? rows.find(row => row.id === editingRowId) || null : null
-  const responsibleNames = selectedResponsibleIds.map(id => managerById.get(id)?.name).filter((name): name is string => Boolean(name))
-  const payload = {
-    matrix_id: selectedMatrix.id,
-    objective_group: textValue(rowDraft.objective_group) || null,
-    objective: textValue(rowDraft.objective) || null,
-    action_plan: null,
-    responsible_manager_id: selectedResponsibleIds[0] || null,
-    responsible_text: responsibleNames.length ? responsibleNames.join(', ') : null,
-    priority: rowDraft.priority || null,
-    milestones: rowDraft.milestones || null,
-    kpi: rowDraft.kpi || null,
-    target: null,
-    start_date: rowDraft.start_date || null,
-    end_date: rowDraft.end_date || null,
-    risks: rowDraft.risks || null,
-    restrictions: rowDraft.restrictions || null,
-    support: rowDraft.support || null,
-    deliverables: rowDraft.deliverables || null,
-    committee: rowDraft.committee || null,
-    status: rowDraft.status,
-    sort_order: editingRowId ? previousRow?.sort_order || 0 : rows.length,
-  }
-  let rowId = editingRowId
-  let created = false
-  const rollbackParentRow = async () => {
-    if (!rowId) return true
-    if (created) {
-      const { error } = await supabase.from('matrix_rows').delete().eq('id', rowId)
+    if (!supabase || !selectedMatrix || !effectiveCanManage || saving) return
+    setSaving(true); onError(''); onNotice('')
+    const previousRow = editingRowId ? rows.find(row => row.id === editingRowId) || null : null
+    const responsibleNames = selectedResponsibleIds.map(id => managerById.get(id)?.name).filter((name): name is string => Boolean(name))
+    const payload = {
+      matrix_id: selectedMatrix.id,
+      objective_group: textValue(rowDraft.objective_group) || null,
+      objective: textValue(rowDraft.objective) || null,
+      action_plan: null,
+      responsible_manager_id: selectedResponsibleIds[0] || null,
+      responsible_text: responsibleNames.length ? responsibleNames.join(', ') : null,
+      priority: rowDraft.priority || null,
+      milestones: rowDraft.milestones || null,
+      kpi: rowDraft.kpi || null,
+      target: null,
+      start_date: rowDraft.start_date || null,
+      end_date: rowDraft.end_date || null,
+      risks: rowDraft.risks || null,
+      restrictions: rowDraft.restrictions || null,
+      support: rowDraft.support || null,
+      deliverables: rowDraft.deliverables || null,
+      committee: rowDraft.committee || null,
+      status: rowDraft.status,
+      sort_order: editingRowId ? previousRow?.sort_order || 0 : rows.length,
+    }
+    let rowId = editingRowId
+    let created = false
+    const rollbackParentRow = async () => {
+      if (!rowId) return true
+      if (created) {
+        const { error } = await supabase.from('matrix_rows').delete().eq('id', rowId)
+        return !error
+      }
+      if (!previousRow) return false
+      const { error } = await supabase.from('matrix_rows').update({
+        objective_group: previousRow.objective_group,
+        objective: previousRow.objective,
+        action_plan: previousRow.action_plan,
+        responsible_manager_id: previousRow.responsible_manager_id,
+        responsible_text: previousRow.responsible_text,
+        priority: previousRow.priority,
+        milestones: previousRow.milestones,
+        kpi: previousRow.kpi,
+        target: previousRow.target,
+        start_date: previousRow.start_date,
+        end_date: previousRow.end_date,
+        risks: previousRow.risks,
+        restrictions: previousRow.restrictions,
+        support: previousRow.support,
+        deliverables: previousRow.deliverables,
+        committee: previousRow.committee,
+        status: previousRow.status,
+        sort_order: previousRow.sort_order,
+      }).eq('id', rowId)
       return !error
     }
-    if (!previousRow) return false
-    const { error } = await supabase.from('matrix_rows').update({
-      objective_group: previousRow.objective_group,
-      objective: previousRow.objective,
-      action_plan: previousRow.action_plan,
-      responsible_manager_id: previousRow.responsible_manager_id,
-      responsible_text: previousRow.responsible_text,
-      priority: previousRow.priority,
-      milestones: previousRow.milestones,
-      kpi: previousRow.kpi,
-      target: previousRow.target,
-      start_date: previousRow.start_date,
-      end_date: previousRow.end_date,
-      risks: previousRow.risks,
-      restrictions: previousRow.restrictions,
-      support: previousRow.support,
-      deliverables: previousRow.deliverables,
-      committee: previousRow.committee,
-      status: previousRow.status,
-      sort_order: previousRow.sort_order,
-    }).eq('id', rowId)
-    return !error
-  }
-  if (editingRowId) {
-    const { error } = await supabase.from('matrix_rows').update(payload).eq('id', editingRowId)
-    if (error) { setSaving(false); onError('No pudimos actualizar la fila.'); return }
-  } else {
-    const { data, error } = await supabase.from('matrix_rows').insert(payload).select('id').single()
-    if (error || !data?.id) { setSaving(false); onError('No pudimos agregar la fila.'); return }
-    rowId = String(data.id); created = true
-  }
-  if (rowId) {
-    const previousIds = responsibleIdsByRow[rowId] || []
-    const restoreResponsibles = async () => {
-      const removeResult = await supabase.from('matrix_row_responsibles').delete().eq('row_id', rowId)
-      if (removeResult.error) return false
-      if (!previousIds.length) return true
-      const restoreResult = await supabase.from('matrix_row_responsibles').insert(previousIds.map((managerId, index) => ({ row_id: rowId, manager_id: managerId, sort_order: index })))
-      return !restoreResult.error
+    if (editingRowId) {
+      const { error } = await supabase.from('matrix_rows').update(payload).eq('id', editingRowId)
+      if (error) { setSaving(false); onError('No pudimos actualizar la acción.'); return }
+    } else {
+      const { data, error } = await supabase.from('matrix_rows').insert(payload).select('id').single()
+      if (error || !data?.id) { setSaving(false); onError('No pudimos agregar la acción.'); return }
+      rowId = String(data.id); created = true
     }
-    const deleteResult = await supabase.from('matrix_row_responsibles').delete().eq('row_id', rowId)
-    if (deleteResult.error) {
-      const parentRestored = await rollbackParentRow()
-      setSaving(false)
-      await loadRows(selectedMatrix.id, true)
-      onError(parentRestored ? 'No pudimos actualizar los responsables. No se conservaron cambios parciales.' : 'No pudimos actualizar los responsables ni confirmar la reversión. Recarga la matriz antes de continuar.')
-      return
-    }
-    if (selectedResponsibleIds.length) {
-      const insertResult = await supabase.from('matrix_row_responsibles').insert(selectedResponsibleIds.map((managerId, index) => ({ row_id: rowId, manager_id: managerId, sort_order: index })))
-      if (insertResult.error) {
-        const responsiblesRestored = await restoreResponsibles()
+    if (rowId) {
+      const previousIds = responsibleIdsByRow[rowId] || []
+      const restoreResponsibles = async () => {
+        const removeResult = await supabase.from('matrix_row_responsibles').delete().eq('row_id', rowId)
+        if (removeResult.error) return false
+        if (!previousIds.length) return true
+        const restoreResult = await supabase.from('matrix_row_responsibles').insert(previousIds.map((managerId, index) => ({ row_id: rowId, manager_id: managerId, sort_order: index })))
+        return !restoreResult.error
+      }
+      const deleteResult = await supabase.from('matrix_row_responsibles').delete().eq('row_id', rowId)
+      if (deleteResult.error) {
         const parentRestored = await rollbackParentRow()
         setSaving(false)
         await loadRows(selectedMatrix.id, true)
-        onError(responsiblesRestored && parentRestored ? 'No pudimos guardar los responsables seleccionados. No se conservaron cambios parciales.' : 'No pudimos guardar los responsables ni confirmar la reversión completa. Recarga la matriz antes de continuar.')
+        onError(parentRestored ? 'No pudimos actualizar los responsables. No se conservaron cambios parciales.' : 'No pudimos actualizar los responsables ni confirmar la reversión. Recarga la matriz antes de continuar.')
         return
       }
+      if (selectedResponsibleIds.length) {
+        const insertResult = await supabase.from('matrix_row_responsibles').insert(selectedResponsibleIds.map((managerId, index) => ({ row_id: rowId, manager_id: managerId, sort_order: index })))
+        if (insertResult.error) {
+          const responsiblesRestored = await restoreResponsibles()
+          const parentRestored = await rollbackParentRow()
+          setSaving(false)
+          await loadRows(selectedMatrix.id, true)
+          onError(responsiblesRestored && parentRestored ? 'No pudimos guardar los responsables seleccionados. No se conservaron cambios parciales.' : 'No pudimos guardar los responsables ni confirmar la reversión completa. Recarga la matriz antes de continuar.')
+          return
+        }
+      }
     }
+    const wasEditing = Boolean(editingRowId)
+    setSaving(false); cancelRowEdit(); onNotice(wasEditing ? 'Acción actualizada.' : 'Acción agregada.'); await loadRows(selectedMatrix.id)
   }
-  const wasEditing = Boolean(editingRowId)
-  setSaving(false); cancelRowEdit(); onNotice(wasEditing ? 'Fila actualizada.' : 'Fila agregada.'); await loadRows(selectedMatrix.id)
-}
+
   async function deleteRow(rowId: string) {
     if (!supabase || !selectedMatrix || !effectiveCanManage) return
     const { error } = await supabase.from('matrix_rows').delete().eq('id', rowId)
-    if (error) { onError('No pudimos eliminar la fila.'); return }
-    onNotice('Fila eliminada.'); await loadRows(selectedMatrix.id)
+    if (error) { onError('No pudimos eliminar la acción.'); return }
+    cancelRowEdit(); onNotice('Acción eliminada.'); await loadRows(selectedMatrix.id)
   }
 
   function handleEditKeyDown(event: KeyboardEvent<HTMLTableRowElement>) {
@@ -477,62 +470,62 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
 
   function renderSpreadsheetDraftRow(key: string) {
     return <tr className="matrix-v5-edit-row matrix-v10-central-excel-row matrix-unit-excel-row--editing matrix-central-in-grid-draft" key={key} onKeyDown={handleEditKeyDown}>
-      <td className="matrix-central-sheet-cell matrix-central-sheet-cell--objective"><input value={rowDraft.objective_group || ''} onChange={event => updateDraft('objective_group', event.target.value)} placeholder="Objetivo" aria-label="Objetivo" autoFocus/></td>
-      <td className="matrix-central-sheet-cell matrix-central-sheet-cell--action"><textarea rows={1} value={rowDraft.objective || ''} onChange={event => updateDraft('objective', event.target.value)} placeholder="Acción" aria-label="Acción"/></td>
+      <td className="matrix-central-sheet-cell matrix-central-sheet-cell--action"><textarea rows={1} value={rowDraft.objective || ''} onChange={event => updateDraft('objective', event.target.value)} placeholder="Acción" aria-label="Acción" autoFocus/></td>
       <td className="matrix-central-sheet-cell matrix-central-sheet-cell--responsible">{renderResponsiblePicker()}</td>
       <td className="matrix-central-sheet-cell"><select value={rowDraft.priority || ''} onChange={event => updateDraft('priority', event.target.value)} aria-label="Prioridad"><option value="">—</option><option>Alta</option><option>Media</option><option>Baja</option></select></td>
       <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.milestones || ''} onChange={event => updateDraft('milestones', event.target.value)} placeholder="Hito o fecha" aria-label="Hitos o fechas"/></td>
-      <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.kpi || ''} onChange={event => updateDraft('kpi', event.target.value)} placeholder="KPI" aria-label="KPI"/></td>
-      <td className="matrix-central-sheet-cell"><input type="date" value={rowDraft.start_date || ''} onChange={event => updateDraft('start_date', event.target.value)} aria-label="Inicio"/></td>
-      <td className="matrix-central-sheet-cell"><input type="date" value={rowDraft.end_date || ''} onChange={event => updateDraft('end_date', event.target.value)} aria-label="Fin"/></td>
-      <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.risks || ''} onChange={event => updateDraft('risks', event.target.value)} placeholder="Riesgos" aria-label="Riesgos"/></td>
+      <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.deliverables || ''} onChange={event => updateDraft('deliverables', event.target.value)} placeholder="Entregable" aria-label="Entregable"/></td>
+      <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.risks || ''} onChange={event => updateDraft('risks', event.target.value)} placeholder="Riesgos de no ejecutar" aria-label="Riesgos de no ejecutar"/></td>
       <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.restrictions || ''} onChange={event => updateDraft('restrictions', event.target.value)} placeholder="Restricciones" aria-label="Restricciones"/></td>
       <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.support || ''} onChange={event => updateDraft('support', event.target.value)} placeholder="Soporte" aria-label="Soporte"/></td>
-      <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.deliverables || ''} onChange={event => updateDraft('deliverables', event.target.value)} placeholder="Entregable" aria-label="Entregable"/></td>
       <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.committee || ''} onChange={event => updateDraft('committee', event.target.value)} placeholder="Comité" aria-label="Comité"/></td>
-      {effectiveCanManage && <td className="matrix-central-sheet-cell matrix-central-sheet-cell--actions"><div className="matrix-v5-row-actions matrix-central-edit-actions"><button type="button" title="Cancelar" onClick={cancelRowEdit}><X size={14}/></button><button type="button" className="save" title="Guardar · Ctrl+Enter" onClick={() => void saveRow()} disabled={saving}>{saving ? <LoaderCircle className="spin" size={14}/> : <Check size={14}/>}</button></div></td>}
     </tr>
   }
 
   return <div className={`matrix-v5 matrix-v10 matrix-v5--${unitAccent[unitCode]} ${page === 'sheet' ? 'matrix-v5--sheet' : ''} ${expanded ? 'matrix-v5--expanded' : ''}`}>
     {page === 'areas' && <>
-      <section className="matrix-v5-intro"><div><span>Periodo {year} · {unitCode}</span><h3>Matrices de {unitName}</h3><p>Selecciona un área para abrir su matriz. En Responsable podrás elegir uno o varios gerentes activos de la plataforma, sin filtro por área.</p></div></section>
-      {loading ? <div className="matrix-v5-loading"><LoaderCircle className="spin" size={22}/> Cargando matrices...</div> : <section className="matrix-v5-stage"><div className="matrix-v5-stage-head"><small>Áreas habilitadas</small><h4>Selecciona un área</h4></div>{areas.length === 0 ? <div className="matrix-v5-empty"><Building2 size={24}/><strong>No tienes áreas disponibles</strong></div> : <div className="matrix-v5-area-grid">{areas.map(area => <button className="matrix-v5-area-card" key={area.id} onClick={() => openArea(area)}><span><Building2 size={20}/></span><div><strong>{area.name}</strong><small>{matrixForArea(area.id) ? 'Matriz lista para abrir' : 'Sin matriz disponible'}</small></div><ArrowRight size={17}/></button>)}</div>}</section>}
+      <section className="matrix-v5-intro"><div><span>Periodo {year} · {unitCode}</span><h3>Matrices de {unitName}</h3><p>La matriz se abre desde el lineamiento de la gerencia correspondiente. En Responsable podrás elegir uno o varios gerentes activos de la plataforma.</p></div></section>
+      {loading ? <div className="matrix-v5-loading"><LoaderCircle className="spin" size={22}/> Cargando matrices...</div> : <section className="matrix-v5-stage"><div className="matrix-v5-stage-head"><small>Gerencias habilitadas</small><h4>Abriendo matriz</h4></div>{areas.length === 0 ? <div className="matrix-v5-empty"><Building2 size={24}/><strong>No tienes gerencias disponibles</strong></div> : <div className="matrix-v5-area-grid">{areas.map(area => <button className="matrix-v5-area-card" key={area.id} onClick={() => openArea(area)}><span><Building2 size={20}/></span><div><strong>{area.name}</strong><small>{matrixForArea(area.id) ? 'Matriz lista para abrir' : 'Sin matriz disponible'}</small></div><ArrowRight size={17}/></button>)}</div>}</section>}
     </>}
 
     {page === 'sheet' && selectedMatrix && <section className="matrix-v5-plan-shell">
-      <div className="matrix-v5-toolbar"><div className="matrix-v5-toolbar-actions">
-        <button className="matrix-v5-secondary" onClick={backToAreas}><ArrowLeft size={16}/> Áreas</button>
-        <button className="matrix-v5-secondary" onClick={() => setExpanded(value => !value)}>{expanded ? <Minimize2 size={16}/> : <Maximize2 size={16}/>} {expanded ? 'Salir de pantalla completa' : 'Expandir matriz'}</button>
-        {expanded && <div className="matrix-v5-zoom"><button title="Alejar" onClick={() => setZoom(value => Math.max(.75, +(value - .1).toFixed(2)))}><ZoomOut size={15}/></button><span>{Math.round(zoom * 100)}%</span><button title="Acercar" onClick={() => setZoom(value => Math.min(1.4, +(value + .1).toFixed(2)))}><ZoomIn size={15}/></button><button title="Restablecer zoom" onClick={() => setZoom(1)}><RotateCcw size={14}/></button></div>}
-        <button className="matrix-v5-secondary" onClick={() => void openHistory()}><History size={16}/> Historial</button>
-        {effectiveCanManage && <><input ref={fileInputRef} type="file" accept=".xlsx,.xls" hidden onChange={event => void importExcel(event)}/><button className="matrix-v5-secondary" onClick={() => fileInputRef.current?.click()} disabled={importing}><Upload size={16}/>{importing ? 'Importando...' : 'Importar Excel'}</button></>}
-        <button className="matrix-v5-secondary" onClick={() => void exportExcel()} disabled={exporting}><Download size={16}/>{exporting ? 'Exportando...' : 'Exportar Excel'}</button>
-        {effectiveCanManage && <button className="matrix-v5-primary" onClick={startNewRow}><Plus size={16}/> Nueva fila</button>}
-      </div></div>
+      <div className="matrix-central-page-head">
+        <div className="matrix-v5-title"><span>Matriz de Plan de Acción</span><h2>PLAN DE ACCIÓN {year}</h2></div>
+        <div className="matrix-central-commandbar" aria-label="Controles de matriz">
+          <div className="matrix-central-commandbar-primary">
+            <button className="matrix-v5-secondary" onClick={() => setExpanded(value => !value)}>{expanded ? <Minimize2 size={16}/> : <Maximize2 size={16}/>} {expanded ? 'Salir de pantalla completa' : 'Expandir matriz'}</button>
+            <button className="matrix-v5-secondary" onClick={() => void openHistory()}><History size={16}/> Historial</button>
+            {effectiveCanManage && <input ref={fileInputRef} type="file" accept=".xlsx,.xls" hidden disabled={importing} onChange={event => void importExcel(event)}/>} 
+            <button className="matrix-v5-secondary" onClick={() => void exportExcel()} disabled={exporting}><Download size={16}/>{exporting ? 'Exportando...' : 'Exportar Excel'}</button>
+            {effectiveCanManage && <button type="button" className="matrix-central-add-action" onClick={startNewRow} disabled={rowFormOpen}><Plus size={14}/> Añadir acción</button>}
+          </div>
+          {rowFormOpen && <div className="matrix-central-commandbar-context">
+            <button type="button" className="save" data-edit-action="save" onClick={() => void saveRow()} disabled={saving}>{saving && <LoaderCircle className="spin" size={13}/>} Guardar</button>
+            <button type="button" data-edit-action="cancel" onClick={cancelRowEdit}>Cancelar</button>
+            {editingRowId && <button type="button" className="danger" data-edit-action="delete" onClick={() => void deleteRow(editingRowId)}><Trash2 size={13}/> Eliminar acción</button>}
+          </div>}
+        </div>
+      </div>
 
-      <div className="matrix-v5-title"><span>Matriz de Plan de Acción</span><h2>PLAN DE ACCIÓN {year}</h2></div>
       <div className="matrix-v5-summary"><div><span>Área</span><strong>{selectedArea?.name || '—'}</strong></div><div><span>Unidad</span><strong>{unitName}</strong></div><div><span>Responsable principal</span><strong>{firstResponsible}</strong></div></div>
       <div className="matrix-unit-excel-note">Los responsables disponibles son todos los gerentes activos de la plataforma; no se restringen por el área seleccionada.</div>
 
-      <div className="matrix-v5-sheet-card"><div className="matrix-v5-sheet-scroll" style={zoomStyle}><table className="matrix-v5-sheet matrix-v10-central-excel matrix-central-spreadsheet-grid matrix-unit-excel"><thead><tr><th>Objetivo</th><th>Acción</th><th>Responsable</th><th>Prioridad</th><th>Hitos / Fechas</th><th>KPI</th><th>Inicio</th><th>Fin</th><th>Riesgos</th><th>Restricciones</th><th>Soporte</th><th>Entregable</th><th>Comité</th>{effectiveCanManage && <th>Acciones</th>}</tr></thead><tbody>
-        {rowsLoading ? <tr><td colSpan={tableColSpan} className="matrix-v5-table-empty"><LoaderCircle className="spin" size={20}/> Cargando matriz...</td></tr> : rows.length === 0 && !rowFormOpen ? <tr><td colSpan={tableColSpan} className="matrix-v5-table-empty">La matriz está lista. Presiona “Nueva fila” para comenzar.</td></tr> : rows.map(row => {
+      <div className="matrix-v5-sheet-card"><div className="matrix-v5-sheet-scroll" style={zoomStyle}><table className="matrix-v5-sheet matrix-v10-central-excel matrix-central-spreadsheet-grid matrix-unit-excel"><thead><tr><th>Acción</th><th>Responsable</th><th>Prioridad</th><th>Hitos / Fechas</th><th>Entregable</th><th>Riesgos de no ejecutar</th><th>Restricciones</th><th>Soporte</th><th>Comité</th></tr></thead><tbody>
+        {rowsLoading ? <tr><td colSpan={tableColSpan} className="matrix-v5-table-empty"><LoaderCircle className="spin" size={20}/> Cargando matriz...</td></tr> : rows.length === 0 && !rowFormOpen ? <tr><td colSpan={tableColSpan} className="matrix-v5-table-empty">La matriz está lista. Presiona “Añadir acción” para comenzar.</td></tr> : rows.map(row => {
           if (editingRowId === row.id) return renderSpreadsheetDraftRow(`edit-${row.id}`)
           const responsibleIds = responsibleIdsByRow[row.id] || (row.responsible_manager_id ? [row.responsible_manager_id] : [])
           const responsibleNames = responsibleIds.map(id => managerById.get(id)?.name).filter(Boolean)
           return <tr data-matrix-row-id={row.id} key={row.id} className={`matrix-v10-central-excel-row ${effectiveCanManage ? 'matrix-v10-central-excel-row--editable' : ''}`} onClick={() => startEditRow(row)}>
-            <td className="matrix-unit-objective-cell">{row.objective_group || '—'}</td>
-            <td className="matrix-v5-action-cell">{row.objective || '—'}</td>
+            <td className="matrix-v5-action-cell">{row.objective || row.objective_group || '—'}</td>
             <td>{responsibleNames.length ? <div className="matrix-central-responsible-chips">{responsibleNames.map(name => <span key={name}>{name}</span>)}</div> : row.responsible_text || '—'}</td>
             <td>{row.priority ? <span className={`matrix-v5-priority matrix-v5-priority--${priorityClass(row.priority)}`}>{row.priority}</span> : '—'}</td>
-            <td>{row.milestones || '—'}</td><td>{row.kpi || '—'}</td><td>{formatDate(row.start_date)}</td><td>{formatDate(row.end_date)}</td>
-            <td>{row.risks || '—'}</td><td>{row.restrictions || '—'}</td><td>{row.support || '—'}</td><td>{row.deliverables || '—'}</td><td>{row.committee || '—'}</td>
-            {effectiveCanManage && <td><div className="matrix-v5-row-actions"><button type="button" title="Eliminar fila" className="danger" onClick={event => { event.stopPropagation(); void deleteRow(row.id) }}><Trash2 size={14}/></button></div></td>}
+            <td>{row.milestones || '—'}</td><td>{row.deliverables || '—'}</td><td>{row.risks || '—'}</td><td>{row.restrictions || '—'}</td><td>{row.support || '—'}</td><td>{row.committee || '—'}</td>
           </tr>
         })}
         {rowFormOpen && !editingRowId && renderSpreadsheetDraftRow('new-unit-action')}
       </tbody></table></div></div>
-      <div className="matrix-v5-footer"><span>{rows.length} fila{rows.length === 1 ? '' : 's'}</span><small>Edición tipo Excel · Tab para avanzar · Ctrl+Enter para guardar</small></div>
+      {expanded && <div className="matrix-central-zoom-dock" aria-label="Zoom de matriz"><button title="Alejar" onClick={() => setZoom(value => Math.max(.75, +(value - .1).toFixed(2)))}><ZoomOut size={15}/></button><span>{Math.round(zoom * 100)}%</span><button title="Acercar" onClick={() => setZoom(value => Math.min(1.4, +(value + .1).toFixed(2)))}><ZoomIn size={15}/></button><button title="Restablecer zoom" onClick={() => setZoom(1)}><RotateCcw size={14}/></button></div>}
+      <div className="matrix-v5-footer"><span>{rows.length} acción{rows.length === 1 ? '' : 'es'}</span><small>Edición tipo Excel · Tab para avanzar · Ctrl+Enter para guardar</small></div>
     </section>}
 
     {historyOpen && <div className="matrix-v10-history-backdrop" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target) setHistoryOpen(false) }}><section className="matrix-v10-history-dialog"><header><div><span>Historial de versiones</span><h3>{selectedArea?.name || 'Matriz'} · {year}</h3></div><button onClick={() => setHistoryOpen(false)}><X size={18}/></button></header>{historyLoading ? <div className="matrix-v10-history-loading"><LoaderCircle className="spin" size={20}/> Cargando historial...</div> : versions.length === 0 ? <div className="matrix-v10-history-empty">Todavía no hay versiones registradas.</div> : <div className="matrix-v10-history-list">{versions.map(version => <article key={version.id}><div className="matrix-v10-version-number">v{version.version_no}</div><div><strong>{historyActionLabel(version.action)}</strong><span>{formatDateTime(version.created_at)}</span><small>{version.changed_email || 'Versión del sistema'} · {Array.isArray(version.snapshot?.rows) ? version.snapshot?.rows?.length : 0} filas</small></div></article>)}</div>}</section></div>}
