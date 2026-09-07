@@ -42,7 +42,7 @@ test('unit Excel workspace opens the matrix that belongs to the exact guideline 
   assert.match(source, /guidelineId\?: string \| null/)
   assert.match(source, /function matrixForGuideline\(guidelineId: string\)/)
   assert.match(source, /matrices\.find\(item => item\.guideline_id === guidelineId\)/)
-  assert.match(source, /target\.guidelineId/)
+  assert.match(source, /matrixData\.find\(item => item\.guideline_id === target!\.guidelineId\)/)
   assert.doesNotMatch(source, /return matrices\.find\(item => processIds\.has\(item\.process_id\)\) \|\| null/)
 })
 
@@ -87,7 +87,6 @@ test('unit Excel workspace keeps collaboration refresh and the existing Central 
 test('matrix reloads ignore stale responses and unit imports remove partial rows', async () => {
   const unitSource = await readFile(new URL('../src/UnitExcelWorkspace.tsx', import.meta.url), 'utf8')
   const centralSource = await readFile(new URL('../src/CentralExcelWorkspace.tsx', import.meta.url), 'utf8')
-
   for (const source of [unitSource, centralSource]) {
     assert.match(source, /loadRowsRequestRef/)
     assert.match(source, /requestId !== loadRowsRequestRef\.current/)
