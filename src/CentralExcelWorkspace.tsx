@@ -344,13 +344,6 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
   function toggleResponsible(managerId: string) {
     setSelectedResponsibleIds(current => current.includes(managerId) ? current.filter(id => id !== managerId) : [...current, managerId])
   }
-  function selectGuideline(guidelineId: string) {
-    const guideline = areaGuidelines.find(item => item.id === guidelineId) || null
-    setSelectedRowGuidelineId(guideline?.id || null)
-    updateDraft('guideline_id', guideline?.id || null)
-    updateDraft('objective_group', guideline?.guideline_text || '')
-    if (guideline?.id) setExpandedGuidelineKeys(current => { const next = new Set(current); next.add(guideline.id); return next })
-  }
   function updateCentralSubpoint(index: number, key: keyof CentralSubpointDraft, value: string) {
     setCentralSubpointDrafts(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, [key]: value } : item))
   }
@@ -577,14 +570,9 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
     </div>
   }
 
-  function renderObjectiveGroupEditor() {
-    return <div className="matrix-central-objective-toolbar"><div className="matrix-central-objective-edit"><strong>LINEAMIENTO</strong><select value={selectedRowGuidelineId || ''} onChange={event => selectGuideline(event.target.value)}><option value="">Selecciona un lineamiento</option>{areaGuidelines.map(guideline => <option key={guideline.id} value={guideline.id}>{guideline.code ? `${guideline.code} · ` : ''}{guideline.guideline_text}</option>)}</select></div></div>
-  }
-
   function renderSpreadsheetDraftRows(key: string) {
     const sharedRowSpan = centralSubpointDrafts.length + 1
     return <>
-      {editingRowId && <tr className="matrix-v5-edit-row matrix-central-objective-editor-row" key={`${key}-group`}><td colSpan={tableColSpan}>{renderObjectiveGroupEditor()}</td></tr>}
       <tr className="matrix-v5-edit-row matrix-v10-central-excel-row matrix-v10-central-excel-row--editing matrix-central-in-grid-draft" key={`${key}-row`} onKeyDown={handleEditKeyDown}>
         <td className="matrix-central-sheet-cell matrix-central-sheet-cell--action"><textarea rows={1} value={rowDraft.objective || ''} onChange={event => updateDraft('objective', event.target.value)} placeholder="Acción" aria-label="Acción" autoFocus/></td>
         <td className="matrix-central-sheet-cell matrix-central-sheet-cell--responsible" rowSpan={sharedRowSpan}><div className="matrix-central-responsible-editor">{renderResponsiblePicker()}</div></td>
@@ -686,8 +674,8 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
   const groupOpen = expandedGuidelineKeys.has(group.key)
   return <Fragment key={group.key}>
     <tr className={`matrix-v5-objective-row matrix-central-objective-group matrix-central-guideline-bar ${activeGuidelineId === group.key ? 'matrix-central-guideline-bar--active' : ''}`}><td colSpan={tableColSpan}><div className="matrix-central-guideline-bar-content"><button type="button" className="matrix-central-guideline-toggle" aria-expanded={groupOpen} onClick={() => toggleGuidelineGroup(group.key, group.rows)}><span aria-hidden="true">{groupOpen ? '▼' : '▶'}</span><strong>{group.code ? `${group.code} · ` : ''}{group.label}</strong><small>{group.rows.length} objetivo{group.rows.length === 1 ? '' : 's'}</small></button></div></td></tr>
-    {rowFormOpen && !editingRowId && selectedRowGuidelineId === group.key && <Fragment key={`new-${group.key}`}>{renderSpreadsheetDraftRows(`new-${group.key}`)}</Fragment>}
     {groupOpen && group.rows.map(row => <Fragment key={row.id}>{editingRowId === row.id ? renderSpreadsheetDraftRows(`edit-${row.id}`) : renderPersistedRow(row)}</Fragment>)}
+    {rowFormOpen && !editingRowId && selectedRowGuidelineId === group.key && <Fragment key={`new-${group.key}`}>{renderSpreadsheetDraftRows(`new-${group.key}`)}</Fragment>}
   </Fragment>
 })}
         </>}
