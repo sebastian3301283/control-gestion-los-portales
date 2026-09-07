@@ -11,6 +11,7 @@ type StoredDocument = {
   metadata?: { size?: number } | null
 }
 type AreaOption = { id: string; name: string }
+type GuidelineAreaLink = { management_id: string }
 type Props = {
   unit: Unit
   periodId: string
@@ -80,7 +81,7 @@ export default function GuidelinePptPanel({ unit, periodId, canManage, managemen
 
   useEffect(() => {
     if (!centralUsesParentArea && !managementId) void loadAreas()
-  }, [unit.code, managementId, canManage, centralUsesParentArea])
+  }, [unit.code, periodId, managementId, canManage, centralUsesParentArea])
 
   useEffect(() => {
     if (centralUsesParentArea || managementId) return
@@ -95,17 +96,39 @@ export default function GuidelinePptPanel({ unit, periodId, canManage, managemen
     setLoadingAreas(true)
     setError('')
 
+    const guidelineResult = await supabase
+      .from('planning_guidelines')
+      .select('management_id')
+      .eq('period_id', periodId)
+      .eq('unit_code', unit.code)
+      .order('sort_order')
+
+    if (guidelineResult.error) {
+      setLoadingAreas(false)
+      setAreas([])
+      setError('No pudimos cargar las gerencias responsables de los lineamientos.')
+      return
+    }
+
+    const usedManagementIds = [...new Set(((guidelineResult.data || []) as GuidelineAreaLink[]).map(item => String(item.management_id)).filter(Boolean))]
+    if (!usedManagementIds.length) {
+      setAreas([])
+      setLoadingAreas(false)
+      return
+    }
+
     const { data, error: areaError } = await supabase
       .from('managements_global')
       .select('id,name')
       .eq('unit_code', unit.code)
       .eq('active', true)
+      .in('id', usedManagementIds)
       .order('name')
 
     if (areaError) {
       setLoadingAreas(false)
       setAreas([])
-      setError('No pudimos cargar las áreas de esta unidad.')
+      setError('No pudimos cargar las gerencias responsables de los lineamientos.')
       return
     }
 
