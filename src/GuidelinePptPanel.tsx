@@ -1,5 +1,6 @@
 import { Eye, FileImage, FileText, LoaderCircle, Trash2, Upload } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { guidelineSupportFolder } from './guideline-support-storage'
 import { supabase } from './lib/supabase'
 import './guideline-ppt-panel.css'
 
@@ -18,6 +19,8 @@ type Props = {
   canManage: boolean
   managementId?: string | null
   managementName?: string | null
+  guidelineId?: string | null
+  guidelineLabel?: string | null
 }
 type ViewerKind = 'pdf' | 'office' | 'image'
 
@@ -62,7 +65,7 @@ function newestFirst(a: StoredDocument, b: StoredDocument) {
   return bTime - aTime || a.name.localeCompare(b.name, 'es')
 }
 
-export default function GuidelinePptPanel({ unit, periodId, canManage, managementId, managementName }: Props) {
+export default function GuidelinePptPanel({ unit, periodId, canManage, managementId, managementName, guidelineId, guidelineLabel }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [files, setFiles] = useState<StoredDocument[]>([])
   const [loading, setLoading] = useState(true)
@@ -75,9 +78,11 @@ export default function GuidelinePptPanel({ unit, periodId, canManage, managemen
   const isCentral = unit.code === 'CENTRAL'
   const baseFolder = `${unit.code}/${periodId}`
   const centralFolder = managementId ? `${baseFolder}/${managementId}` : ''
-  const canUseDocuments = !isCentral || Boolean(managementId)
+  const guidelineFolder = guidelineId ? `${baseFolder}/${guidelineId}` : ''
+  const activeFolder = isCentral ? centralFolder : guidelineFolder
+  const canUseDocuments = isCentral ? Boolean(managementId) : Boolean(guidelineId)
 
-  useEffect(() => { void loadFiles() }, [unit.code, periodId, managementId, isCentral])
+  useEffect(() => { void loadFiles() }, [unit.code, periodId, managementId, guidelineId, isCentral])
 
   async function listFolder(folder: string) {
     if (!supabase) return { entries: [] as StorageEntry[], error: true }
@@ -90,7 +95,7 @@ export default function GuidelinePptPanel({ unit, periodId, canManage, managemen
 
   async function loadFiles() {
     if (!supabase) return
-    if (isCentral && !managementId) {
+    if (!canUseDocuments || !activeFolder) {
       setFiles([])
       setLoading(false)
       setError('')
@@ -99,46 +104,18 @@ export default function GuidelinePptPanel({ unit, periodId, canManage, managemen
 
     setLoading(true)
     setError('')
-
-    if (isCentral) {
-      const result = await listFolder(centralFolder)
-      setLoading(false)
-      if (result.error) {
-        setFiles([])
-        setError('No pudimos cargar los documentos guardados para esta área.')
-        return
-      }
-      setFiles(result.entries.filter(item => supportedDocument(item.name)).map(item => ({ ...item, path: `${centralFolder}/${item.name}` })).sort(newestFirst))
-      return
-    }
-
-    const rootResult = await listFolder(baseFolder)
-    if (rootResult.error) {
-      setLoading(false)
-      setFiles([])
-      setError('No pudimos cargar los documentos de soporte de esta unidad.')
-      return
-    }
-
-    const directFiles = rootResult.entries
-      .filter(item => supportedDocument(item.name))
-      .map(item => ({ ...item, path: `${baseFolder}/${item.name}` }))
-    const folderEntries = rootResult.entries.filter(item => item.name && !supportedDocument(item.name))
-    const nestedResults = await Promise.all(folderEntries.map(async folderEntry => {
-      const nestedFolder = `${baseFolder}/${folderEntry.name}`
-      const result = await listFolder(nestedFolder)
-      if (result.error) return [] as StoredDocument[]
-      return result.entries
-        .filter(item => supportedDocument(item.name))
-        .map(item => ({ ...item, path: `${nestedFolder}/${item.name}` }))
-    }))
-
-    setFiles([...directFiles, ...nestedResults.flat()].sort(newestFirst))
+    const result = await listFolder(activeFolder)
     setLoading(false)
+    if (result.error) {
+      setFiles([])
+      setError(isCentral ? 'No pudimos cargar los documentos guardados para esta área.' : 'No pudimos cargar los documentos guardados para este lineamiento.')
+      return
+    }
+    setFiles(result.entries.filter(item => supportedDocument(item.name)).map(item => ({ ...item, path: `${activeFolder}/${item.name}` })).sort(newestFirst))
   }
 
   async function upload(file: File) {
-    if (!supabase || !canManage || !canUseDocuments) return
+    if (!supabase || !canManage || !canUseDocuments || !activeFolder) return
     if (!supportedDocument(file.name)) {
       setError('Solo se permiten PowerPoint, PDF o imágenes PNG, JPG, JPEG y WEBP.')
       return
@@ -152,7 +129,7 @@ export default function GuidelinePptPanel({ unit, periodId, canManage, managemen
     setError('')
     const fallback = isImage(file.name) ? 'imagen.png' : isPdf(file.name) ? 'documento.pdf' : 'presentacion.pptx'
     const name = `${Date.now()}-${safeName(file.name) || fallback}`
-    const targetFolder = isCentral ? centralFolder : baseFolder
+    const targetFolder = isCentral ? centralFolder : guidelineSupportFolder(unit.code, periodId, guidelineId || '')
     const { error: uploadError } = await supabase.storage.from('planning-ppts').upload(`${targetFolder}/${name}`, file, {
       cacheControl: '3600',
       upsert: false,
@@ -191,12 +168,18 @@ export default function GuidelinePptPanel({ unit, periodId, canManage, managemen
     await loadFiles()
   }
 
+  const supportContext = isCentral
+    ? (managementName ? ` · ${managementName}` : '')
+    : (guidelineLabel ? ` · ${guidelineLabel}` : '')
+
   return <section className="guideline-ppt-panel">
     <div className="guideline-ppt-head">
       <div>
-        <span>Documentos de soporte{isCentral && managementName ? ` · ${managementName}` : ''}</span>
+        <span>Documentos de soporte{supportContext}</span>
         <h4>PowerPoint, PDF e imágenes de la planificación</h4>
-        <p>{isCentral ? (managementId ? `Los archivos de ${managementName || 'esta área'} se muestran dentro de la selección actual.` : 'Los documentos corresponden al área seleccionada arriba.') : 'Todos los documentos de soporte del periodo se muestran juntos para esta unidad.'}</p>
+        <p>{isCentral
+          ? (managementId ? `Los archivos de ${managementName || 'esta área'} se muestran dentro de la selección actual.` : 'Los documentos corresponden al área seleccionada arriba.')
+          : (guidelineId ? 'Estos documentos pertenecen únicamente al lineamiento seleccionado.' : 'Selecciona un lineamiento arriba para ver o guardar sus documentos de soporte.')}</p>
       </div>
       <div className="guideline-ppt-head-actions">
         {canManage && canUseDocuments && <>
@@ -209,7 +192,7 @@ export default function GuidelinePptPanel({ unit, periodId, canManage, managemen
     {error && <div className="guideline-ppt-error">{error}</div>}
 
     <div className="guideline-ppt-list">
-      {isCentral && !managementId ? <div className="guideline-ppt-empty"><FileText size={19}/> Selecciona un área arriba para ver sus documentos.</div> : loading ? <div className="guideline-ppt-empty"><LoaderCircle className="spin" size={17}/> Cargando documentos...</div> : files.length === 0 ? <div className="guideline-ppt-empty"><FileText size={19}/> Aún no hay documentos de soporte guardados.</div> : files.map(file => <article key={file.path} className="guideline-ppt-file">
+      {!canUseDocuments ? <div className="guideline-ppt-empty"><FileText size={19}/> {isCentral ? 'Selecciona un área arriba para ver sus documentos.' : 'Selecciona un lineamiento arriba para ver sus documentos.'}</div> : loading ? <div className="guideline-ppt-empty"><LoaderCircle className="spin" size={17}/> Cargando documentos...</div> : files.length === 0 ? <div className="guideline-ppt-empty"><FileText size={19}/> Aún no hay documentos de soporte guardados.</div> : files.map(file => <article key={file.path} className="guideline-ppt-file">
         <span className="guideline-ppt-file-icon">{isImage(file.name) ? <FileImage size={21}/> : <FileText size={21}/>}</span>
         <div className="guideline-ppt-file-copy"><strong>{displayName(file.name)}</strong><small>{fileTypeLabel(file.name)}{file.metadata?.size ? ` · ${sizeLabel(file.metadata.size)}` : ''}{file.created_at ? ` · ${new Date(file.created_at).toLocaleString('es-PE')}` : ''}</small></div>
         <button type="button" className="guideline-ppt-view" onClick={() => void view(file)}><Eye size={15}/> Ver</button>
