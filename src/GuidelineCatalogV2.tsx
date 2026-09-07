@@ -118,6 +118,8 @@ export default function GuidelineCatalogV2({ units, canManage, selectedGuideline
     return [...unique.values()].sort((a, b) => a.name.localeCompare(b.name, 'es'))
   }, [managements])
 
+  const formManagementOptions = useMemo(() => managements.filter(item => item.active && item.unit_code === formUnitCode).sort((a, b) => a.name.localeCompare(b.name, 'es')), [managements, formUnitCode])
+
   const filteredGuidelines = useMemo(() => guidelines.filter(item => {
     if (periodId && item.period_id !== periodId) return false
     if (item.unit_code !== unitCode) return false
@@ -144,12 +146,10 @@ export default function GuidelineCatalogV2({ units, canManage, selectedGuideline
   }, [filteredGuidelines, managementById, unitCode])
 
   const responsibleOptions = useMemo(() => {
-    if (!formAreaId) return managers.filter(item => item.active).sort((a, b) => a.name.localeCompare(b.name, 'es'))
-    const areaName = managementById.get(formAreaId)?.name || ''
-    const equivalentIds = new Set(managements.filter(item => item.active && normalize(item.name) === normalize(areaName)).map(item => item.id))
-    const linkedManagerIds = new Set(links.filter(link => equivalentIds.has(link.management_id)).map(link => link.manager_id))
-    return managers.filter(item => item.active && linkedManagerIds.has(item.id)).sort((a, b) => a.name.localeCompare(b.name, 'es'))
-  }, [formAreaId, managements, managers, links, managementById])
+    if (!formAreaId) return managers.filter(item => item.active && item.unit_code === formUnitCode).sort((a, b) => a.name.localeCompare(b.name, 'es'))
+    const linkedManagerIds = new Set(links.filter(link => link.management_id === formAreaId).map(link => link.manager_id))
+    return managers.filter(item => item.active && item.unit_code === formUnitCode && linkedManagerIds.has(item.id)).sort((a, b) => a.name.localeCompare(b.name, 'es'))
+  }, [formAreaId, formUnitCode, managers, links])
 
   useEffect(() => { void loadAll() }, [])
 
@@ -189,7 +189,8 @@ export default function GuidelineCatalogV2({ units, canManage, selectedGuideline
     setEditingId(null)
     setFormPeriodId(periodId || periods[0]?.id || '')
     setFormUnitCode(unitCode)
-    setFormAreaId(unitCode === 'CENTRAL' ? (areaFilter || uniqueAreas[0]?.id || '') : (uniqueAreas[0]?.id || ''))
+    const firstManagementId = managements.find(item => item.active && item.unit_code === unitCode)?.id || ''
+    setFormAreaId(unitCode === 'CENTRAL' ? (areaFilter || firstManagementId) : firstManagementId)
     setFormCode('')
     setFormText('')
     setFormResponsibleId('')
@@ -336,8 +337,8 @@ export default function GuidelineCatalogV2({ units, canManage, selectedGuideline
         <div className="guideline-modal-heading"><span><BookOpenText size={20}/></span><div><small>{editingId ? 'Editar' : 'Nuevo'}</small><h3>Lineamiento estratégico</h3></div></div>
         <div className="guideline-form-grid">
           <label>Periodo<select value={formPeriodId} onChange={event => setFormPeriodId(event.target.value)} required>{periods.map(item => <option key={item.id} value={item.id}>{item.year}</option>)}</select></label>
-          <label>Unidad<select value={formUnitCode} onChange={event => { setFormUnitCode(event.target.value); setFormResponsibleId('') }} required>{unitOptions.map(item => <option key={item.code} value={item.code}>{item.name}</option>)}</select></label>
-          <label>Gerencia responsable<select value={formAreaId} onChange={event => { setFormAreaId(event.target.value); setFormResponsibleId('') }} required><option value="">Seleccionar gerencia</option>{uniqueAreas.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          <label>Unidad<select value={formUnitCode} onChange={event => { setFormUnitCode(event.target.value); setFormAreaId(''); setFormResponsibleId('') }} required>{unitOptions.map(item => <option key={item.code} value={item.code}>{item.name}</option>)}</select></label>
+          <label>Gerencia responsable<select value={formAreaId} onChange={event => { setFormAreaId(event.target.value); setFormResponsibleId('') }} required><option value="">Seleccionar gerencia</option>{formManagementOptions.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           <label>Código<input value={formCode} onChange={event => setFormCode(event.target.value)} placeholder="L5"/></label>
           <label className="wide">Lineamiento<textarea value={formText} onChange={event => setFormText(event.target.value)} placeholder="Desarrollar productos alineados..." required/></label>
           <label className="wide">Gerente responsable · Bonistas<select value={formResponsibleId} onChange={event => setFormResponsibleId(event.target.value)}><option value="">Sin responsable</option>{responsibleOptions.map(item => <option key={item.id} value={item.id}>{item.name} · {item.cargo || 'Sin cargo'} · {unitByCode.get(item.unit_code) || item.unit_code}</option>)}</select><small>La lista sale directamente del directorio de Bonistas y se filtra por la gerencia seleccionada.</small></label>
