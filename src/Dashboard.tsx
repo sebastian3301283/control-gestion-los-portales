@@ -317,12 +317,13 @@ function PlanningView({ access, units, initialYear, initialUnitCode }: {
     }
   }
 
-  function openMatrixFromGuidelines(managementId: string) {
+  function openMatrixFromGuidelines(managementId: string, guidelineId: string) {
     if (!selectedPeriod || !selectedPlanningUnit) return
     sessionStorage.setItem('cg:matrix-target-management', JSON.stringify({
       periodId: selectedPeriod.id,
       unitCode: selectedPlanningUnit.code,
       managementId,
+      guidelineId,
       createdAt: Date.now(),
     }))
     setStep('matrices')
