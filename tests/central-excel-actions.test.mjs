@@ -52,7 +52,7 @@ test('Central spreadsheet edits rows in-place instead of rendering a detached fo
   const source = await readFile(new URL('../src/CentralExcelWorkspace.tsx', import.meta.url), 'utf8')
   assert.match(source, /matrix-central-in-grid-draft/)
   assert.match(source, /matrix-central-sheet-cell/)
-  assert.match(source, /matrix-central-objective-editor-row/)
+  assert.doesNotMatch(source, /matrix-central-objective-editor-row/)
   assert.match(source, /data-matrix-row-id=\{row\.id\}/)
   assert.doesNotMatch(source, /rowFormOpen && !editingRowId && renderEditRows\('new-central-action'\)/)
 })
