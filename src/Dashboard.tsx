@@ -52,6 +52,7 @@ type PlanningPeriod = {
 
 type Section = 'inicio' | 'planificacion' | 'configuracion' | 'reportes'
 type PlanningStep = 'units' | 'modules' | 'guidelines' | 'matrices'
+type GuidelineContext = { managementId: string; guidelineId: string | null }
 
 type PlanningEntry = {
   year: number
@@ -317,7 +318,7 @@ function PlanningView({ access, units, initialYear, initialUnitCode }: {
   }
 
   function openMatrixFromGuidelines(managementId: string) {
-    if (!selectedPeriod || !selectedPlanningUnit || selectedPlanningUnit.code !== 'CENTRAL') return
+    if (!selectedPeriod || !selectedPlanningUnit) return
     sessionStorage.setItem('cg:matrix-target-management', JSON.stringify({
       periodId: selectedPeriod.id,
       unitCode: selectedPlanningUnit.code,
@@ -325,6 +326,39 @@ function PlanningView({ access, units, initialYear, initialUnitCode }: {
       createdAt: Date.now(),
     }))
     setStep('matrices')
+    setError('')
+    setNotice('')
+  }
+
+  async function openGuidelinesFromMatrix(target?: GuidelineContext) {
+    const period = selectedPeriod
+    const unit = selectedPlanningUnit
+    if (!period || !unit) return
+
+    let resolvedTarget = target
+    if (!resolvedTarget?.managementId && supabase) {
+      const areaName = document.querySelector<HTMLElement>('.matrix-v5-summary > div:first-child strong')?.textContent?.trim() || ''
+      if (areaName) {
+        const { data } = await supabase
+          .from('managements_global')
+          .select('id')
+          .eq('unit_code', unit.code)
+          .eq('name', areaName)
+          .maybeSingle()
+        if (data?.id) resolvedTarget = { managementId: String(data.id), guidelineId: target?.guidelineId || null }
+      }
+    }
+
+    if (resolvedTarget?.managementId) {
+      sessionStorage.setItem('cg:guideline-target', JSON.stringify({
+        periodId: period.id,
+        unitCode: unit.code,
+        managementId: resolvedTarget.managementId,
+        guidelineId: resolvedTarget.guidelineId,
+        createdAt: Date.now(),
+      }))
+    }
+    setStep('guidelines')
     setError('')
     setNotice('')
   }
@@ -341,9 +375,9 @@ function PlanningView({ access, units, initialYear, initialUnitCode }: {
 
     {step === 'modules' && selectedPeriod && selectedPlanningUnit && <section className="planning-panel"><div className="planning-title-row"><div><span>{selectedPlanningUnit.code} · Periodo {selectedPeriod.year}</span><h2>{selectedPlanningUnit.name}</h2><p>Elige qué quieres trabajar dentro de esta unidad.</p></div></div><div className="planning-module-choice-grid"><button className="planning-module-choice planning-module-choice--guidelines" onClick={() => { setStep('guidelines'); setError(''); setNotice('') }}><span className="planning-module-choice__icon"><BookOpenText size={25}/></span><span className="planning-module-choice__copy"><small>Planificación estratégica</small><strong>Lineamientos</strong><p>Consulta los lineamientos y el PPT de soporte de la unidad.</p></span><ArrowRight size={20}/></button>{selectedPlanningUnit.code !== 'CENTRAL' && <button className="planning-module-choice planning-module-choice--matrices" onClick={() => { setStep('matrices'); setError(''); setNotice('') }}><span className="planning-module-choice__icon"><ClipboardList size={25}/></span><span className="planning-module-choice__copy"><small>Plan de acción</small><strong>Matrices</strong><p>Entra por área y trabaja la matriz de gestión.</p></span><ArrowRight size={20}/></button>}</div></section>}
 
-    {step === 'guidelines' && selectedPeriod && selectedPlanningUnit && <section className="planning-panel planning-panel--wide"><PlanningGuidelines unit={{ code: selectedPlanningUnit.code, name: selectedPlanningUnit.name }} periodId={selectedPeriod.id} canManage={canManage} onOpenMatrixForArea={selectedPlanningUnit.code === 'CENTRAL' ? openMatrixFromGuidelines : undefined} /></section>}
+    {step === 'guidelines' && selectedPeriod && selectedPlanningUnit && <section className="planning-panel planning-panel--wide"><PlanningGuidelines unit={{ code: selectedPlanningUnit.code, name: selectedPlanningUnit.name }} periodId={selectedPeriod.id} canManage={canManage} onOpenMatrixForArea={openMatrixFromGuidelines} /></section>}
 
-    {step === 'matrices' && selectedPeriod && selectedPlanningUnit && <section className="planning-panel planning-panel--wide"><MatrixWorkspace periodId={selectedPeriod.id} year={selectedPeriod.year} unitCode={selectedPlanningUnit.code} unitName={selectedPlanningUnit.name} canManage={canManage} onError={setError} onNotice={setNotice} onViewGuidelines={(target) => { if (selectedPlanningUnit.code === 'CENTRAL' && target?.managementId) sessionStorage.setItem('cg:guideline-target', JSON.stringify({ periodId: selectedPeriod.id, unitCode: selectedPlanningUnit.code, managementId: target.managementId, guidelineId: target.guidelineId, createdAt: Date.now() })); setStep('guidelines'); setError(''); setNotice('') }} /></section>}
+    {step === 'matrices' && selectedPeriod && selectedPlanningUnit && <section className="planning-panel planning-panel--wide"><MatrixWorkspace periodId={selectedPeriod.id} year={selectedPeriod.year} unitCode={selectedPlanningUnit.code} unitName={selectedPlanningUnit.name} canManage={canManage} onError={setError} onNotice={setNotice} onViewGuidelines={target => { void openGuidelinesFromMatrix(target) }} /></section>}
   </div>
 }
 
