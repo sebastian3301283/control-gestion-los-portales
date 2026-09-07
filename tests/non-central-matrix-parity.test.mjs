@@ -22,9 +22,9 @@ test('V12 builds Matriz Resumen for any rendered matrix without extra Supabase q
   assert.match(source, /function refreshMatrixSummary/)
   assert.match(source, /function findHeaderIndex/)
   assert.match(source, /querySelector<HTMLTableElement>\('\.matrix-v5-sheet'\)/)
-  assert.match(source, /Acción/)
-  assert.match(source, /Responsable/)
-  assert.match(source, /Entregable/)
+  assert.match(source, /\['accion'\]/)
+  assert.match(source, /\['responsable'\]/)
+  assert.match(source, /\['entregable'\]/)
   assert.match(source, /matrix-v12-view-toggle/)
 
   const summaryStart = source.indexOf('function refreshMatrixSummary')
@@ -34,33 +34,40 @@ test('V12 builds Matriz Resumen for any rendered matrix without extra Supabase q
   assert.doesNotMatch(source.slice(summaryStart, historyStart), /supabase\./)
 })
 
-test('all units use only the common paged metadata history and never list snapshots in UnitExcelWorkspace', async () => {
-  const [v12Source, unitSource] = await Promise.all([read(v12Url), read(unitUrl)])
+test('all units are intercepted by the common paged metadata history before their legacy handlers can run', async () => {
+  const source = await read(v12Url)
 
-  assert.match(v12Source, /const HISTORY_PAGE_SIZE = 20/)
-  assert.match(v12Source, /select\('id,version_no,action,changed_email,created_at'\)/)
-  assert.match(v12Source, /\.range\(offset, offset \+ HISTORY_PAGE_SIZE\)/)
-  assert.match(v12Source, /Cargar más/)
-  assert.match(v12Source, /restore_matrix_version_by_context/)
-  assert.match(v12Source, /data-matrix-history-trigger/)
+  assert.match(source, /const HISTORY_PAGE_SIZE = 20/)
+  assert.match(source, /select\('id,version_no,action,changed_email,created_at'\)/)
+  assert.match(source, /\.range\(offset, offset \+ HISTORY_PAGE_SIZE\)/)
+  assert.match(source, /Cargar más/)
+  assert.match(source, /restore_matrix_version_by_context/)
+  assert.match(source, /setAttribute\('data-matrix-history-trigger', 'true'\)/)
+  assert.match(source, /button\.matches\('\[data-matrix-history-trigger\]'\)/)
+  assert.match(source, /event\.preventDefault\(\)/)
+  assert.match(source, /event\.stopPropagation\(\)/)
 
-  assert.doesNotMatch(unitSource, /select\('id,version_no,action,changed_email,created_at,snapshot'\)/)
-  assert.doesNotMatch(unitSource, /historyOpen &&/)
-  assert.match(unitSource, /data-matrix-history-trigger/)
+  const historyStart = source.indexOf('async function loadHistoryPage')
+  const restoreStart = source.indexOf('async function restoreVersion')
+  assert.notEqual(historyStart, -1)
+  assert.notEqual(restoreStart, -1)
+  assert.doesNotMatch(source.slice(historyStart, restoreStart), /snapshot/)
 })
 
-test('non-Central toolbar matches Central commandbar wording and new actions stay below persisted rows', async () => {
-  const source = await read(unitUrl)
-  assert.match(source, /matrix-central-page-head/)
-  assert.match(source, /matrix-central-commandbar/)
-  assert.match(source, /Añadir acción/)
-  assert.doesNotMatch(source, />Nueva fila</)
+test('non-Central matrices receive Central commandbar behavior and creation wording without changing their persistence model', async () => {
+  const [v12Source, unitSource] = await Promise.all([read(v12Url), read(unitUrl)])
+  assert.match(v12Source, /props\.unitCode !== 'CENTRAL'/)
+  assert.match(v12Source, /classList\.add\('matrix-central-commandbar', 'matrix-v12-unit-commandbar'\)/)
+  assert.match(v12Source, /classList\.add\('matrix-central-commandbar-primary'\)/)
+  assert.match(v12Source, /Añadir acción/)
+  assert.match(v12Source, /data-matrix-add-action/)
 
-  const persistedRows = source.indexOf('rows.map(row =>')
-  const newDraft = source.indexOf("renderSpreadsheetDraftRow('new-unit-action')")
+  const persistedRows = unitSource.indexOf('rows.map(row =>')
+  const newDraft = unitSource.indexOf("renderSpreadsheetDraftRow('new-unit-action')")
   assert.notEqual(persistedRows, -1)
   assert.notEqual(newDraft, -1)
   assert.ok(newDraft > persistedRows)
+  assert.match(unitSource, /sort_order: editingRowId \? previousRow\?\.sort_order \|\| 0 : rows\.length/)
 })
 
 test('matrix parity work does not replace the dedicated Central and non-Central data workspaces', async () => {
