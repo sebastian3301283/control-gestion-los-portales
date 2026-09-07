@@ -10,6 +10,7 @@ const support = await readFile(new URL('../src/GuidelinePptPanel.tsx', import.me
 const dashboard = await readFile(new URL('../src/Dashboard.tsx', import.meta.url), 'utf8')
 const unitExcel = await readFile(new URL('../src/UnitExcelWorkspace.tsx', import.meta.url), 'utf8')
 const v11 = await readFile(new URL('../src/MatrixWorkspaceV11.tsx', import.meta.url), 'utf8')
+const planningCss = await readFile(new URL('../src/planning-guidelines.css', import.meta.url), 'utf8')
 
 test('HU/DEP/VS/HOT conservan la tabla de Lineamientos anterior y su color por unidad', () => {
   assert.match(catalog, /<th>N°<\/th><th>Lineamientos Estratégicos<\/th><th>Gerencia Responsable<\/th><th>Gerente Responsable<\/th>\{canManage && <th>Acciones<\/th>\}/)
@@ -19,12 +20,24 @@ test('HU/DEP/VS/HOT conservan la tabla de Lineamientos anterior y su color por u
   assert.match(catalog, /HOT: '#262a2f'/)
 })
 
+test('HU/DEP/VS/HOT muestran Nuevo lineamiento en la vista de planificación', () => {
+  assert.match(catalog, /Nuevo lineamiento/)
+  assert.doesNotMatch(planningCss, /\.planning-guidelines-host \.guideline-add\{display:none!important\}/)
+})
+
+test('cada lineamiento no Central tiene una flecha propia que abre su matriz usando gerencia y guideline', () => {
+  assert.match(catalog, /onOpenMatrixForGuideline\?: \(managementId: string, guidelineId: string\) => void/)
+  assert.match(catalog, /onOpenMatrixForGuideline\?\.\(item\.management_id, item\.id\)/)
+  assert.match(catalog, /title="Abrir matriz de este lineamiento"/)
+  assert.match(planning, /onOpenMatrixForGuideline=\{openMatrixForGuideline\}/)
+  assert.match(planning, /guidelineId/)
+  assert.match(planning, /sessionStorage\.setItem\('cg:matrix-target-management'/)
+})
+
 test('Lineamientos conserva los controles de Central sin añadir un selector de área para HU/DEP/VS/HOT', () => {
   assert.match(planning, /Pantalla completa/)
   assert.match(planning, /Importar lineamientos/)
-  assert.match(catalog, /Nuevo lineamiento/)
   assert.doesNotMatch(planning, /guideline-ppt-area-select/)
-  assert.match(planning, /Ir a matriz de \{selectedArea\.name\}/)
 })
 
 test('Documentos de soporte de HU/DEP/VS/HOT se muestran juntos sin selector ni filtro por gerencia', () => {
