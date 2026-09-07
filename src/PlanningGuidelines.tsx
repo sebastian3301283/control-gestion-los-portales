@@ -188,11 +188,23 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
     onOpenMatrixForArea?.(selectedArea.id)
   }
 
+  function openMatrixForGuideline(managementId: string, guidelineId: string) {
+    sessionStorage.setItem('cg:matrix-target-management', JSON.stringify({
+      periodId,
+      unitCode: unit.code,
+      managementId,
+      guidelineId,
+      createdAt: Date.now(),
+    }))
+    setFullscreen(false)
+    onOpenMatrixForArea?.(managementId)
+  }
+
   return <div ref={rootRef} className={`planning-guidelines-host ${fullscreen ? 'planning-guidelines-host--fullscreen' : ''} ${isCentral ? 'planning-guidelines-host--central' : ''}`} onClickCapture={handleClickCapture}>
     <div className="planning-guidelines-heading">
       <div><span>Lineamientos estratégicos</span><h3>Lineamientos de {unit.name}</h3><p>{isCentral ? 'Selecciona un área de Central para revisar sus lineamientos y documentos de soporte.' : 'Los lineamientos y documentos de soporte quedan reunidos dentro de la planificación de esta unidad.'}</p></div>
       <div className="planning-guidelines-heading-actions">
-        {selectedArea && <button className="planning-guideline-matrix-button" type="button" onClick={openMatrixForSelectedArea}><ClipboardList size={17}/> Ir a matriz de {selectedArea.name}</button>}
+        {isCentral && selectedArea && <button className="planning-guideline-matrix-button" type="button" onClick={openMatrixForSelectedArea}><ClipboardList size={17}/> Ir a matriz de {selectedArea.name}</button>}
         <button className="planning-guideline-fullscreen-button" type="button" onClick={() => setFullscreen(value => !value)}><span aria-hidden="true">{fullscreen ? '↙' : '↗'}</span>{fullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}</button>
         {canManage && <button className="planning-guideline-import-button" type="button" onClick={() => { setImportNotice(''); setImportOpen(true) }}><FileSpreadsheet size={17}/> Importar lineamientos</button>}
       </div>
@@ -201,7 +213,7 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
     {canManage && <div className="planning-guideline-admin-note"><strong>Administración de lineamientos</strong><span>Puedes importar lineamientos desde Excel, PDF, PowerPoint o imagen; siempre se revisan antes de guardar.</span></div>}
     {importNotice && <div className="planning-guideline-import-notice">{importNotice}</div>}
 
-    {isCentral ? <CentralGuidelineWorkspace key={catalogRevision} periodId={periodId} canManage={canManage} initialAreaId={guidelineTarget?.managementId} focusGuidelineId={guidelineTarget?.guidelineId} onAreaChange={setSelectedArea} /> : <GuidelineCatalogV2 key={catalogRevision} units={[unit]} canManage={canManage} />}
+    {isCentral ? <CentralGuidelineWorkspace key={catalogRevision} periodId={periodId} canManage={canManage} initialAreaId={guidelineTarget?.managementId} focusGuidelineId={guidelineTarget?.guidelineId} onAreaChange={setSelectedArea} /> : <GuidelineCatalogV2 key={catalogRevision} units={[unit]} canManage={canManage} onOpenMatrixForGuideline={openMatrixForGuideline} />}
 
     <GuidelinePptPanel unit={unit} periodId={periodId} canManage={canManage} managementId={isCentral ? selectedArea?.id : null} managementName={isCentral ? selectedArea?.name : null} />
 
