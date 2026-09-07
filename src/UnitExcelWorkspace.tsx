@@ -11,6 +11,7 @@ type UnitCode = 'HU' | 'DEP' | 'VS' | 'HOT'
 type Area = { id: string; name: string; unit_code: string; directory_group: string }
 type Process = { id: string; management_id: string; unit_code: string }
 type Matrix = { id: string; name: string; process_id: string; status: string; guideline_id: string | null }
+type MatrixTarget = { periodId: string; unitCode: string; managementId: string; guidelineId?: string | null; createdAt: number }
 type Manager = { id: string; name: string; cargo: string | null; unit_code: string; directory_group: string; active?: boolean }
 type MatrixRow = {
   id: string
@@ -45,6 +46,7 @@ type Props = {
   onError: (message: string) => void
   onNotice: (message: string) => void
   onActiveMatrixChange?: (matrixId: string) => void
+  onGuidelineContextChange?: (context: { managementId: string; guidelineId: string | null }) => void
 }
 
 const XLSX_MODULE_URL = 'https://unpkg.com/xlsx@0.18.5/xlsx.mjs'
@@ -89,7 +91,7 @@ function splitResponsibleNames(value: unknown) {
   return String(value ?? '').split(/[;,\n|]+/).map(item => item.trim()).filter(Boolean)
 }
 
-export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName, canManage, onError, onNotice, onActiveMatrixChange }: Props) {
+export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName, canManage, onError, onNotice, onActiveMatrixChange, onGuidelineContextChange }: Props) {
   const [page, setPage] = useState<'areas' | 'sheet'>('areas')
   const [areas, setAreas] = useState<Area[]>([])
   const [processes, setProcesses] = useState<Process[]>([])
@@ -148,6 +150,12 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
     return () => onActiveMatrixChange?.('')
   }, [onActiveMatrixChange, selectedMatrixId])
   useEffect(() => {
+    if (!selectedMatrix) return
+    const process = processes.find(item => item.id === selectedMatrix.process_id)
+    const managementId = process?.management_id || selectedAreaId
+    if (managementId) onGuidelineContextChange?.({ managementId, guidelineId: selectedMatrix.guideline_id })
+  }, [selectedMatrix, selectedAreaId, processes, onGuidelineContextChange])
+  useEffect(() => {
     const handleRealtimeDataChange = (event: Event) => {
       const detail = (event as CustomEvent<{ matrixId?: string }>).detail
       const changedMatrixId = String(detail?.matrixId || '')
@@ -166,6 +174,10 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
     return () => { document.body.style.overflow = previousOverflow; window.removeEventListener('keydown', onKeyDown) }
   }, [expanded])
 
+  function matrixForGuideline(guidelineId: string) {
+    return matrices.find(item => item.guideline_id === guidelineId) || null
+  }
+
   async function loadWorkspace() {
     if (!supabase) return
     setLoading(true); onError('')
@@ -180,6 +192,7 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
       if (catalogResult.error || areaResult.error || processResult.error || matrixResult.error || managerResult.error) throw new Error('LOAD')
       const allAreas = (areaResult.data || []) as Area[]
       const processData = (processResult.data || []) as Process[]
+      const matrixData = (matrixResult.data || []) as Matrix[]
       const allowedByCatalog = new Set((catalogResult.data || []).map(item => String(item.management_id)))
       const allowedByProcess = new Set(processData.map(item => item.management_id))
       const uniqueAreas = new Map<string, Area>()
@@ -188,10 +201,38 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
         const key = normalizeText(area.name)
         if (!uniqueAreas.has(key)) uniqueAreas.set(key, area)
       })
-      setAreas([...uniqueAreas.values()].sort((a, b) => a.name.localeCompare(b.name, 'es')))
+      const areaData = [...uniqueAreas.values()].sort((a, b) => a.name.localeCompare(b.name, 'es'))
+      setAreas(areaData)
       setProcesses(processData)
-      setMatrices((matrixResult.data || []) as Matrix[])
+      setMatrices(matrixData)
       setManagers((managerResult.data || []) as Manager[])
+
+      let target: MatrixTarget | null = null
+      try {
+        const raw = sessionStorage.getItem('cg:matrix-target-management')
+        if (raw) target = JSON.parse(raw) as MatrixTarget
+      } catch {
+        sessionStorage.removeItem('cg:matrix-target-management')
+      }
+      if (target && (target.periodId !== periodId || target.unitCode !== unitCode || Date.now() - target.createdAt > 30000)) {
+        sessionStorage.removeItem('cg:matrix-target-management')
+        target = null
+      }
+      if (target?.guidelineId) {
+        const matrix = matrixData.find(item => item.guideline_id === target!.guidelineId) || null
+        const process = matrix ? processData.find(item => item.id === matrix.process_id) || null : null
+        const area = process ? allAreas.find(item => item.id === process.management_id) || null : null
+        sessionStorage.removeItem('cg:matrix-target-management')
+        if (!matrix || !process || !area) {
+          onError('No pudimos encontrar la matriz exclusiva de este lineamiento.')
+        } else {
+          setSelectedAreaId(area.id)
+          setSelectedMatrixId(matrix.id)
+          setPage('sheet')
+          onError('')
+          onNotice('')
+        }
+      }
     } catch {
       onError(`No pudimos cargar las áreas y matrices de ${unitName}.`)
     } finally { setLoading(false) }
@@ -234,12 +275,18 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
     setRowsLoading(false)
   }
 
-  function matrixForArea(areaId: string) {
+  function matricesForArea(areaId: string) {
     const processIds = new Set(processes.filter(item => item.management_id === areaId).map(item => item.id))
-    return matrices.find(item => processIds.has(item.process_id)) || null
+    return matrices.filter(item => processIds.has(item.process_id))
+  }
+  function matrixForArea(areaId: string) {
+    const matches = matricesForArea(areaId)
+    return matches.length === 1 ? matches[0] : null
   }
   function openArea(area: Area) {
-    const matrix = matrixForArea(area.id)
+    const matches = matricesForArea(area.id)
+    if (matches.length > 1) { onError(`Esta gerencia tiene varias matrices. Abre la matriz desde el lineamiento correspondiente.`); return }
+    const matrix = matches[0] || null
     if (!matrix) { onError(`La matriz de “${area.name}” todavía no está preparada o no tienes acceso.`); return }
     setSelectedAreaId(area.id); setSelectedMatrixId(matrix.id); cancelRowEdit(); setPage('sheet'); onError(''); onNotice('')
   }
@@ -484,8 +531,8 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
 
   return <div className={`matrix-v5 matrix-v10 matrix-v5--${unitAccent[unitCode]} ${page === 'sheet' ? 'matrix-v5--sheet' : ''} ${expanded ? 'matrix-v5--expanded' : ''}`}>
     {page === 'areas' && <>
-      <section className="matrix-v5-intro"><div><span>Periodo {year} · {unitCode}</span><h3>Matrices de {unitName}</h3><p>La matriz se abre desde el lineamiento de la gerencia correspondiente. En Responsable podrás elegir uno o varios gerentes activos de la plataforma.</p></div></section>
-      {loading ? <div className="matrix-v5-loading"><LoaderCircle className="spin" size={22}/> Cargando matrices...</div> : <section className="matrix-v5-stage"><div className="matrix-v5-stage-head"><small>Gerencias habilitadas</small><h4>Abriendo matriz</h4></div>{areas.length === 0 ? <div className="matrix-v5-empty"><Building2 size={24}/><strong>No tienes gerencias disponibles</strong></div> : <div className="matrix-v5-area-grid">{areas.map(area => <button className="matrix-v5-area-card" key={area.id} onClick={() => openArea(area)}><span><Building2 size={20}/></span><div><strong>{area.name}</strong><small>{matrixForArea(area.id) ? 'Matriz lista para abrir' : 'Sin matriz disponible'}</small></div><ArrowRight size={17}/></button>)}</div>}</section>}
+      <section className="matrix-v5-intro"><div><span>Periodo {year} · {unitCode}</span><h3>Matrices de {unitName}</h3><p>La matriz se abre desde el lineamiento correspondiente. Cada lineamiento tiene una matriz exclusiva.</p></div></section>
+      {loading ? <div className="matrix-v5-loading"><LoaderCircle className="spin" size={22}/> Cargando matrices...</div> : <section className="matrix-v5-stage"><div className="matrix-v5-stage-head"><small>Gerencias habilitadas</small><h4>Abriendo matriz</h4></div>{areas.length === 0 ? <div className="matrix-v5-empty"><Building2 size={24}/><strong>No tienes gerencias disponibles</strong></div> : <div className="matrix-v5-area-grid">{areas.map(area => { const matches = matricesForArea(area.id); return <button className="matrix-v5-area-card" key={area.id} onClick={() => openArea(area)}><span><Building2 size={20}/></span><div><strong>{area.name}</strong><small>{matches.length > 1 ? 'Abre desde un lineamiento' : matrixForArea(area.id) ? 'Matriz lista para abrir' : 'Sin matriz disponible'}</small></div><ArrowRight size={17}/></button> })}</div>}</section>}
     </>}
 
     {page === 'sheet' && selectedMatrix && <section className="matrix-v5-plan-shell">
@@ -508,7 +555,7 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
       </div>
 
       <div className="matrix-v5-summary"><div><span>Área</span><strong>{selectedArea?.name || '—'}</strong></div><div><span>Unidad</span><strong>{unitName}</strong></div><div><span>Responsable principal</span><strong>{firstResponsible}</strong></div></div>
-      <div className="matrix-unit-excel-note">Los responsables disponibles son todos los gerentes activos de la plataforma; no se restringen por el área seleccionada.</div>
+      <div className="matrix-unit-excel-note">Esta matriz pertenece únicamente al lineamiento desde el que ingresaste.</div>
 
       <div className="matrix-v5-sheet-card"><div className="matrix-v5-sheet-scroll" style={zoomStyle}><table className="matrix-v5-sheet matrix-v10-central-excel matrix-central-spreadsheet-grid matrix-unit-excel"><thead><tr><th>Acción</th><th>Responsable</th><th>Prioridad</th><th>Hitos / Fechas</th><th>Entregable</th><th>Riesgos de no ejecutar</th><th>Restricciones</th><th>Soporte</th><th>Comité</th></tr></thead><tbody>
         {rowsLoading ? <tr><td colSpan={tableColSpan} className="matrix-v5-table-empty"><LoaderCircle className="spin" size={20}/> Cargando matriz...</td></tr> : rows.length === 0 && !rowFormOpen ? <tr><td colSpan={tableColSpan} className="matrix-v5-table-empty">La matriz está lista. Presiona “Añadir acción” para comenzar.</td></tr> : rows.map(row => {
