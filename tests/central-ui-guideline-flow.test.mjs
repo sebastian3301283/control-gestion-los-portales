@@ -29,11 +29,13 @@ test('Central simplifica la toolbar y ubica las acciones de edición fuera del r
   for (const label of ['Añadir subobjetivo', 'Guardar', 'Cancelar', 'Eliminar acción']) assert.match(central, new RegExp(label))
 })
 
-test('Central usa Lineamiento desde planning_guidelines y deja de crear objetivos desde la matriz', () => {
-  assert.match(central, /<strong>LINEAMIENTO<\/strong>/)
+test('Central usa Lineamiento desde planning_guidelines y mantiene la asociación sin selector dentro de la matriz', () => {
+  assert.doesNotMatch(central, /<strong>LINEAMIENTO<\/strong>/)
+  assert.doesNotMatch(central, /renderObjectiveGroupEditor/)
   assert.match(central, /areaGuidelines\.map/)
   assert.match(central, /planning_guidelines/)
   assert.match(central, /guideline_id/)
+  assert.match(central, /guideline_id: selectedRowGuidelineId \|\| rowDraft\.guideline_id \|\| null/)
   assert.doesNotMatch(central, /Crear nuevo objetivo/)
   assert.doesNotMatch(central, /Usar existente/)
   assert.ok(guidelineLinkMigrationName, 'debe existir una migración que relacione matrix_rows con planning_guidelines')
