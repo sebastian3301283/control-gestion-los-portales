@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import MatrixRealtimeLayer from './MatrixRealtimeLayer'
-import MatrixWorkspaceV11 from './MatrixWorkspaceV11'
 import MatrixWorkspaceV12 from './MatrixWorkspaceV12'
 
 type UnitCode = 'HU' | 'DEP' | 'VS' | 'HOT' | 'CENTRAL'
@@ -20,8 +19,7 @@ export default function MatrixWorkspaceV13(props: Props) {
 
   useEffect(() => setActiveMatrixId(''), [props.periodId, props.unitCode])
 
-  return <MatrixRealtimeLayer matrixId={activeMatrixId}>{props.unitCode === 'CENTRAL'
-    ? <MatrixWorkspaceV12 {...props} onActiveMatrixChange={setActiveMatrixId} />
-    : <MatrixWorkspaceV11 {...props} onActiveMatrixChange={setActiveMatrixId} />}
+  return <MatrixRealtimeLayer matrixId={activeMatrixId}>
+    <MatrixWorkspaceV12 {...props} onActiveMatrixChange={setActiveMatrixId} />
   </MatrixRealtimeLayer>
 }
