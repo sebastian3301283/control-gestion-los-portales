@@ -1,17 +1,17 @@
 import { Eye, FileImage, FileText, LoaderCircle, Trash2, Upload } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from './lib/supabase'
 import './guideline-ppt-panel.css'
 
 type Unit = { code: string; name: string }
 type StoredDocument = {
   name: string
+  path: string
   created_at?: string | null
   updated_at?: string | null
   metadata?: { size?: number } | null
 }
-type AreaOption = { id: string; name: string }
-type GuidelineAreaLink = { management_id: string }
+type StorageEntry = Omit<StoredDocument, 'path'>
 type Props = {
   unit: Unit
   periodId: string
@@ -37,7 +37,6 @@ function sizeLabel(bytes?: number) {
 
 function isPdf(name: string) { return /\.pdf$/i.test(name) }
 function isImage(name: string) { return /\.(png|jpe?g|webp)$/i.test(name) }
-function isOffice(name: string) { return /\.pptx?$/i.test(name) }
 function supportedDocument(name: string) { return /\.(pptx?|pdf|png|jpe?g|webp)$/i.test(name) }
 
 function fileTypeLabel(name: string) {
@@ -57,12 +56,15 @@ function contentType(file: File) {
   return file.type || 'application/octet-stream'
 }
 
+function newestFirst(a: StoredDocument, b: StoredDocument) {
+  const aTime = Date.parse(a.created_at || a.updated_at || '') || 0
+  const bTime = Date.parse(b.created_at || b.updated_at || '') || 0
+  return bTime - aTime || a.name.localeCompare(b.name, 'es')
+}
+
 export default function GuidelinePptPanel({ unit, periodId, canManage, managementId, managementName }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [files, setFiles] = useState<StoredDocument[]>([])
-  const [areas, setAreas] = useState<AreaOption[]>([])
-  const [localAreaId, setLocalAreaId] = useState('')
-  const [loadingAreas, setLoadingAreas] = useState(false)
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
@@ -70,111 +72,73 @@ export default function GuidelinePptPanel({ unit, periodId, canManage, managemen
   const [viewerName, setViewerName] = useState('')
   const [viewerKind, setViewerKind] = useState<ViewerKind>('office')
 
-  const centralUsesParentArea = unit.code === 'CENTRAL'
-  const effectiveManagementId = centralUsesParentArea ? (managementId || '') : (managementId || localAreaId || '')
-  const effectiveArea = useMemo(() => {
-    if (managementId) return { id: managementId, name: managementName || 'Área seleccionada' }
-    if (centralUsesParentArea) return null
-    return areas.find(area => area.id === localAreaId) || null
-  }, [managementId, managementName, areas, localAreaId, centralUsesParentArea])
-  const folder = effectiveManagementId ? `${unit.code}/${periodId}/${effectiveManagementId}` : ''
+  const isCentral = unit.code === 'CENTRAL'
+  const baseFolder = `${unit.code}/${periodId}`
+  const centralFolder = managementId ? `${baseFolder}/${managementId}` : ''
+  const canUseDocuments = !isCentral || Boolean(managementId)
 
-  useEffect(() => {
-    if (!centralUsesParentArea && !managementId) void loadAreas()
-  }, [unit.code, periodId, managementId, canManage, centralUsesParentArea])
+  useEffect(() => { void loadFiles() }, [unit.code, periodId, managementId, isCentral])
 
-  useEffect(() => {
-    if (centralUsesParentArea || managementId) return
-    if (!localAreaId && areas.length) setLocalAreaId(areas[0].id)
-    if (localAreaId && !areas.some(area => area.id === localAreaId)) setLocalAreaId(areas[0]?.id || '')
-  }, [areas, localAreaId, managementId, centralUsesParentArea])
-
-  useEffect(() => { void loadFiles() }, [unit.code, periodId, effectiveManagementId])
-
-  async function loadAreas() {
-    if (!supabase) return
-    setLoadingAreas(true)
-    setError('')
-
-    const guidelineResult = await supabase
-      .from('planning_guidelines')
-      .select('management_id')
-      .eq('period_id', periodId)
-      .eq('unit_code', unit.code)
-      .order('sort_order')
-
-    if (guidelineResult.error) {
-      setLoadingAreas(false)
-      setAreas([])
-      setError('No pudimos cargar las gerencias responsables de los lineamientos.')
-      return
-    }
-
-    const usedManagementIds = [...new Set(((guidelineResult.data || []) as GuidelineAreaLink[]).map(item => String(item.management_id)).filter(Boolean))]
-    if (!usedManagementIds.length) {
-      setAreas([])
-      setLoadingAreas(false)
-      return
-    }
-
-    const { data, error: areaError } = await supabase
-      .from('managements_global')
-      .select('id,name')
-      .eq('unit_code', unit.code)
-      .eq('active', true)
-      .in('id', usedManagementIds)
-      .order('name')
-
-    if (areaError) {
-      setLoadingAreas(false)
-      setAreas([])
-      setError('No pudimos cargar las gerencias responsables de los lineamientos.')
-      return
-    }
-
-    const unitAreas = (data || []) as AreaOption[]
-    if (canManage) {
-      setAreas(unitAreas)
-      setLoadingAreas(false)
-      return
-    }
-
-    const permissionResults = await Promise.all(unitAreas.map(async area => {
-      const { data: allowed, error: permissionError } = await supabase.rpc('can_access_management', {
-        management_id_input: area.id,
-        unit_code_input: unit.code,
-      })
-      return !permissionError && Boolean(allowed) ? area : null
-    }))
-
-    setAreas(permissionResults.filter((area): area is AreaOption => Boolean(area)))
-    setLoadingAreas(false)
+  async function listFolder(folder: string) {
+    if (!supabase) return { entries: [] as StorageEntry[], error: true }
+    const { data, error: listError } = await supabase.storage.from('planning-ppts').list(folder, {
+      limit: 100,
+      sortBy: { column: 'created_at', order: 'desc' },
+    })
+    return { entries: (data || []) as StorageEntry[], error: Boolean(listError) }
   }
 
   async function loadFiles() {
     if (!supabase) return
-    if (!effectiveManagementId) {
+    if (isCentral && !managementId) {
       setFiles([])
       setLoading(false)
       setError('')
       return
     }
+
     setLoading(true)
     setError('')
-    const { data, error: listError } = await supabase.storage.from('planning-ppts').list(folder, {
-      limit: 100,
-      sortBy: { column: 'created_at', order: 'desc' },
-    })
-    setLoading(false)
-    if (listError) {
-      setError('No pudimos cargar los documentos guardados para esta área.')
+
+    if (isCentral) {
+      const result = await listFolder(centralFolder)
+      setLoading(false)
+      if (result.error) {
+        setFiles([])
+        setError('No pudimos cargar los documentos guardados para esta área.')
+        return
+      }
+      setFiles(result.entries.filter(item => supportedDocument(item.name)).map(item => ({ ...item, path: `${centralFolder}/${item.name}` })).sort(newestFirst))
       return
     }
-    setFiles(((data || []) as StoredDocument[]).filter(item => supportedDocument(item.name)))
+
+    const rootResult = await listFolder(baseFolder)
+    if (rootResult.error) {
+      setLoading(false)
+      setFiles([])
+      setError('No pudimos cargar los documentos de soporte de esta unidad.')
+      return
+    }
+
+    const directFiles = rootResult.entries
+      .filter(item => supportedDocument(item.name))
+      .map(item => ({ ...item, path: `${baseFolder}/${item.name}` }))
+    const folderEntries = rootResult.entries.filter(item => item.name && !supportedDocument(item.name))
+    const nestedResults = await Promise.all(folderEntries.map(async folderEntry => {
+      const nestedFolder = `${baseFolder}/${folderEntry.name}`
+      const result = await listFolder(nestedFolder)
+      if (result.error) return [] as StoredDocument[]
+      return result.entries
+        .filter(item => supportedDocument(item.name))
+        .map(item => ({ ...item, path: `${nestedFolder}/${item.name}` }))
+    }))
+
+    setFiles([...directFiles, ...nestedResults.flat()].sort(newestFirst))
+    setLoading(false)
   }
 
   async function upload(file: File) {
-    if (!supabase || !canManage || !effectiveManagementId) return
+    if (!supabase || !canManage || !canUseDocuments) return
     if (!supportedDocument(file.name)) {
       setError('Solo se permiten PowerPoint, PDF o imágenes PNG, JPG, JPEG y WEBP.')
       return
@@ -188,7 +152,8 @@ export default function GuidelinePptPanel({ unit, periodId, canManage, managemen
     setError('')
     const fallback = isImage(file.name) ? 'imagen.png' : isPdf(file.name) ? 'documento.pdf' : 'presentacion.pptx'
     const name = `${Date.now()}-${safeName(file.name) || fallback}`
-    const { error: uploadError } = await supabase.storage.from('planning-ppts').upload(`${folder}/${name}`, file, {
+    const targetFolder = isCentral ? centralFolder : baseFolder
+    const { error: uploadError } = await supabase.storage.from('planning-ppts').upload(`${targetFolder}/${name}`, file, {
       cacheControl: '3600',
       upsert: false,
       contentType: contentType(file),
@@ -202,9 +167,9 @@ export default function GuidelinePptPanel({ unit, periodId, canManage, managemen
   }
 
   async function view(file: StoredDocument) {
-    if (!supabase || !effectiveManagementId) return
+    if (!supabase) return
     setError('')
-    const { data, error: signedError } = await supabase.storage.from('planning-ppts').createSignedUrl(`${folder}/${file.name}`, 60 * 30)
+    const { data, error: signedError } = await supabase.storage.from('planning-ppts').createSignedUrl(file.path, 60 * 30)
     if (signedError || !data?.signedUrl) {
       setError('No pudimos abrir el documento.')
       return
@@ -215,10 +180,10 @@ export default function GuidelinePptPanel({ unit, periodId, canManage, managemen
   }
 
   async function remove(file: StoredDocument) {
-    if (!supabase || !canManage || !effectiveManagementId) return
+    if (!supabase || !canManage) return
     const accepted = window.confirm(`¿Eliminar el documento “${displayName(file.name)}”?`)
     if (!accepted) return
-    const { error: removeError } = await supabase.storage.from('planning-ppts').remove([`${folder}/${file.name}`])
+    const { error: removeError } = await supabase.storage.from('planning-ppts').remove([file.path])
     if (removeError) {
       setError('No pudimos eliminar el documento.')
       return
@@ -228,10 +193,13 @@ export default function GuidelinePptPanel({ unit, periodId, canManage, managemen
 
   return <section className="guideline-ppt-panel">
     <div className="guideline-ppt-head">
-      <div><span>Documentos de soporte{effectiveArea ? ` · ${effectiveArea.name}` : ''}</span><h4>PowerPoint, PDF e imágenes de la planificación</h4><p>{effectiveArea ? `Los archivos de ${effectiveArea.name} solo se muestran a usuarios con acceso a esta área.` : centralUsesParentArea ? 'Los documentos corresponden al área seleccionada arriba.' : 'Selecciona un área para ver sus documentos de soporte.'}</p></div>
+      <div>
+        <span>Documentos de soporte{isCentral && managementName ? ` · ${managementName}` : ''}</span>
+        <h4>PowerPoint, PDF e imágenes de la planificación</h4>
+        <p>{isCentral ? (managementId ? `Los archivos de ${managementName || 'esta área'} se muestran dentro de la selección actual.` : 'Los documentos corresponden al área seleccionada arriba.') : 'Todos los documentos de soporte del periodo se muestran juntos para esta unidad.'}</p>
+      </div>
       <div className="guideline-ppt-head-actions">
-        {!centralUsesParentArea && !managementId && <label className="guideline-ppt-area-select"><span>Área</span><select value={localAreaId} onChange={event => setLocalAreaId(event.target.value)} disabled={loadingAreas || areas.length === 0}><option value="">{loadingAreas ? 'Cargando áreas...' : areas.length ? 'Selecciona un área' : 'Sin áreas disponibles'}</option>{areas.map(area => <option key={area.id} value={area.id}>{area.name}</option>)}</select></label>}
-        {canManage && effectiveManagementId && <>
+        {canManage && canUseDocuments && <>
           <input ref={inputRef} type="file" accept=".ppt,.pptx,.pdf,.png,.jpg,.jpeg,.webp,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,image/png,image/jpeg,image/webp" hidden onChange={event => { const file = event.target.files?.[0]; if (file) void upload(file); event.currentTarget.value = '' }}/>
           <button type="button" className="guideline-ppt-upload" onClick={() => inputRef.current?.click()} disabled={uploading}>{uploading ? <LoaderCircle className="spin" size={16}/> : <Upload size={16}/>} Guardar soporte</button>
         </>}
@@ -241,7 +209,7 @@ export default function GuidelinePptPanel({ unit, periodId, canManage, managemen
     {error && <div className="guideline-ppt-error">{error}</div>}
 
     <div className="guideline-ppt-list">
-      {!effectiveManagementId ? <div className="guideline-ppt-empty"><FileText size={19}/> {centralUsesParentArea ? 'Selecciona un área arriba para ver sus documentos.' : loadingAreas ? 'Cargando áreas disponibles...' : 'Selecciona un área para ver sus documentos.'}</div> : loading ? <div className="guideline-ppt-empty"><LoaderCircle className="spin" size={17}/> Cargando documentos...</div> : files.length === 0 ? <div className="guideline-ppt-empty"><FileText size={19}/> Aún no hay documentos de soporte guardados para esta área.</div> : files.map(file => <article key={file.name} className="guideline-ppt-file">
+      {isCentral && !managementId ? <div className="guideline-ppt-empty"><FileText size={19}/> Selecciona un área arriba para ver sus documentos.</div> : loading ? <div className="guideline-ppt-empty"><LoaderCircle className="spin" size={17}/> Cargando documentos...</div> : files.length === 0 ? <div className="guideline-ppt-empty"><FileText size={19}/> Aún no hay documentos de soporte guardados.</div> : files.map(file => <article key={file.path} className="guideline-ppt-file">
         <span className="guideline-ppt-file-icon">{isImage(file.name) ? <FileImage size={21}/> : <FileText size={21}/>}</span>
         <div className="guideline-ppt-file-copy"><strong>{displayName(file.name)}</strong><small>{fileTypeLabel(file.name)}{file.metadata?.size ? ` · ${sizeLabel(file.metadata.size)}` : ''}{file.created_at ? ` · ${new Date(file.created_at).toLocaleString('es-PE')}` : ''}</small></div>
         <button type="button" className="guideline-ppt-view" onClick={() => void view(file)}><Eye size={15}/> Ver</button>
