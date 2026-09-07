@@ -36,6 +36,24 @@ test('non-Central units use the Excel workspace while Central stays on its exist
   assert.doesNotMatch(source, /MatrixWorkspaceV10/)
 })
 
+test('unit Excel workspace opens the matrix that belongs to the exact guideline id', async () => {
+  const source = await readFile(new URL('../src/UnitExcelWorkspace.tsx', import.meta.url), 'utf8')
+  assert.match(source, /guideline_id: string \| null/)
+  assert.match(source, /guidelineId\?: string \| null/)
+  assert.match(source, /function matrixForGuideline\(guidelineId: string\)/)
+  assert.match(source, /matrices\.find\(item => item\.guideline_id === guidelineId\)/)
+  assert.match(source, /target\.guidelineId/)
+  assert.doesNotMatch(source, /return matrices\.find\(item => processIds\.has\(item\.process_id\)\) \|\| null/)
+})
+
+test('unit Excel workspace returns guideline context through the shared V11 shortcut', async () => {
+  const unitSource = await readFile(new URL('../src/UnitExcelWorkspace.tsx', import.meta.url), 'utf8')
+  const v11 = await readFile(new URL('../src/MatrixWorkspaceV11.tsx', import.meta.url), 'utf8')
+  assert.match(unitSource, /onGuidelineContextChange/)
+  assert.match(unitSource, /guidelineId: selectedMatrix\.guideline_id/)
+  assert.match(v11, /onGuidelineContextChange=\{setGuidelineContext\}/)
+})
+
 test('unit Excel workspace adopts Central commandbar and visible columns while preserving direct editing and multi-responsible persistence', async () => {
   const source = await readFile(new URL('../src/UnitExcelWorkspace.tsx', import.meta.url), 'utf8')
   const css = await readFile(new URL('../src/unit-excel-workspace.css', import.meta.url), 'utf8')
