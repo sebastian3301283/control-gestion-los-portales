@@ -49,11 +49,14 @@ export default function CentralGuidelineWorkspace({ periodId, canManage, initial
   [guidelines, selectedAreaId])
 
   useEffect(() => { void load() }, [periodId, canManage])
-  useEffect(() => { if (initialAreaId) setSelectedAreaId(initialAreaId) }, [initialAreaId, periodId])
+  useEffect(() => {
+    if (initialAreaId) setSelectedAreaId(initialAreaId)
+    else setSelectedAreaId('')
+  }, [initialAreaId, periodId])
 
   useEffect(() => {
-    if (!selectedAreaId && areas.length) setSelectedAreaId(areas[0].id)
-    if (selectedAreaId && !areas.some(item => item.id === selectedAreaId)) setSelectedAreaId(areas[0]?.id || '')
+    if (!selectedAreaId || !areas.length) return
+    if (!areas.some(item => item.id === selectedAreaId)) setSelectedAreaId('')
   }, [areas, selectedAreaId])
 
   useEffect(() => {
