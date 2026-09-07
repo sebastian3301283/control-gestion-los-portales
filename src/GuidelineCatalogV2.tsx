@@ -1,5 +1,6 @@
-import { FormEvent, useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { FormEvent, useEffect, useMemo, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from 'react'
 import { ArrowRight, BookOpenText, Check, ChevronDown, LoaderCircle, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
+import { deleteGuidelineSupportFiles } from './guideline-support-storage'
 import { supabase } from './lib/supabase'
 import './guideline-catalog.css'
 import './guideline-catalog-v2.css'
@@ -20,9 +21,12 @@ type Guideline = {
   active: boolean
   sort_order: number
 }
+type GuidelineSelection = { id: string; managementId: string; label: string }
 type Props = {
   units?: Unit[]
   canManage: boolean
+  selectedGuidelineId?: string | null
+  onSelectGuideline?: (guideline: GuidelineSelection) => void
   onOpenMatrixForGuideline?: (managementId: string, guidelineId: string) => void
 }
 
@@ -70,7 +74,11 @@ function colorForArea(name: string) {
   return areaPalette[hash % areaPalette.length]
 }
 
-export default function GuidelineCatalogV2({ units, canManage, onOpenMatrixForGuideline }: Props) {
+function selectionFor(item: Guideline): GuidelineSelection {
+  return { id: item.id, managementId: item.management_id, label: item.guideline_text }
+}
+
+export default function GuidelineCatalogV2({ units, canManage, selectedGuidelineId, onSelectGuideline, onOpenMatrixForGuideline }: Props) {
   const unitOptions = units?.length ? units : fallbackUnits
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -145,6 +153,12 @@ export default function GuidelineCatalogV2({ units, canManage, onOpenMatrixForGu
 
   useEffect(() => { void loadAll() }, [])
 
+  useEffect(() => {
+    if (!selectedGuidelineId || unitCode === 'CENTRAL') return
+    const item = guidelines.find(guideline => guideline.id === selectedGuidelineId && guideline.unit_code === unitCode && (!periodId || guideline.period_id === periodId))
+    if (item) onSelectGuideline?.(selectionFor(item))
+  }, [selectedGuidelineId, guidelines, unitCode, periodId, onSelectGuideline])
+
   async function loadAll() {
     if (!supabase) return
     setLoading(true); setError('')
@@ -200,6 +214,7 @@ export default function GuidelineCatalogV2({ units, canManage, onOpenMatrixForGu
 
   async function syncMatrix(guidelineId: string, guidelineText: string, nextPeriodId: string, nextUnitCode: string, managementId: string) {
     if (!supabase) return
+    if (nextUnitCode !== 'CENTRAL') return
     if (editingId) await supabase.from('matrices').update({ guideline_id: null, guideline_text: null }).eq('guideline_id', editingId)
     const { data: processData } = await supabase.from('processes').select('id,management_id').eq('unit_code', nextUnitCode).eq('active', true)
     const areaName = managementById.get(managementId)?.name || ''
@@ -239,11 +254,30 @@ export default function GuidelineCatalogV2({ units, canManage, onOpenMatrixForGu
     if (!supabase || !canManage) return
     if (!window.confirm(`¿Eliminar el lineamiento “${item.guideline_text}”?`)) return
     setSaving(true); setError(''); setNotice('')
+
+    if (item.unit_code !== 'CENTRAL') {
+      const supportResult = await deleteGuidelineSupportFiles(item.unit_code, item.period_id, item.id)
+      if (supportResult.error) {
+        setSaving(false)
+        setError(supportResult.error)
+        return
+      }
+      const deleteResult = await supabase.from('planning_guidelines').delete().eq('id', item.id)
+      setSaving(false)
+      if (deleteResult.error) { setError('No pudimos eliminar el lineamiento y su matriz.'); return }
+      setNotice('Lineamiento, matriz y soportes eliminados.'); await loadAll(); return
+    }
+
     const clearResult = await supabase.from('matrices').update({ guideline_id: null, guideline_text: null }).eq('guideline_id', item.id)
     const deleteResult = clearResult.error ? clearResult : await supabase.from('planning_guidelines').delete().eq('id', item.id)
     setSaving(false)
     if (deleteResult.error) { setError('No pudimos eliminar el lineamiento.'); return }
     setNotice('Lineamiento eliminado.'); await loadAll()
+  }
+
+  function stopAndRun(event: ReactMouseEvent<HTMLButtonElement>, action: () => void) {
+    event.stopPropagation()
+    action()
   }
 
   function renderTable(items: Guideline[], accent: string) {
@@ -255,12 +289,13 @@ export default function GuidelineCatalogV2({ units, canManage, onOpenMatrixForGu
           {items.length === 0 ? <tr><td colSpan={canManage ? 5 : 4} className="guideline-empty">No hay lineamientos en esta vista.</td></tr> : items.map((item, index) => {
             const responsible = item.responsible_manager_id ? managerById.get(item.responsible_manager_id) : null
             const parsed = splitGuideline(item.guideline_text, item.code)
-            return <tr key={item.id} className={!item.active ? 'inactive-row' : ''}>
+            const isSelected = unitCode !== 'CENTRAL' && selectedGuidelineId === item.id
+            return <tr key={item.id} className={`${!item.active ? 'inactive-row ' : ''}${isSelected ? 'guideline-selected' : ''}`.trim()} aria-selected={isSelected || undefined} onClick={() => unitCode !== 'CENTRAL' && onSelectGuideline?.({ id: item.id, managementId: item.management_id, label: item.guideline_text })}>
               <td className="guideline-number">{displayNumber(item, index)}</td>
-              <td className="guideline-text-cell"><div className="guideline-text-matrix-row"><span className="guideline-text-copy">{parsed.code && <strong className="guideline-code">{parsed.code}: </strong>}{parsed.text}</span>{unitCode !== 'CENTRAL' && onOpenMatrixForGuideline && <button type="button" className="guideline-row-matrix-arrow" onClick={() => onOpenMatrixForGuideline?.(item.management_id, item.id)} title="Abrir matriz de este lineamiento" aria-label={`Abrir matriz de ${parsed.code || `lineamiento ${index + 1}`}`}><ArrowRight size={18}/></button>}</div></td>
+              <td className="guideline-text-cell"><div className="guideline-text-matrix-row"><span className="guideline-text-copy">{parsed.code && <strong className="guideline-code">{parsed.code}: </strong>}{parsed.text}</span>{unitCode !== 'CENTRAL' && onOpenMatrixForGuideline && <button type="button" className="guideline-row-matrix-arrow" onClick={event => stopAndRun(event, () => onOpenMatrixForGuideline?.(item.management_id, item.id))} title="Abrir matriz de este lineamiento" aria-label={`Abrir matriz de ${parsed.code || `lineamiento ${index + 1}`}`}><ArrowRight size={18}/></button>}</div></td>
               <td className="guideline-management">{managementById.get(item.management_id)?.name || '—'}</td>
               <td>{responsible ? <div className="guideline-responsible"><strong>{responsible.name}</strong><small>{responsible.cargo || 'Bonista'}</small></div> : <span className="muted">Sin asignar</span>}</td>
-              {canManage && <td><div className="guideline-actions"><button onClick={() => openEdit(item)} title="Editar"><Pencil size={14}/></button><button className="danger" onClick={() => void deleteGuideline(item)} title="Eliminar"><Trash2 size={14}/></button></div></td>}
+              {canManage && <td><div className="guideline-actions"><button onClick={event => stopAndRun(event, () => openEdit(item))} title="Editar"><Pencil size={14}/></button><button className="danger" onClick={event => stopAndRun(event, () => void deleteGuideline(item))} title="Eliminar"><Trash2 size={14}/></button></div></td>}
             </tr>
           })}
         </tbody>
