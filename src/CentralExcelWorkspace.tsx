@@ -1,6 +1,7 @@
 import { CSSProperties, Fragment, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowRight, Building2, Download, History, LoaderCircle, Maximize2, Minimize2, Plus, RotateCcw, Trash2, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { supabase } from './lib/supabase'
+import { loadCentralMatrixWorkspaceData } from './lib/planning-query-cache'
 import { actionPlanFromSubpoints, buildCentralSubpointDrafts, findIncompleteCentralSubpoint, normalizeCentralSubpointRows, type CentralSubpointDraft, type CentralSubpointRecord } from './central-subpoint-records.js'
 import { filterHighestAreaManagers, groupHistoryByPerson, historyActionLabel } from './central-matrix-view-model.js'
 import './matrix-workspace-v5.css'
@@ -206,26 +207,17 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
     if (!supabase) return
     setLoading(true); onError('')
     try {
-      const [catalogResult, areaResult, processResult, matrixResult, managerResult, mappingResult, guidelineResult] = await Promise.all([
-        supabase.from('matrix_unit_area_catalog').select('management_id').eq('unit_code', 'CENTRAL').order('created_at'),
-        supabase.from('managements_global').select('id,name,unit_code,directory_group').eq('unit_code', 'CENTRAL').eq('active', true).order('name'),
-        supabase.from('processes').select('id,management_id,unit_code').eq('unit_code', 'CENTRAL').eq('active', true).order('created_at'),
-        supabase.from('matrices').select('id,name,process_id,status,guideline_id,principal_responsible_manager_id').eq('period_id', periodId).eq('unit_code', 'CENTRAL').eq('active', true).order('created_at'),
-        supabase.from('managers').select('id,name,cargo,unit_code,directory_group').eq('active', true).order('name'),
-        supabase.from('manager_managements').select('manager_id,management_id'),
-        supabase.from('planning_guidelines').select('id,management_id,code,responsible_manager_id,guideline_text').eq('period_id', periodId).eq('unit_code', 'CENTRAL').eq('active', true).order('sort_order'),
-      ])
-      if (catalogResult.error || areaResult.error || processResult.error || matrixResult.error || managerResult.error || mappingResult.error || guidelineResult.error) throw new Error('LOAD')
-      const allAreas = (areaResult.data || []) as Area[]
-      const processData = (processResult.data || []) as Process[]
-      const allowedByCatalog = new Set((catalogResult.data || []).map(item => String(item.management_id)))
+      const workspaceData = await loadCentralMatrixWorkspaceData(periodId)
+      const allAreas = workspaceData.managements as Area[]
+      const processData = workspaceData.processes as Process[]
+      const allowedByCatalog = new Set(workspaceData.catalog.map(item => String(item.management_id)))
       const allowedByProcess = new Set(processData.map(item => item.management_id))
       setAreas(allAreas.filter(area => allowedByCatalog.has(area.id) && allowedByProcess.has(area.id)))
       setProcesses(processData)
-      setMatrices((matrixResult.data || []) as Matrix[])
-      setManagers((managerResult.data || []) as Manager[])
-      setManagerManagements((mappingResult.data || []) as ManagerManagement[])
-      setGuidelines((guidelineResult.data || []) as Guideline[])
+      setMatrices(workspaceData.matrices as Matrix[])
+      setManagers(workspaceData.managers as Manager[])
+      setManagerManagements(workspaceData.managerManagements as ManagerManagement[])
+      setGuidelines(workspaceData.guidelines as Guideline[])
     } catch {
       onError('No pudimos cargar las áreas y matrices de Central.')
     } finally { setLoading(false) }

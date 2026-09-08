@@ -1,6 +1,7 @@
 import { ChangeEvent, CSSProperties, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowRight, Building2, Download, History, LoaderCircle, Maximize2, Minimize2, Plus, RotateCcw, Trash2, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { supabase } from './lib/supabase'
+import { loadUnitMatrixWorkspaceData } from './lib/planning-query-cache'
 import { filterGerenteManagers, toggleResponsibleId } from './unit-excel-model.js'
 import './matrix-workspace-v5.css'
 import './matrix-workspace-v10.css'
@@ -182,18 +183,11 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
     if (!supabase) return
     setLoading(true); onError('')
     try {
-      const [catalogResult, areaResult, processResult, matrixResult, managerResult] = await Promise.all([
-        supabase.from('matrix_unit_area_catalog').select('management_id').eq('unit_code', unitCode).order('created_at'),
-        supabase.from('managements_global').select('id,name,unit_code,directory_group').eq('active', true).order('name'),
-        supabase.from('processes').select('id,management_id,unit_code').eq('unit_code', unitCode).eq('active', true).order('created_at'),
-        supabase.from('matrices').select('id,name,process_id,status,guideline_id').eq('period_id', periodId).eq('unit_code', unitCode).eq('active', true).order('created_at'),
-        supabase.from('managers').select('id,name,cargo,unit_code,directory_group').eq('active', true).order('name'),
-      ])
-      if (catalogResult.error || areaResult.error || processResult.error || matrixResult.error || managerResult.error) throw new Error('LOAD')
-      const allAreas = (areaResult.data || []) as Area[]
-      const processData = (processResult.data || []) as Process[]
-      const matrixData = (matrixResult.data || []) as Matrix[]
-      const allowedByCatalog = new Set((catalogResult.data || []).map(item => String(item.management_id)))
+      const workspaceData = await loadUnitMatrixWorkspaceData(periodId, unitCode)
+      const allAreas = workspaceData.managements as Area[]
+      const processData = workspaceData.processes as Process[]
+      const matrixData = workspaceData.matrices as Matrix[]
+      const allowedByCatalog = new Set(workspaceData.catalog.map(item => String(item.management_id)))
       const allowedByProcess = new Set(processData.map(item => item.management_id))
       const uniqueAreas = new Map<string, Area>()
       allAreas.forEach(area => {
@@ -205,7 +199,7 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
       setAreas(areaData)
       setProcesses(processData)
       setMatrices(matrixData)
-      setManagers((managerResult.data || []) as Manager[])
+      setManagers(workspaceData.managers as Manager[])
 
       let target: MatrixTarget | null = null
       try {

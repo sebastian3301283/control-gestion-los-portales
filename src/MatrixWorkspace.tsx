@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import MatrixWorkspaceV13 from './MatrixWorkspaceV13'
 import { supabase } from './lib/supabase'
+import { loadScopedManagements } from './lib/planning-query-cache'
 import './matrix-workspace-v6.css'
 import './matrix-workspace-v9.css'
 import './matrix-workspace-v10.css'
@@ -49,9 +50,10 @@ export default function MatrixWorkspace(props: Props) {
     let timeout = 0
 
     void (async () => {
-      const { data, error } = await supabase.from('managements_global').select('name').eq('id', target!.managementId).maybeSingle()
-      if (stopped || error || !data?.name) return
-      const targetName = String(data.name).trim().toLocaleLowerCase('es')
+      const managements = await loadScopedManagements(props.unitCode)
+      const management = managements.find(item => item.id === target!.managementId)
+      if (stopped || !management?.name) return
+      const targetName = String(management.name).trim().toLocaleLowerCase('es')
 
       const tryOpen = () => {
         const root = hostRef.current
