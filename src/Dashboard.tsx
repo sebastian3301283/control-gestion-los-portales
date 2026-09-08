@@ -333,7 +333,8 @@ function PlanningView({ access, units, initialYear, initialUnitCode }: {
       return
     }
     setLoading(false)
-    const preferred = (initialYear ? available.find(item => item.year === initialYear) : null) || available.find(item => item.status === 'OPEN') || available[0] || null
+    const currentYear = new Date().getFullYear()
+    const preferred = (initialYear ? available.find(item => item.year === initialYear) : available.find(item => item.year === currentYear)) || available.find(item => item.status === 'OPEN') || available[0] || null
     if (!preferred) { setError('No hay un periodo configurado. Créalo desde Configuración → Periodos.'); return }
     setSelectedPeriod(preferred)
     if (!initialUnitCode) { setSelectedPlanningUnit(null); setStep('units') }
