@@ -130,11 +130,18 @@ export function loadProcesses(unitCode: string, force = false) {
 }
 
 export function loadMatrices(periodId: string, unitCode: string, force = false) {
-  const centralFields = unitCode === 'CENTRAL' ? ',principal_responsible_manager_id' : ''
   return cachedPlanningGet<Matrix[]>(`matrices:${periodId}:${unitCode}`, () => {
     const client = requireSupabase()
+    if (unitCode === 'CENTRAL') {
+      return rowsOrThrow<Matrix>(client.from('matrices')
+        .select('id,name,process_id,status,guideline_id,principal_responsible_manager_id')
+        .eq('period_id', periodId)
+        .eq('unit_code', unitCode)
+        .eq('active', true)
+        .order('created_at'))
+    }
     return rowsOrThrow<Matrix>(client.from('matrices')
-      .select(`id,name,process_id,status,guideline_id${centralFields}`)
+      .select('id,name,process_id,status,guideline_id')
       .eq('period_id', periodId)
       .eq('unit_code', unitCode)
       .eq('active', true)
