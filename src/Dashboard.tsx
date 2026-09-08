@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowLeft,
   ArrowRight,
@@ -20,12 +20,21 @@ import {
 } from 'lucide-react'
 import { supabase } from './lib/supabase'
 import { loadPlanningPeriods, prefetchGuidelineWorkspace, prefetchMatrixWorkspace } from './lib/planning-query-cache'
-import CatalogConfiguration from './CatalogConfiguration'
-import MatrixWorkspace from './MatrixWorkspace'
-import PlanningGuidelines from './PlanningGuidelines'
 import './dashboard.css'
 import './planning.css'
 import './interaction-fixes.css'
+
+const CatalogConfiguration = lazy(() => import('./CatalogConfiguration'))
+const PlanningGuidelines = lazy(() => import('./PlanningGuidelines'))
+const MatrixWorkspace = lazy(() => import('./MatrixWorkspace'))
+
+function prefetchCatalogConfigurationModule() { void import('./CatalogConfiguration').catch(() => undefined) }
+function prefetchPlanningGuidelinesModule() { void import('./PlanningGuidelines').catch(() => undefined) }
+function prefetchMatrixWorkspaceModule() { void import('./MatrixWorkspace').catch(() => undefined) }
+
+function ModuleLoading({ label = 'Cargando módulo...' }: { label?: string }) {
+  return <div className="planning-loading" role="status"><LoaderCircle className="spin" size={24}/>{label}</div>
+}
 
 type UnitAccess = {
   code: 'HU' | 'DEP' | 'VS' | 'HOT' | 'CENTRAL'
@@ -174,7 +183,8 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
   }
 
   function navigate(next: Section) {
-    if (next === 'planificacion') setPlanningEntry(null)
+    if (next === 'planificacion') { setPlanningEntry(null); prefetchPlanningGuidelinesModule() }
+    if (next === 'configuracion') prefetchCatalogConfigurationModule()
     setSection(next)
     setMenuOpen(false)
     setProfileOpen(false)
@@ -229,7 +239,7 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
           {section === 'inicio' ? <HomeView access={access} displayName={displayName} today={today} units={units} selectedUnit={selectedUnit} selectedHomeUnit={selectedHomeUnit} onSelectUnit={selectHomeUnit} periods={periods} selectedYear={selectedHomeYear} setSelectedYear={setSelectedHomeYear} openPlanning={openPlanning} /> : <>
             <div className="page-heading compact-heading"><div><span className="page-kicker">{sectionLabels[section]}</span><h1>{sectionLabels[section]}</h1><p>{sectionDescription(section)}</p></div></div>
             {section === 'planificacion' && <PlanningView key={planningEntry ? `${planningEntry.year}-${planningEntry.unitCode}-${planningEntry.token}` : 'planning-default'} access={access} units={units} initialYear={planningEntry?.year} initialUnitCode={planningEntry?.unitCode} />}
-            {section === 'configuracion' && <CatalogConfiguration units={units.map(unit => ({ code: unit.code, name: unit.name }))} canManage={access.global_role === 'GESTION_ESTRATEGICA'} />}
+            {section === 'configuracion' && <Suspense fallback={<ModuleLoading label="Cargando configuración..."/>}><CatalogConfiguration units={units.map(unit => ({ code: unit.code, name: unit.name }))} canManage={access.global_role === 'GESTION_ESTRATEGICA'} /></Suspense>}
             {section === 'reportes' && <ReportsView />}
           </>}
         </main>
@@ -351,6 +361,7 @@ function PlanningView({ access, units, initialYear, initialUnitCode }: {
 
   function openMatrixFromGuidelines(managementId: string, guidelineId?: string | null) {
     if (!selectedPeriod || !selectedPlanningUnit) return
+    prefetchMatrixWorkspaceModule()
     void prefetchMatrixWorkspace(selectedPeriod.id, selectedPlanningUnit.code).catch(() => undefined)
     sessionStorage.setItem('cg:matrix-target-management', JSON.stringify({
       periodId: selectedPeriod.id,
@@ -392,6 +403,7 @@ function PlanningView({ access, units, initialYear, initialUnitCode }: {
         createdAt: Date.now(),
       }))
     }
+    prefetchPlanningGuidelinesModule()
     void prefetchGuidelineWorkspace(period.id, unit.code).catch(() => undefined)
     setStep('guidelines')
     setError('')
@@ -408,11 +420,11 @@ function PlanningView({ access, units, initialYear, initialUnitCode }: {
 
     {loading ? <div className="planning-loading"><LoaderCircle className="spin" size={24}/> Cargando planificación...</div> : step === 'units' && selectedPeriod ? <section className="planning-panel"><div className="planning-title-row"><div><span>Paso 1 · Periodo {selectedPeriod.year}</span><h2>Elige una unidad</h2><p>Selecciona la unidad para trabajar sus lineamientos y abrir la matriz desde la gerencia correspondiente.</p></div></div><div className="planning-unit-grid">{units.map(unit => <button key={unit.code} className={`planning-unit-card planning-unit-card--${unit.code.toLowerCase()}`} onClick={() => selectUnit(unit)}><span className="planning-unit-icon"><Building2 size={27}/></span><div><small>{unit.code}</small><strong>{unit.name}</strong></div><ArrowRight size={19}/></button>)}</div></section> : null}
 
-    {step === 'modules' && selectedPeriod && selectedPlanningUnit && <section className="planning-panel"><div className="planning-title-row"><div><span>{selectedPlanningUnit.code} · Periodo {selectedPeriod.year}</span><h2>{selectedPlanningUnit.name}</h2><p>Trabaja los lineamientos y desde ellos abre directamente la matriz de la gerencia.</p></div></div><div className="planning-module-choice-grid"><button className="planning-module-choice planning-module-choice--guidelines" onClick={() => { void prefetchGuidelineWorkspace(selectedPeriod.id, selectedPlanningUnit.code).catch(() => undefined); setStep('guidelines'); setError(''); setNotice('') }}><span className="planning-module-choice__icon"><BookOpenText size={25}/></span><span className="planning-module-choice__copy"><small>Planificación estratégica</small><strong>Lineamientos</strong><p>Consulta lineamientos, documentos de soporte y entra a la matriz de cada gerencia.</p></span><ArrowRight size={20}/></button></div></section>}
+    {step === 'modules' && selectedPeriod && selectedPlanningUnit && <section className="planning-panel"><div className="planning-title-row"><div><span>{selectedPlanningUnit.code} · Periodo {selectedPeriod.year}</span><h2>{selectedPlanningUnit.name}</h2><p>Trabaja los lineamientos y desde ellos abre directamente la matriz de la gerencia.</p></div></div><div className="planning-module-choice-grid"><button className="planning-module-choice planning-module-choice--guidelines" onClick={() => { prefetchPlanningGuidelinesModule(); void prefetchGuidelineWorkspace(selectedPeriod.id, selectedPlanningUnit.code).catch(() => undefined); setStep('guidelines'); setError(''); setNotice('') }}><span className="planning-module-choice__icon"><BookOpenText size={25}/></span><span className="planning-module-choice__copy"><small>Planificación estratégica</small><strong>Lineamientos</strong><p>Consulta lineamientos, documentos de soporte y entra a la matriz de cada gerencia.</p></span><ArrowRight size={20}/></button></div></section>}
 
-    {step === 'guidelines' && selectedPeriod && selectedPlanningUnit && <section className="planning-panel planning-panel--wide"><PlanningGuidelines unit={{ code: selectedPlanningUnit.code, name: selectedPlanningUnit.name }} periodId={selectedPeriod.id} canManage={canManage} onOpenMatrixForArea={openMatrixFromGuidelines} /></section>}
+    {step === 'guidelines' && selectedPeriod && selectedPlanningUnit && <section className="planning-panel planning-panel--wide"><Suspense fallback={<ModuleLoading label="Cargando lineamientos..."/>}><PlanningGuidelines unit={{ code: selectedPlanningUnit.code, name: selectedPlanningUnit.name }} periodId={selectedPeriod.id} canManage={canManage} onOpenMatrixForArea={openMatrixFromGuidelines} /></Suspense></section>}
 
-    {step === 'matrices' && selectedPeriod && selectedPlanningUnit && <section className="planning-panel planning-panel--wide"><MatrixWorkspace periodId={selectedPeriod.id} year={selectedPeriod.year} unitCode={selectedPlanningUnit.code} unitName={selectedPlanningUnit.name} canManage={canManage} onError={setError} onNotice={setNotice} onViewGuidelines={target => { void openGuidelinesFromMatrix(target) }} /></section>}
+    {step === 'matrices' && selectedPeriod && selectedPlanningUnit && <section className="planning-panel planning-panel--wide"><Suspense fallback={<ModuleLoading label="Cargando matriz..."/>}><MatrixWorkspace periodId={selectedPeriod.id} year={selectedPeriod.year} unitCode={selectedPlanningUnit.code} unitName={selectedPlanningUnit.name} canManage={canManage} onError={setError} onNotice={setNotice} onViewGuidelines={target => { void openGuidelinesFromMatrix(target) }} /></Suspense></section>}
   </div>
 }
 
