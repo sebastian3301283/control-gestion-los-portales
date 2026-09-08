@@ -55,8 +55,12 @@ export function invalidatePlanningCache(...prefixes: string[]) {
     planningGetCache.clear()
     return
   }
+  const expandedPrefixes = prefixes.flatMap(prefix => {
+    if (!prefix.startsWith('planning-guidelines:')) return [prefix]
+    return [prefix, `matrices:${prefix.slice('planning-guidelines:'.length)}`]
+  })
   for (const key of planningGetCache.keys()) {
-    if (prefixes.some(prefix => key.startsWith(prefix))) planningGetCache.delete(key)
+    if (expandedPrefixes.some(prefix => key.startsWith(prefix))) planningGetCache.delete(key)
   }
 }
 
