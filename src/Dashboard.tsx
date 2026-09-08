@@ -14,7 +14,6 @@ import {
   LoaderCircle,
   LogOut,
   Menu,
-  Search,
   Settings,
   ShieldCheck,
   X,
@@ -214,7 +213,7 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
 
       <div className="dashboard-main">
         <header className="dashboard-topbar">
-          <div className="topbar-left"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Menu size={22}/></button><div className="dashboard-search"><Search size={18}/><input placeholder="Buscar" /></div></div>
+          <div className="topbar-left"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Menu size={22}/></button></div>
           <div className="topbar-actions profile-menu-wrap">
             <button className="icon-button"><Bell size={19}/><span className="notification-dot" /></button>
             <button className={`profile-chip ${profileOpen ? 'profile-chip--open' : ''}`} onClick={() => setProfileOpen(value => !value)}><span className="profile-avatar">{initials(access)}</span><span className="profile-copy"><strong>{displayName}</strong><small>{roleLabel(access)}</small></span><ChevronDown className={profileOpen ? 'chevron-open' : ''} size={16}/></button>
