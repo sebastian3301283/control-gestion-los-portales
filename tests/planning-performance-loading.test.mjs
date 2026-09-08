@@ -25,7 +25,7 @@ test('shared planning loaders scope unit catalogs and guidelines before download
   assert.match(cache, /managements_global[\s\S]{0,450}\.eq\('unit_code', unitCode\)/)
   assert.match(cache, /from\('managers'\)[\s\S]{0,450}\.eq\('unit_code', unitCode\)/)
   assert.match(cache, /planning_guidelines[\s\S]{0,550}\.eq\('period_id', periodId\)[\s\S]{0,250}\.eq\('unit_code', unitCode\)/)
-  assert.match(cache, /manager_managements[\s\S]{0,450}\.in\('management_id', managementIds\)/)
+  assert.match(cache, /manager_managements[\s\S]{0,450}\.in\('management_id', normalizedIds\)/)
 })
 
 test('HU DEP VS HOT lineamientos use the scoped cached loader for their current period and unit', () => {
