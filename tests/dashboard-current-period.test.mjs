@@ -12,3 +12,8 @@ test('Inicio usa el año calendario actual como periodo inicial en cada carga', 
 test('si el año actual no existe, Inicio mantiene el fallback al periodo Actual o al primero disponible', () => {
   assert.match(dashboard, /next\.find\(period => period\.status === 'OPEN'\) \|\| next\[0\]/)
 })
+
+test('Planificación directa también prioriza el año calendario actual antes del periodo marcado Actual', () => {
+  assert.match(dashboard, /const currentYear = new Date\(\)\.getFullYear\(\)/)
+  assert.match(dashboard, /available\.find\(item => item\.year === currentYear\).*available\.find\(item => item\.status === 'OPEN'\)/s)
+})
