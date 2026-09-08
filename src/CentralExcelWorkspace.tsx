@@ -2,6 +2,7 @@ import { CSSProperties, Fragment, KeyboardEvent, useEffect, useMemo, useRef, use
 import { ArrowRight, Building2, Download, History, LoaderCircle, Maximize2, Minimize2, Plus, RotateCcw, Trash2, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { supabase } from './lib/supabase'
 import { loadCentralMatrixWorkspaceData } from './lib/planning-query-cache'
+import { exportStyledPlanWorkbook } from './lib/styled-plan-export'
 import { takePrefetchedMatrixRows } from './lib/matrix-target-prefetch'
 import { actionPlanFromSubpoints, buildCentralSubpointDrafts, findIncompleteCentralSubpoint, normalizeCentralSubpointRows, type CentralSubpointDraft, type CentralSubpointRecord } from './central-subpoint-records.js'
 import { filterHighestAreaManagers, groupHistoryByPerson, historyActionLabel } from './central-matrix-view-model.js'
@@ -53,7 +54,6 @@ type Props = {
   onGuidelineContextChange?: (context: { managementId: string; guidelineId: string | null }) => void
 }
 
-const XLSX_MODULE_URL = 'https://unpkg.com/xlsx@0.18.5/xlsx.mjs'
 const emptyRow: RowDraft = {
   guideline_id: null, objective_group: '', objective: '', action_plan: null, responsible_manager_id: null, responsible_text: '', priority: '', milestones: '', kpi: '', target: null,
   start_date: '', end_date: '', risks: '', restrictions: '', support: '', deliverables: '', committee: '', status: 'DRAFT',
@@ -521,25 +521,19 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
     if (!selectedMatrix) return
     setExporting(true); onError('')
     try {
-      const XLSX = await import(/* @vite-ignore */ XLSX_MODULE_URL)
       const headers = ['ACCIÓN','RESPONSABLE','PRIORIDAD','Hitos / Fechas','KPI (Cuantitativo)','INICIO','FIN','RIESGOS DE NO EJECUTAR','RESTRICCIONES','SOPORTE','ENTREGABLE','COMITÉ']
-      const grid: unknown[][] = [[`PLAN DE ACCIÓN ${year}`], [`UNIDAD: Central - ${selectedArea?.name || ''}`, `Responsable: ${principalResponsibleName}`], [], headers]
-      const groupRows: number[] = []
+      const exportRows: Array<Array<string | null>> = []
       let previousGroup = ''
       rows.forEach(row => {
         const group = textValue(row.objective_group)
-        if (group && group !== previousGroup) { grid.push([group]); groupRows.push(grid.length - 1); previousGroup = group }
+        if (group && group !== previousGroup) { exportRows.push([group, '', '', '', '', '', '', '', '', '', '', '']); previousGroup = group }
         const responsible = (centralResponsibleIdsByRow[row.id] || []).map(id => managerById.get(id)?.name).filter(Boolean).join(', ') || row.responsible_text || ''
-        grid.push([row.objective || '', responsible, row.priority || '', row.milestones || '', row.kpi || '', row.start_date || '', row.end_date || '', row.risks || '', row.restrictions || '', row.support || '', row.deliverables || '', row.committee || ''])
+        exportRows.push([row.objective || '', responsible, row.priority || '', row.milestones || '', row.kpi || '', row.start_date || '', row.end_date || '', row.risks || '', row.restrictions || '', row.support || '', row.deliverables || '', row.committee || ''])
         buildCentralSubpointDrafts(centralSubpointsByRow[row.id] || [], row).forEach((subpoint, index) => {
-          grid.push([`S${index + 1}: ${subpoint.text}`, '', '', subpoint.milestones, subpoint.kpi, subpoint.start_date, subpoint.end_date, '', '', '', '', ''])
+          exportRows.push([`S${index + 1}: ${subpoint.text}`, '', '', subpoint.milestones, subpoint.kpi, subpoint.start_date, subpoint.end_date, '', '', '', '', ''])
         })
       })
-      const sheet = XLSX.utils.aoa_to_sheet(grid)
-      sheet['!merges'] = groupRows.map(row => ({ s: { r: row, c: 0 }, e: { r: row, c: headers.length - 1 } }))
-      sheet['!cols'] = [{ wch: 60 }, { wch: 30 }, { wch: 14 }, { wch: 26 }, { wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 32 }, { wch: 26 }, { wch: 28 }, { wch: 26 }, { wch: 24 }]
-      const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, sheet, 'Plan de Acción')
-      XLSX.writeFile(workbook, `Plan_de_Accion_Central_${selectedArea?.name || 'Area'}_${year}.xlsx`)
+      await exportStyledPlanWorkbook({ year, unitCode: 'CENTRAL', unitName: 'Central', areaName: selectedArea?.name, responsibleNames: principalResponsibleName === 'Sin asignar' ? [] : [principalResponsibleName], headers, rows: exportRows, central: true, fileName: `Plan_de_Accion_Central_${selectedArea?.name || 'Area'}_${year}.xlsx` })
     } catch { onError('No pudimos exportar la matriz a Excel.') } finally { setExporting(false) }
   }
 

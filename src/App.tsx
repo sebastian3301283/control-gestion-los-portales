@@ -207,7 +207,7 @@ export default function App() {
 
   if (access) {
     return (
-      <Suspense fallback={<div className="module-loading-screen" role="status">Cargando Control de Gestión...</div>}>
+      <Suspense fallback={<div className="module-loading-surface" role="status">Cargando Control de Gestión...</div>}>
         <Dashboard
           access={access}
           onSignOut={async () => {

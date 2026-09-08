@@ -33,7 +33,7 @@ function prefetchPlanningGuidelinesModule() { void import('./PlanningGuidelines'
 function prefetchMatrixWorkspaceModule() { void import('./MatrixWorkspace').catch(() => undefined) }
 
 function ModuleLoading({ label = 'Cargando módulo...' }: { label?: string }) {
-  return <div className="planning-loading" role="status"><LoaderCircle className="spin" size={24}/>{label}</div>
+  return <div className="module-loading-surface module-loading-surface--module" role="status"><LoaderCircle className="spin" size={24}/>{label}</div>
 }
 
 type UnitAccess = {
