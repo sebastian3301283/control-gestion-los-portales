@@ -33,8 +33,10 @@ test('Central supports selecting several responsible managers on one action', as
 
 test('Central keeps the action spreadsheet and renders persisted subpoints as real rows', async () => {
   const source = await readFile(new URL('../src/CentralExcelWorkspace.tsx', import.meta.url), 'utf8')
+  const cache = await readFile(new URL('../src/lib/planning-query-cache.ts', import.meta.url), 'utf8')
   const v11 = await readFile(new URL('../src/MatrixWorkspaceV11.tsx', import.meta.url), 'utf8')
-  assert.match(source, /manager_managements/)
+  assert.match(source, /loadCentralMatrixWorkspaceData\(periodId\)/)
+  assert.match(cache, /manager_managements/)
   assert.match(source, /matrix_row_responsibles/)
   assert.match(source, /centralResponsibleIdsByRow/)
   assert.match(source, /<th>Acción<\/th>/)
