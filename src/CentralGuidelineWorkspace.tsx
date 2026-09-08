@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, LoaderCircle, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { supabase } from './lib/supabase'
+import { invalidatePlanningCache, loadCentralGuidelineData } from './lib/planning-query-cache'
 import './central-guideline-workspace.css'
 
 type Guideline = {
@@ -72,43 +73,38 @@ export default function CentralGuidelineWorkspace({ periodId, canManage, initial
     if (!supabase) return
     setLoading(true)
     setError('')
-    const [guidelineResult, catalogResult, managementResult] = await Promise.all([
-      supabase.from('planning_guidelines').select('id,period_id,unit_code,management_id,category,code,guideline_text,responsible_manager_id,active,sort_order').eq('period_id', periodId).eq('unit_code', 'CENTRAL').order('sort_order').order('created_at'),
-      supabase.from('guideline_unit_area_catalog').select('management_id').eq('unit_code', 'CENTRAL').order('created_at'),
-      supabase.from('managements_global').select('id,name').eq('active', true).order('name'),
-    ])
-    if (guidelineResult.error || catalogResult.error || managementResult.error) {
-      setLoading(false)
+    try {
+      const { guidelines: guidelineData, catalog: catalogData, managements: managementData } = await loadCentralGuidelineData(periodId)
+      const nextGuidelines = guidelineData as Guideline[]
+      const allAreas = managementData as Management[]
+      const allAreaById = new Map(allAreas.map(area => [area.id, area]))
+      const configuredIds = (catalogData as GuidelineAreaLink[]).map(item => item.management_id)
+      let configuredAreas = configuredIds.map(id => allAreaById.get(id)).filter((item): item is Management => Boolean(item))
+
+      if (!configuredAreas.length) configuredAreas = allAreas.filter(area => nextGuidelines.some(item => item.management_id === area.id))
+
+      let visibleAreas = configuredAreas
+      if (!canManage) {
+        const permissionChecks = await Promise.all(configuredAreas.map(async area => {
+          const { data } = await supabase.rpc('can_access_management', { management_id_input: area.id, unit_code_input: 'CENTRAL' })
+          return data ? area : null
+        }))
+        visibleAreas = permissionChecks.filter((item): item is Management => Boolean(item))
+      }
+
+      const uniqueVisibleAreas = new Map<string, Management>()
+      visibleAreas.forEach(area => {
+        const key = area.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
+        if (!uniqueVisibleAreas.has(key)) uniqueVisibleAreas.set(key, area)
+      })
+
+      setGuidelines(nextGuidelines)
+      setManagements([...uniqueVisibleAreas.values()])
+    } catch {
       setError('No pudimos cargar los lineamientos de Central.')
-      return
+    } finally {
+      setLoading(false)
     }
-
-    const nextGuidelines = (guidelineResult.data || []) as Guideline[]
-    const allAreas = (managementResult.data || []) as Management[]
-    const allAreaById = new Map(allAreas.map(area => [area.id, area]))
-    const configuredIds = ((catalogResult.data || []) as GuidelineAreaLink[]).map(item => item.management_id)
-    let configuredAreas = configuredIds.map(id => allAreaById.get(id)).filter((item): item is Management => Boolean(item))
-
-    if (!configuredAreas.length) configuredAreas = allAreas.filter(area => nextGuidelines.some(item => item.management_id === area.id))
-
-    let visibleAreas = configuredAreas
-    if (!canManage) {
-      const permissionChecks = await Promise.all(configuredAreas.map(async area => {
-        const { data } = await supabase.rpc('can_access_management', { management_id_input: area.id, unit_code_input: 'CENTRAL' })
-        return data ? area : null
-      }))
-      visibleAreas = permissionChecks.filter((item): item is Management => Boolean(item))
-    }
-
-    const uniqueVisibleAreas = new Map<string, Management>()
-    visibleAreas.forEach(area => {
-      const key = area.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
-      if (!uniqueVisibleAreas.has(key)) uniqueVisibleAreas.set(key, area)
-    })
-
-    setGuidelines(nextGuidelines)
-    setManagements([...uniqueVisibleAreas.values()])
-    setLoading(false)
   }
 
   function openCreate() {
@@ -168,6 +164,7 @@ export default function CentralGuidelineWorkspace({ periodId, canManage, initial
         setError(`No pudimos crear el lineamiento: ${result.error.message}`)
         return
       }
+      invalidatePlanningCache(`planning-guidelines:${periodId}:CENTRAL`)
       setCreating(false)
       setNotice('Lineamiento creado correctamente.')
       await load()
@@ -186,6 +183,7 @@ export default function CentralGuidelineWorkspace({ periodId, canManage, initial
       setError(`No pudimos actualizar el lineamiento: ${update.error.message}`)
       return
     }
+    invalidatePlanningCache(`planning-guidelines:${periodId}:CENTRAL`)
     setEditing(null)
     setNotice('Lineamiento actualizado correctamente.')
     await load()
@@ -201,6 +199,7 @@ export default function CentralGuidelineWorkspace({ periodId, canManage, initial
       setError('No pudimos eliminar el lineamiento.')
       return
     }
+    invalidatePlanningCache(`planning-guidelines:${periodId}:CENTRAL`)
     setPendingDelete(null)
     setNotice('Lineamiento eliminado.')
     await load()
