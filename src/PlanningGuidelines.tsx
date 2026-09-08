@@ -4,6 +4,7 @@ import GuidelineCatalogV2 from './GuidelineCatalogV2'
 import GuidelineMultiImport from './GuidelineMultiImport'
 import GuidelinePptPanel from './GuidelinePptPanel'
 import CentralGuidelineWorkspace from './CentralGuidelineWorkspace'
+import { invalidatePlanningCache, prefetchMatrixWorkspace } from './lib/planning-query-cache'
 import './planning-guidelines.css'
 
 type Unit = { code: string; name: string }
@@ -117,11 +118,13 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
 
   function openMatrixForSelectedArea() {
     if (!selectedArea) return
+    void prefetchMatrixWorkspace(periodId, unit.code).catch(() => undefined)
     setFullscreen(false)
     onOpenMatrixForArea?.(selectedArea.id, null)
   }
 
   function openMatrixForGuideline(managementId: string, guidelineId: string) {
+    void prefetchMatrixWorkspace(periodId, unit.code).catch(() => undefined)
     setFullscreen(false)
     onOpenMatrixForArea?.(managementId, guidelineId)
     // Dashboard's legacy callback still writes an area target. Replace it immediately
@@ -148,7 +151,7 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
     {canManage && <div className="planning-guideline-admin-note"><strong>Administración de lineamientos</strong><span>Puedes importar lineamientos desde Excel, PDF, PowerPoint o imagen; cada lineamiento de HU/DEP/VS/HOT crea automáticamente su propia matriz.</span></div>}
     {importNotice && <div className="planning-guideline-import-notice">{importNotice}</div>}
 
-    {isCentral ? <CentralGuidelineWorkspace key={catalogRevision} periodId={periodId} canManage={canManage} initialAreaId={guidelineTarget?.managementId} focusGuidelineId={guidelineTarget?.guidelineId} onAreaChange={setSelectedArea} /> : <GuidelineCatalogV2 key={catalogRevision} units={[unit]} canManage={canManage} selectedGuidelineId={selectedGuideline?.id || guidelineTarget?.guidelineId || null} onSelectGuideline={setSelectedGuideline} onOpenMatrixForGuideline={openMatrixForGuideline} />}
+    {isCentral ? <CentralGuidelineWorkspace key={catalogRevision} periodId={periodId} canManage={canManage} initialAreaId={guidelineTarget?.managementId} focusGuidelineId={guidelineTarget?.guidelineId} onAreaChange={setSelectedArea} /> : <GuidelineCatalogV2 key={catalogRevision} units={[unit]} canManage={canManage} scopePeriodId={periodId} scopeUnitCode={unit.code} selectedGuidelineId={selectedGuideline?.id || guidelineTarget?.guidelineId || null} onSelectGuideline={setSelectedGuideline} onOpenMatrixForGuideline={openMatrixForGuideline} />}
 
     <GuidelinePptPanel unit={unit} periodId={periodId} canManage={canManage} managementId={isCentral ? selectedArea?.id : null} managementName={isCentral ? selectedArea?.name : null} guidelineId={selectedGuideline?.id || null} guidelineLabel={selectedGuideline?.label || null} />
 
@@ -159,6 +162,7 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
       defaultManagementId={isCentral ? selectedArea?.id : null}
       onClose={() => setImportOpen(false)}
       onImported={count => {
+        invalidatePlanningCache(`planning-guidelines:${periodId}:${unit.code}`)
         setSelectedGuideline(null)
         setCatalogRevision(value => value + 1)
         setImportNotice(`${count} lineamiento${count === 1 ? '' : 's'} importado${count === 1 ? '' : 's'} correctamente en este periodo.`)
