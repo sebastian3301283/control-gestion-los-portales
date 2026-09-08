@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState, type CSSProperties, type Mouse
 import { ArrowRight, BookOpenText, Check, ChevronDown, LoaderCircle, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { deleteGuidelineSupportFiles } from './guideline-support-storage'
 import { supabase } from './lib/supabase'
+import { invalidatePlanningCache, loadManagerManagements, loadScopedGuidelineData } from './lib/planning-query-cache'
 import './guideline-catalog.css'
 import './guideline-catalog-v2.css'
 
@@ -25,6 +26,8 @@ type GuidelineSelection = { id: string; managementId: string; label: string }
 type Props = {
   units?: Unit[]
   canManage: boolean
+  scopePeriodId?: string
+  scopeUnitCode?: string
   selectedGuidelineId?: string | null
   onSelectGuideline?: (guideline: GuidelineSelection) => void
   onOpenMatrixForGuideline?: (managementId: string, guidelineId: string) => void
@@ -78,8 +81,9 @@ function selectionFor(item: Guideline): GuidelineSelection {
   return { id: item.id, managementId: item.management_id, label: item.guideline_text }
 }
 
-export default function GuidelineCatalogV2({ units, canManage, selectedGuidelineId, onSelectGuideline, onOpenMatrixForGuideline }: Props) {
+export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, scopeUnitCode, selectedGuidelineId, onSelectGuideline, onOpenMatrixForGuideline }: Props) {
   const unitOptions = units?.length ? units : fallbackUnits
+  const scoped = Boolean(scopePeriodId && scopeUnitCode)
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -90,8 +94,8 @@ export default function GuidelineCatalogV2({ units, canManage, selectedGuideline
   const [managers, setManagers] = useState<Manager[]>([])
   const [links, setLinks] = useState<ManagerManagement[]>([])
   const [guidelines, setGuidelines] = useState<Guideline[]>([])
-  const [periodId, setPeriodId] = useState('')
-  const [unitCode, setUnitCode] = useState(unitOptions.find(unit => unit.code === 'CENTRAL')?.code || unitOptions[0]?.code || 'CENTRAL')
+  const [periodId, setPeriodId] = useState(scopePeriodId || '')
+  const [unitCode, setUnitCode] = useState(scopeUnitCode || unitOptions.find(unit => unit.code === 'CENTRAL')?.code || unitOptions[0]?.code || 'CENTRAL')
   const [areaFilter, setAreaFilter] = useState('')
   const [formOpen, setFormOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -149,7 +153,12 @@ export default function GuidelineCatalogV2({ units, canManage, selectedGuideline
     return managers.filter(item => item.active && item.unit_code === formUnitCode && linkedManagerIds.has(item.id)).sort((a, b) => a.name.localeCompare(b.name, 'es'))
   }, [formAreaId, formUnitCode, managers, links])
 
-  useEffect(() => { void loadAll() }, [])
+  useEffect(() => { void loadAll(scopePeriodId, scopeUnitCode) }, [])
+  useEffect(() => {
+    if (!scoped || !periodId || !unitCode) return
+    if (periodId === scopePeriodId && unitCode === scopeUnitCode) return
+    void loadAll(periodId, unitCode)
+  }, [periodId, unitCode, scoped, scopePeriodId, scopeUnitCode])
 
   useEffect(() => {
     if (!selectedGuidelineId || unitCode === 'CENTRAL') return
@@ -157,9 +166,39 @@ export default function GuidelineCatalogV2({ units, canManage, selectedGuideline
     if (item) onSelectGuideline?.(selectionFor(item))
   }, [selectedGuidelineId, guidelines, unitCode, periodId, onSelectGuideline])
 
-  async function loadAll() {
+  async function loadScopedLinks(nextManagements: Management[]) {
+    try {
+      const nextLinks = await loadManagerManagements(nextManagements.map(item => item.id))
+      setLinks(nextLinks as ManagerManagement[])
+    } catch {
+      setLinks([])
+    }
+  }
+
+  async function loadAll(requestPeriodId = scopePeriodId, requestUnitCode = scopeUnitCode) {
     if (!supabase) return
     setLoading(true); setError('')
+    if (requestPeriodId && requestUnitCode) {
+      try {
+        const data = await loadScopedGuidelineData(requestPeriodId, requestUnitCode)
+        const nextPeriods = data.periods as Period[]
+        const nextManagements = data.managements as Management[]
+        setPeriods(nextPeriods)
+        setManagements(nextManagements)
+        setManagers(data.managers as Manager[])
+        setGuidelines(data.guidelines as Guideline[])
+        setPeriodId(requestPeriodId)
+        setUnitCode(requestUnitCode)
+        setLoading(false)
+        void loadScopedLinks(nextManagements)
+        return
+      } catch {
+        setLoading(false)
+        setError('No pudimos cargar el catálogo de lineamientos.')
+        return
+      }
+    }
+
     const [periodResult, areaResult, managerResult, linkResult, guidelineResult] = await Promise.all([
       supabase.from('planning_periods').select('id,year,name,status').order('year'),
       supabase.from('managements_global').select('id,name,unit_code,directory_group,active').eq('active', true).order('name'),
@@ -241,8 +280,9 @@ export default function GuidelineCatalogV2({ units, canManage, selectedGuideline
         id = String(data.id)
       }
       if (id) await syncMatrix(id, guidelineText, formPeriodId, formUnitCode, formAreaId)
+      invalidatePlanningCache(`planning-guidelines:${formPeriodId}:${formUnitCode}`)
       const nextEditing = Boolean(editingId)
-      closeForm(); await loadAll(); setPeriodId(formPeriodId); setUnitCode(formUnitCode); setAreaFilter(formUnitCode === 'CENTRAL' ? formAreaId : ''); setNotice(nextEditing ? 'Lineamiento actualizado y sincronizado con su matriz.' : 'Lineamiento creado y sincronizado con su matriz.')
+      closeForm(); await loadAll(formPeriodId, formUnitCode); setPeriodId(formPeriodId); setUnitCode(formUnitCode); setAreaFilter(formUnitCode === 'CENTRAL' ? formAreaId : ''); setNotice(nextEditing ? 'Lineamiento actualizado y sincronizado con su matriz.' : 'Lineamiento creado y sincronizado con su matriz.')
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : ''
       setError(`No pudimos guardar el lineamiento${message ? `: ${message}` : '.'}`)
@@ -264,14 +304,16 @@ export default function GuidelineCatalogV2({ units, canManage, selectedGuideline
       const deleteResult = await supabase.from('planning_guidelines').delete().eq('id', item.id)
       setSaving(false)
       if (deleteResult.error) { setError('No pudimos eliminar el lineamiento y su matriz.'); return }
-      setNotice('Lineamiento, matriz y soportes eliminados.'); await loadAll(); return
+      invalidatePlanningCache(`planning-guidelines:${item.period_id}:${item.unit_code}`)
+      setNotice('Lineamiento, matriz y soportes eliminados.'); await loadAll(item.period_id, item.unit_code); return
     }
 
     const clearResult = await supabase.from('matrices').update({ guideline_id: null, guideline_text: null }).eq('guideline_id', item.id)
     const deleteResult = clearResult.error ? clearResult : await supabase.from('planning_guidelines').delete().eq('id', item.id)
     setSaving(false)
     if (deleteResult.error) { setError('No pudimos eliminar el lineamiento.'); return }
-    setNotice('Lineamiento eliminado.'); await loadAll()
+    invalidatePlanningCache(`planning-guidelines:${item.period_id}:${item.unit_code}`)
+    setNotice('Lineamiento eliminado.'); await loadAll(item.period_id, item.unit_code)
   }
 
   function stopAndRun(event: ReactMouseEvent<HTMLButtonElement>, action: () => void) {
