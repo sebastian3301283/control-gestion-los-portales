@@ -1,7 +1,9 @@
 import { LoaderCircle, RotateCcw, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { createPortal } from 'react-dom'
 import MatrixWorkspaceV11 from './MatrixWorkspaceV11'
 import { supabase } from './lib/supabase'
+import { summarizeMatrixVersionChanges } from './lib/matrix-history-diff.js'
 import './matrix-workspace-v12.css'
 
 type UnitCode = 'HU' | 'DEP' | 'VS' | 'HOT' | 'CENTRAL'
@@ -23,6 +25,8 @@ type HistoryVersion = {
   changed_email: string | null
   created_at: string
 }
+type HistoryChange = { label: string; before: string; after: string }
+type HistoryDetail = { loading: boolean; summary: string; changes: HistoryChange[] }
 type SummaryRow = {
   key: string
   action: string
@@ -53,9 +57,9 @@ function formatDateTime(value: string) {
 }
 function historyActionLabel(value: string) {
   if (value === 'BASELINE') return 'Versión inicial'
-  if (value === 'ROW_INSERT') return 'Objetivo agregado'
-  if (value === 'ROW_UPDATE') return 'Objetivo actualizado'
-  if (value === 'ROW_DELETE') return 'Objetivo eliminado'
+  if (value === 'ROW_INSERT') return 'Acción agregada'
+  if (value === 'ROW_UPDATE') return 'Acción actualizada'
+  if (value === 'ROW_DELETE') return 'Acción eliminada'
   if (value === 'SUBPOINT_INSERT') return 'Subobjetivo agregado'
   if (value === 'SUBPOINT_DELETE') return 'Subobjetivo eliminado'
   if (value === 'MATRIX_UPDATE') return 'Matriz actualizada'
@@ -80,6 +84,8 @@ export default function MatrixWorkspaceV12(props: Props) {
   const [historyVersions, setHistoryVersions] = useState<HistoryVersion[]>([])
   const [historyHasMore, setHistoryHasMore] = useState(false)
   const [historyNamesByEmail, setHistoryNamesByEmail] = useState<Record<string, string>>({})
+  const [historyDetails, setHistoryDetails] = useState<Record<number, HistoryDetail>>({})
+  const [expandedHistoryVersionNo, setExpandedHistoryVersionNo] = useState<number | null>(null)
   const [canRestore, setCanRestore] = useState(false)
   const [restoringVersionNo, setRestoringVersionNo] = useState<number | null>(null)
 
@@ -125,8 +131,7 @@ export default function MatrixWorkspaceV12(props: Props) {
     setSummaryRows(nextRows)
   }
 
-  // Alias kept as a regression-safe bridge for the Central-specific tests and callers
-  // while the summary implementation is now shared by every matrix unit.
+  // Alias kept as a regression-safe bridge for Central-specific callers/tests.
   function refreshCentralSummary() {
     refreshMatrixSummary()
   }
@@ -170,6 +175,33 @@ export default function MatrixWorkspaceV12(props: Props) {
     append ? setHistoryLoadingMore(false) : setHistoryLoading(false)
   }
 
+  async function loadHistoryDetail(version: HistoryVersion) {
+    if (!supabase || !matrixId) return
+    if (expandedHistoryVersionNo === version.version_no) {
+      setExpandedHistoryVersionNo(null)
+      return
+    }
+    setExpandedHistoryVersionNo(version.version_no)
+    if (historyDetails[version.version_no]) return
+
+    setHistoryDetails(current => ({ ...current, [version.version_no]: { loading: true, summary: historyActionLabel(version.action), changes: [] } }))
+    const wanted = [version.version_no]
+    if (version.version_no > 1) wanted.push(version.version_no - 1)
+    const snapshotResult = await supabase.from('matrix_versions')
+      .select('version_no,snapshot')
+      .eq('matrix_id', matrixId)
+      .in('version_no', wanted)
+    if (snapshotResult.error) {
+      setHistoryDetails(current => ({ ...current, [version.version_no]: { loading: false, summary: 'No pudimos cargar el detalle de esta versión.', changes: [] } }))
+      return
+    }
+    const snapshots = snapshotResult.data || []
+    const currentSnapshot = snapshots.find(item => Number(item.version_no) === version.version_no)?.snapshot || { rows: [] }
+    const previousSnapshot = snapshots.find(item => Number(item.version_no) === version.version_no - 1)?.snapshot || { rows: [] }
+    const detail = summarizeMatrixVersionChanges(currentSnapshot, previousSnapshot)
+    setHistoryDetails(current => ({ ...current, [version.version_no]: { loading: false, summary: detail.summary, changes: detail.changes } }))
+  }
+
   async function restoreVersion(version: HistoryVersion) {
     if (!supabase || restoringVersionNo !== null) return
     if (hostRef.current?.querySelector('.matrix-collab-user')) {
@@ -202,6 +234,8 @@ export default function MatrixWorkspaceV12(props: Props) {
     setHistoryOpen(true)
     setHistoryVersions([])
     setHistoryNamesByEmail({})
+    setHistoryDetails({})
+    setExpandedHistoryVersionNo(null)
     setHistoryHasMore(false)
     props.onError('')
     if (supabase) {
@@ -279,6 +313,7 @@ export default function MatrixWorkspaceV12(props: Props) {
     setViewMode('matrix')
     setHistoryOpen(false)
     setHistoryVersions([])
+    setHistoryDetails({})
   }, [matrixId])
 
   useEffect(() => {
@@ -307,6 +342,27 @@ export default function MatrixWorkspaceV12(props: Props) {
     return groups
   }, [historyNamesByEmail, historyVersions])
 
+  const historyLayer = historyOpen ? <div className="matrix-v10-history-backdrop matrix-v12-history-portal" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target) setHistoryOpen(false) }}>
+    <section className="matrix-v10-history-dialog matrix-v12-history-dialog" role="dialog" aria-modal="true">
+      <header><div><span>Historial de versiones</span><h3>{props.unitName} · {props.year}</h3><small>Resumen por persona y guardado. Expande una versión para ver únicamente los cambios relevantes.</small></div><button type="button" onClick={() => setHistoryOpen(false)}><X size={18}/></button></header>
+      {historyLoading ? <div className="matrix-v10-history-loading"><LoaderCircle className="spin" size={20}/> Cargando historial...</div> : historyGroups.length === 0 ? <div className="matrix-v10-history-empty">Todavía no hay versiones registradas.</div> : <div className="matrix-v10-history-list matrix-v12-history-list">{historyGroups.map(group => <section className="matrix-v12-history-person" key={group.key}><strong className="matrix-v12-history-person-name">{group.name}</strong>{group.versions.map(version => {
+        const globalIndex = historyVersions.findIndex(item => item.id === version.id)
+        const expanded = expandedHistoryVersionNo === version.version_no
+        const detail = historyDetails[version.version_no]
+        return <article className={`matrix-v12-history-version ${expanded ? 'expanded' : ''}`} key={version.id}>
+          <button type="button" className="matrix-v12-history-version-main" onClick={() => void loadHistoryDetail(version)} aria-expanded={expanded}>
+            <span className="matrix-v10-version-number">v{version.version_no}</span>
+            <span className="matrix-v12-history-version-copy"><strong>{detail?.summary || historyActionLabel(version.action)}</strong><small>{formatDateTime(version.created_at)}</small></span>
+            <span className="matrix-v12-history-expand">{expanded ? 'Ocultar detalle' : 'Ver detalle'}</span>
+          </button>
+          {expanded && <div className="matrix-v12-history-detail">{detail?.loading ? <div className="matrix-v12-history-detail-loading"><LoaderCircle className="spin" size={16}/> Preparando cambios...</div> : <>{detail && <strong className="matrix-v12-history-detail-summary">{detail.summary}</strong>}{detail?.changes.length ? <div className="matrix-v12-history-diff"><div className="matrix-v12-history-diff-head"><span>Campo</span><span>Anterior</span><span>Nuevo</span></div>{detail.changes.map((change, index) => <div className="matrix-v12-history-diff-row" key={`${version.id}-${change.label}-${index}`}><strong>{change.label}</strong><span>{change.before}</span><span>{change.after}</span></div>)}</div> : <small className="matrix-v12-history-no-diff">No hay diferencias de contenido que mostrar para esta versión.</small>}</>}</div>}
+          {canRestore && globalIndex > 0 && <div className="matrix-v12-history-actions"><button type="button" onClick={() => void restoreVersion(version)} disabled={restoringVersionNo !== null}>{restoringVersionNo === version.version_no ? <><LoaderCircle className="spin" size={13}/> Restaurando...</> : <><RotateCcw size={13}/> Restaurar esta versión</>}</button></div>}
+        </article>
+      })}</section>)}</div>}
+      {historyHasMore && <footer className="matrix-v12-history-footer"><button type="button" onClick={() => void loadHistoryPage(historyVersions.length, true)} disabled={historyLoadingMore}>{historyLoadingMore && <LoaderCircle className="spin" size={13}/>} Cargar más</button></footer>}
+    </section>
+  </div> : null
+
   return <div ref={hostRef} className="matrix-v12-host" onClickCapture={handleRootClickCapture}>
     {sheetReady && <div className="matrix-v12-view-toggle" role="group" aria-label="Vista de matriz">
       <button type="button" className={viewMode === 'matrix' ? 'active' : ''} onClick={() => setViewMode('matrix')}>Matriz</button>
@@ -324,9 +380,6 @@ export default function MatrixWorkspaceV12(props: Props) {
       <MatrixWorkspaceV11 key={revision} {...props} onActiveMatrixChange={handleActiveMatrixChange} />
     </div>
 
-    {historyOpen && <div className="matrix-v10-history-backdrop" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target) setHistoryOpen(false) }}><section className="matrix-v10-history-dialog matrix-v12-history-dialog" role="dialog" aria-modal="true"><header><div><span>Historial de versiones</span><h3>{props.unitName} · {props.year}</h3></div><button type="button" onClick={() => setHistoryOpen(false)}><X size={18}/></button></header>
-      {historyLoading ? <div className="matrix-v10-history-loading"><LoaderCircle className="spin" size={20}/> Cargando historial...</div> : historyGroups.length === 0 ? <div className="matrix-v10-history-empty">Todavía no hay versiones registradas.</div> : <div className="matrix-v10-history-list matrix-v12-history-list">{historyGroups.map(group => <section className="matrix-v12-history-person" key={group.key}><strong className="matrix-v12-history-person-name">{group.name}</strong>{group.versions.map(version => { const globalIndex = historyVersions.findIndex(item => item.id === version.id); return <article key={version.id}><div className="matrix-v10-version-number">v{version.version_no}</div><div><strong>{historyActionLabel(version.action)}</strong><span>{formatDateTime(version.created_at)}</span></div>{canRestore && globalIndex > 0 && <div className="matrix-v12-history-actions"><button type="button" onClick={() => void restoreVersion(version)} disabled={restoringVersionNo !== null}>{restoringVersionNo === version.version_no ? <><LoaderCircle className="spin" size={13}/> Restaurando...</> : <><RotateCcw size={13}/> Restaurar esta versión</>}</button></div>}</article>})}</section>)}</div>}
-      {historyHasMore && <footer className="matrix-v12-history-footer"><button type="button" onClick={() => void loadHistoryPage(historyVersions.length, true)} disabled={historyLoadingMore}>{historyLoadingMore && <LoaderCircle className="spin" size={13}/>} Cargar más</button></footer>}
-    </section></div>}
+    {historyLayer && createPortal(historyLayer, document.body)}
   </div>
 }
