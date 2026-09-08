@@ -75,13 +75,14 @@ test('unit Excel workspace adopts Central commandbar and visible columns while p
   assert.doesNotMatch(source, /filterManagersForArea/)
 })
 
-test('unit Excel workspace keeps collaboration refresh and the existing Central implementation is not rewritten', async () => {
+test('unit Excel workspace keeps collaboration refresh and Central keeps its behavior through the scoped shared loader', async () => {
   const unitSource = await readFile(new URL('../src/UnitExcelWorkspace.tsx', import.meta.url), 'utf8')
   const centralSource = await readFile(new URL('../src/CentralExcelWorkspace.tsx', import.meta.url), 'utf8')
   assert.match(unitSource, /matrix-realtime-data-change/)
   assert.match(unitSource, /loadRows\(selectedMatrixId, true\)/)
   assert.match(centralSource, /export default function CentralExcelWorkspace/)
-  assert.match(centralSource, /manager_managements/)
+  assert.match(centralSource, /loadCentralMatrixWorkspaceData\(periodId\)/)
+  assert.doesNotMatch(centralSource, /supabase\.from\('manager_managements'\)/)
 })
 
 test('matrix reloads ignore stale responses and unit imports remove partial rows', async () => {
