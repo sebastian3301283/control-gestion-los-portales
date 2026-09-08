@@ -77,6 +77,10 @@ async function rowsOrThrow<T>(query: PromiseLike<{ data: T[] | null; error: unkn
   return result.data || []
 }
 
+function normalizeIds(ids: string[]) {
+  return [...new Set(ids.filter(Boolean))].sort()
+}
+
 export function loadPlanningPeriods(force = false) {
   return cachedPlanningGet<PlanningPeriod[]>('planning-periods', () => {
     const client = requireSupabase()
@@ -91,10 +95,28 @@ export function loadScopedManagements(unitCode: string, force = false) {
   }, force)
 }
 
+export function loadManagementsByIds(ids: string[], force = false) {
+  const normalizedIds = normalizeIds(ids)
+  if (!normalizedIds.length) return Promise.resolve([] as Management[])
+  return cachedPlanningGet<Management[]>(`managements-by-id:${normalizedIds.join(',')}`, () => {
+    const client = requireSupabase()
+    return rowsOrThrow<Management>(client.from('managements_global').select('id,name,unit_code,directory_group,active').in('id', normalizedIds).eq('active', true).order('name'))
+  }, force)
+}
+
 export function loadScopedManagers(unitCode: string, force = false) {
   return cachedPlanningGet<Manager[]>(`managers:${unitCode}`, () => {
     const client = requireSupabase()
     return rowsOrThrow<Manager>(client.from('managers').select('id,name,cargo,unit_code,directory_group,active').eq('unit_code', unitCode).eq('active', true).order('name'))
+  }, force)
+}
+
+export function loadManagersByIds(ids: string[], force = false) {
+  const normalizedIds = normalizeIds(ids)
+  if (!normalizedIds.length) return Promise.resolve([] as Manager[])
+  return cachedPlanningGet<Manager[]>(`managers-by-id:${normalizedIds.join(',')}`, () => {
+    const client = requireSupabase()
+    return rowsOrThrow<Manager>(client.from('managers').select('id,name,cargo,unit_code,directory_group,active').in('id', normalizedIds).eq('active', true).order('name'))
   }, force)
 }
 
@@ -152,7 +174,7 @@ export function loadMatrices(periodId: string, unitCode: string, force = false) 
 }
 
 export function loadManagerManagements(managementIds: string[], force = false) {
-  const normalizedIds = [...new Set(managementIds.filter(Boolean))].sort()
+  const normalizedIds = normalizeIds(managementIds)
   if (!normalizedIds.length) return Promise.resolve([] as ManagerManagement[])
   return cachedPlanningGet<ManagerManagement[]>(`manager-managements:${normalizedIds.join(',')}`, () => {
     const client = requireSupabase()
@@ -161,7 +183,7 @@ export function loadManagerManagements(managementIds: string[], force = false) {
 }
 
 export function loadGuidelineMultiRelations(guidelineIds: string[], force = false) {
-  const normalizedIds = [...new Set(guidelineIds.filter(Boolean))].sort()
+  const normalizedIds = normalizeIds(guidelineIds)
   if (!normalizedIds.length) {
     return Promise.resolve({ managements: [] as GuidelineManagement[], responsibles: [] as GuidelineResponsible[] })
   }
@@ -195,6 +217,24 @@ export async function loadScopedGuidelineData(periodId: string, unitCode: string
   return { periods, managements, managers, guidelines, catalog }
 }
 
+export async function loadNonCentralGuidelineData(periodId: string, unitCode: string) {
+  const [periods, guidelines, catalog] = await Promise.all([
+    loadPlanningPeriods(),
+    loadPlanningGuidelines(periodId, unitCode),
+    loadMatrixAreaCatalog(unitCode),
+  ])
+  const catalogManagementIds = catalog.map(item => item.management_id)
+  const legacyManagementIds = guidelines.map(item => item.management_id)
+  const managements = await loadManagementsByIds([...catalogManagementIds, ...legacyManagementIds])
+  const links = await loadManagerManagements(managements.map(item => item.id))
+  const relations = await loadGuidelineMultiRelations(guidelines.map(item => item.id))
+  const legacyManagerIds = guidelines.map(item => item.responsible_manager_id || '')
+  const relationManagerIds = relations.responsibles.map(item => item.manager_id)
+  const linkedManagerIds = links.map(item => item.manager_id)
+  const managers = await loadManagersByIds([...legacyManagerIds, ...relationManagerIds, ...linkedManagerIds])
+  return { periods, managements, managers, guidelines, catalog, links, relations }
+}
+
 export async function loadCentralGuidelineData(periodId: string) {
   const [guidelines, catalog, managements] = await Promise.all([
     loadPlanningGuidelines(periodId, 'CENTRAL'),
@@ -205,13 +245,15 @@ export async function loadCentralGuidelineData(periodId: string) {
 }
 
 export async function loadUnitMatrixWorkspaceData(periodId: string, unitCode: string) {
-  const [catalog, managements, processes, matrices, managers] = await Promise.all([
+  const [catalog, processes, matrices] = await Promise.all([
     loadMatrixAreaCatalog(unitCode),
-    loadScopedManagements(unitCode),
     loadProcesses(unitCode),
     loadMatrices(periodId, unitCode),
-    loadScopedManagers(unitCode),
   ])
+  const processManagementIds = processes.map(item => item.management_id)
+  const managements = await loadManagementsByIds([...catalog.map(item => item.management_id), ...processManagementIds])
+  const links = await loadManagerManagements(managements.map(item => item.id))
+  const managers = await loadManagersByIds(links.map(item => item.manager_id))
   return { catalog, managements, processes, matrices, managers }
 }
 
@@ -234,9 +276,7 @@ export async function prefetchGuidelineWorkspace(periodId: string, unitCode: str
     await loadCentralGuidelineData(periodId)
     return
   }
-  const data = await loadScopedGuidelineData(periodId, unitCode)
-  void loadManagerManagements(data.managements.map(item => item.id)).catch(() => undefined)
-  void loadGuidelineMultiRelations(data.guidelines.map(item => item.id)).catch(() => undefined)
+  await loadNonCentralGuidelineData(periodId, unitCode)
 }
 
 export async function prefetchMatrixWorkspace(periodId: string, unitCode: string) {
