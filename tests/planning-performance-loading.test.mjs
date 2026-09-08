@@ -21,6 +21,11 @@ test('planning GETs share a short cache and deduplicate in-flight requests', () 
   assert.match(cache, /promise/)
 })
 
+test('guideline writes also invalidate the matching matrix cache', () => {
+  assert.match(cache, /prefix\.startsWith\('planning-guidelines:'\)/)
+  assert.match(cache, /`matrices:\$\{prefix\.slice\('planning-guidelines:'\.length\)\}`/)
+})
+
 test('shared planning loaders scope unit catalogs and guidelines before downloading rows', () => {
   assert.match(cache, /managements_global[\s\S]{0,450}\.eq\('unit_code', unitCode\)/)
   assert.match(cache, /from\('managers'\)[\s\S]{0,450}\.eq\('unit_code', unitCode\)/)
