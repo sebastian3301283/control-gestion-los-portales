@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowLeft,
   ArrowRight,
@@ -102,6 +102,12 @@ function sortUnits(units: UnitAccess[]) {
   return [...units].sort((a, b) => unitOrder.indexOf(a.code) - unitOrder.indexOf(b.code))
 }
 
+function periodStatusLabel(status: PlanningPeriod['status']) {
+  if (status === 'OPEN') return 'Actual'
+  if (status === 'CLOSED') return 'Cerrado'
+  return 'Borrador'
+}
+
 function ConfirmDialog({ open, title, message, confirmText, busy, onCancel, onConfirm }: {
   open: boolean
   title: string
@@ -147,6 +153,11 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
   const selectedHomeUnit = units.find(unit => unit.code === selectedUnit) || null
 
   useEffect(() => { void loadDashboardPeriods() }, [])
+  useEffect(() => {
+    const refresh = () => { void loadDashboardPeriods() }
+    window.addEventListener('planning-periods-changed', refresh)
+    return () => window.removeEventListener('planning-periods-changed', refresh)
+  }, [selectedHomeYear])
 
   async function loadDashboardPeriods() {
     if (!supabase) return
@@ -239,10 +250,23 @@ function HomeView({ access, displayName, today, units, selectedUnit, selectedHom
   setSelectedYear: (year: number) => void
   openPlanning: (unit: UnitAccess['code']) => void
 }) {
+  const [periodDropdownOpen, setPeriodDropdownOpen] = useState(false)
+  const periodDropdownRef = useRef<HTMLDivElement>(null)
+  const selectedPeriod = periods.find(period => period.year === selectedYear) || null
+
+  useEffect(() => {
+    if (!periodDropdownOpen) return
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (periodDropdownRef.current && !periodDropdownRef.current.contains(event.target as Node)) setPeriodDropdownOpen(false)
+    }
+    document.addEventListener('mousedown', closeOnOutsideClick)
+    return () => document.removeEventListener('mousedown', closeOnOutsideClick)
+  }, [periodDropdownOpen])
+
   return <>
     <section className="welcome-card">
       <div className="welcome-copy"><h1>Hola, {displayName} 👋</h1><p>Elige una opción y empieza a trabajar.</p><div className="welcome-meta"><span><CalendarDays size={16}/> {today}</span><span><ShieldCheck size={16}/> {roleLabel(access)}</span></div></div>
-      <div className="welcome-period"><span>Periodo</span><strong>{selectedYear}</strong><label className="period-select-control"><CalendarDays size={16}/><select value={selectedYear} onChange={event => setSelectedYear(Number(event.target.value))}>{periods.map(period => <option key={period.id} value={period.year}>{period.year} · {period.status === 'OPEN' ? 'Actual' : period.status === 'CLOSED' ? 'Cerrado' : 'Borrador'}</option>)}</select><ChevronDown size={15}/></label></div>
+      <div className="welcome-period"><span>Periodo</span><strong>{selectedYear}</strong><div className="period-select-control" ref={periodDropdownRef}><button className="period-select-trigger" type="button" aria-haspopup="listbox" aria-expanded={periodDropdownOpen} onClick={() => setPeriodDropdownOpen(value => !value)}><CalendarDays size={16}/><span>Cambiar</span><ChevronDown className={periodDropdownOpen ? 'period-select-chevron open' : 'period-select-chevron'} size={15}/></button>{periodDropdownOpen && <div className="period-select-menu" role="listbox" aria-label="Seleccionar periodo">{periods.map(period => <button key={period.id} type="button" role="option" aria-selected={period.year === selectedYear} className={`period-select-option ${period.year === selectedYear ? 'active' : ''}`} onClick={() => { setSelectedYear(period.year); setPeriodDropdownOpen(false) }}><span className="period-select-copy"><strong>{period.year}</strong><small>{period.name}</small></span><span className={`period-select-badge ${period.status.toLowerCase()}`}>{periodStatusLabel(period.status)}</span></button>)}</div>}</div>{selectedPeriod && <small className="welcome-period-status">{periodStatusLabel(selectedPeriod.status)}</small>}</div>
     </section>
 
     <section className="dashboard-section">
