@@ -27,6 +27,8 @@ type Guideline = {
 }
 type ManagerManagement = { manager_id: string; management_id: string }
 type AreaLink = { management_id: string }
+type GuidelineManagement = { guideline_id: string; management_id: string; sort_order: number }
+type GuidelineResponsible = { guideline_id: string; manager_id: string; sort_order: number }
 
 const planningGetCache = new Map<string, CacheEntry<unknown>>()
 
@@ -57,7 +59,7 @@ export function invalidatePlanningCache(...prefixes: string[]) {
   }
   const expandedPrefixes = prefixes.flatMap(prefix => {
     if (!prefix.startsWith('planning-guidelines:')) return [prefix]
-    return [prefix, `matrices:${prefix.slice('planning-guidelines:'.length)}`]
+    return [prefix, `matrices:${prefix.slice('planning-guidelines:'.length)}`, 'guideline-multi:']
   })
   for (const key of planningGetCache.keys()) {
     if (expandedPrefixes.some(prefix => key.startsWith(prefix))) planningGetCache.delete(key)
@@ -158,14 +160,39 @@ export function loadManagerManagements(managementIds: string[], force = false) {
   }, force)
 }
 
+export function loadGuidelineMultiRelations(guidelineIds: string[], force = false) {
+  const normalizedIds = [...new Set(guidelineIds.filter(Boolean))].sort()
+  if (!normalizedIds.length) {
+    return Promise.resolve({ managements: [] as GuidelineManagement[], responsibles: [] as GuidelineResponsible[] })
+  }
+  const key = normalizedIds.join(',')
+  return Promise.all([
+    cachedPlanningGet<GuidelineManagement[]>(`guideline-multi:managements:${key}`, () => {
+      const client = requireSupabase()
+      return rowsOrThrow<GuidelineManagement>(client.from('planning_guideline_managements')
+        .select('guideline_id,management_id,sort_order')
+        .in('guideline_id', normalizedIds)
+        .order('sort_order'))
+    }, force),
+    cachedPlanningGet<GuidelineResponsible[]>(`guideline-multi:responsibles:${key}`, () => {
+      const client = requireSupabase()
+      return rowsOrThrow<GuidelineResponsible>(client.from('planning_guideline_responsibles')
+        .select('guideline_id,manager_id,sort_order')
+        .in('guideline_id', normalizedIds)
+        .order('sort_order'))
+    }, force),
+  ]).then(([managements, responsibles]) => ({ managements, responsibles }))
+}
+
 export async function loadScopedGuidelineData(periodId: string, unitCode: string) {
-  const [periods, managements, managers, guidelines] = await Promise.all([
+  const [periods, managements, managers, guidelines, catalog] = await Promise.all([
     loadPlanningPeriods(),
     loadScopedManagements(unitCode),
     loadScopedManagers(unitCode),
     loadPlanningGuidelines(periodId, unitCode),
+    loadMatrixAreaCatalog(unitCode),
   ])
-  return { periods, managements, managers, guidelines }
+  return { periods, managements, managers, guidelines, catalog }
 }
 
 export async function loadCentralGuidelineData(periodId: string) {
@@ -209,6 +236,7 @@ export async function prefetchGuidelineWorkspace(periodId: string, unitCode: str
   }
   const data = await loadScopedGuidelineData(periodId, unitCode)
   void loadManagerManagements(data.managements.map(item => item.id)).catch(() => undefined)
+  void loadGuidelineMultiRelations(data.guidelines.map(item => item.id)).catch(() => undefined)
 }
 
 export async function prefetchMatrixWorkspace(periodId: string, unitCode: string) {
