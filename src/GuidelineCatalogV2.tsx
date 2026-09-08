@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from 'react'
-import { ArrowRight, BookOpenText, Check, ChevronDown, LoaderCircle, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
+import { ArrowRight, BookOpenText, Check, ChevronDown, LoaderCircle, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { deleteGuidelineSupportFiles } from './guideline-support-storage'
 import { supabase } from './lib/supabase'
 import './guideline-catalog.css'
@@ -93,7 +93,6 @@ export default function GuidelineCatalogV2({ units, canManage, selectedGuideline
   const [periodId, setPeriodId] = useState('')
   const [unitCode, setUnitCode] = useState(unitOptions.find(unit => unit.code === 'CENTRAL')?.code || unitOptions[0]?.code || 'CENTRAL')
   const [areaFilter, setAreaFilter] = useState('')
-  const [search, setSearch] = useState('')
   const [formOpen, setFormOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [formPeriodId, setFormPeriodId] = useState('')
@@ -128,9 +127,8 @@ export default function GuidelineCatalogV2({ units, canManage, selectedGuideline
       const itemName = managementById.get(item.management_id)?.name || ''
       if (normalize(selectedName) !== normalize(itemName)) return false
     }
-    if (search.trim() && !normalize(item.guideline_text).includes(normalize(search))) return false
     return true
-  }).sort((a, b) => a.sort_order - b.sort_order || a.guideline_text.localeCompare(b.guideline_text, 'es')), [guidelines, periodId, unitCode, areaFilter, search, managementById])
+  }).sort((a, b) => a.sort_order - b.sort_order || a.guideline_text.localeCompare(b.guideline_text, 'es')), [guidelines, periodId, unitCode, areaFilter, managementById])
 
   const centralGroups = useMemo(() => {
     if (unitCode !== 'CENTRAL') return [] as Array<{ name: string; items: Guideline[] }>
@@ -323,7 +321,6 @@ export default function GuidelineCatalogV2({ units, canManage, selectedGuideline
         <div className="guideline-filters guideline-v2-filters">
           <select value={periodId} onChange={event => setPeriodId(event.target.value)}>{periods.map(item => <option key={item.id} value={item.id}>{item.year}{item.status === 'OPEN' ? ' · Actual' : ''}</option>)}</select>
           {unitCode === 'CENTRAL' && <select value={areaFilter} onChange={event => setAreaFilter(event.target.value)}><option value="">Todas las gerencias</option>{uniqueAreas.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>}
-          <label><Search size={15}/><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar lineamiento"/></label>
         </div>
         {canManage && <button className="guideline-add" onClick={openNew}><Plus size={15}/> Nuevo lineamiento</button>}
       </div>
