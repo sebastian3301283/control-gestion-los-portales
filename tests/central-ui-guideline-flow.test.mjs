@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import { readFile, readdir } from 'node:fs/promises'
 
 const central = await readFile(new URL('../src/CentralExcelWorkspace.tsx', import.meta.url), 'utf8')
+const planningCache = await readFile(new URL('../src/lib/planning-query-cache.ts', import.meta.url), 'utf8')
 const v11 = await readFile(new URL('../src/MatrixWorkspaceV11.tsx', import.meta.url), 'utf8')
 const dashboard = await readFile(new URL('../src/Dashboard.tsx', import.meta.url), 'utf8')
 const planningGuidelines = await readFile(new URL('../src/PlanningGuidelines.tsx', import.meta.url), 'utf8')
@@ -33,7 +34,8 @@ test('Central usa Lineamiento desde planning_guidelines y mantiene la asociació
   assert.doesNotMatch(central, /<strong>LINEAMIENTO<\/strong>/)
   assert.doesNotMatch(central, /renderObjectiveGroupEditor/)
   assert.match(central, /areaGuidelines\.map/)
-  assert.match(central, /planning_guidelines/)
+  assert.match(central, /loadCentralMatrixWorkspaceData\(periodId\)/)
+  assert.match(planningCache, /from\('planning_guidelines'\)/)
   assert.match(central, /guideline_id/)
   assert.match(central, /guideline_id: selectedRowGuidelineId \|\| rowDraft\.guideline_id \|\| null/)
   assert.doesNotMatch(central, /Crear nuevo objetivo/)
