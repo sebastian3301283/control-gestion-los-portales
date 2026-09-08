@@ -2,6 +2,7 @@ import { ChangeEvent, CSSProperties, KeyboardEvent, useEffect, useMemo, useRef, 
 import { ArrowRight, Building2, Download, History, LoaderCircle, Maximize2, Minimize2, Plus, RotateCcw, Trash2, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { supabase } from './lib/supabase'
 import { loadUnitMatrixWorkspaceData } from './lib/planning-query-cache'
+import { takePrefetchedMatrixRows } from './lib/matrix-target-prefetch'
 import { filterGerenteManagers, toggleResponsibleId } from './unit-excel-model.js'
 import './matrix-workspace-v5.css'
 import './matrix-workspace-v10.css'
@@ -242,20 +243,33 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
     if (!supabase) return
     const requestId = ++loadRowsRequestRef.current
     if (!keepEditor) setRowsLoading(true)
-    const rowResult = await supabase.from('matrix_rows').select('*').eq('matrix_id', matrixId).order('sort_order').order('created_at')
+    const prefetched = keepEditor ? null : await takePrefetchedMatrixRows(matrixId, false)
+    let nextRows: MatrixRow[]
+    let responsibleRows: RowResponsible[]
+    if (prefetched) {
+      nextRows = prefetched.rows as MatrixRow[]
+      responsibleRows = prefetched.responsibles as RowResponsible[]
+    } else {
+      const rowResult = await supabase.from('matrix_rows').select('*').eq('matrix_id', matrixId).order('sort_order').order('created_at')
+      if (requestId !== loadRowsRequestRef.current) return
+      if (rowResult.error) { setRowsLoading(false); onError('No pudimos cargar la matriz.'); return }
+      nextRows = (rowResult.data || []) as MatrixRow[]
+      responsibleRows = []
+      if (nextRows.length) {
+        const linksResult = await supabase.from('matrix_row_responsibles').select('row_id,manager_id,sort_order').in('row_id', nextRows.map(row => row.id)).order('sort_order')
+        if (requestId !== loadRowsRequestRef.current) return
+        if (linksResult.error) {
+          setRowsLoading(false)
+          onError('No pudimos cargar los responsables sin riesgo de perder información.')
+          return
+        }
+        responsibleRows = (linksResult.data || []) as RowResponsible[]
+      }
+    }
     if (requestId !== loadRowsRequestRef.current) return
-    if (rowResult.error) { setRowsLoading(false); onError('No pudimos cargar la matriz.'); return }
-    const nextRows = (rowResult.data || []) as MatrixRow[]
     const grouped: Record<string, string[]> = {}
     if (nextRows.length) {
-      const linksResult = await supabase.from('matrix_row_responsibles').select('row_id,manager_id,sort_order').in('row_id', nextRows.map(row => row.id)).order('sort_order')
-      if (requestId !== loadRowsRequestRef.current) return
-      if (linksResult.error) {
-        setRowsLoading(false)
-        onError('No pudimos cargar los responsables sin riesgo de perder información.')
-        return
-      }
-      ;((linksResult.data || []) as RowResponsible[]).forEach(link => {
+      ;responsibleRows.forEach(link => {
         if (!grouped[link.row_id]) grouped[link.row_id] = []
         grouped[link.row_id].push(link.manager_id)
       })

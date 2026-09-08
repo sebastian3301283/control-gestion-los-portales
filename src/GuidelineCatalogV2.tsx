@@ -30,6 +30,7 @@ type Props = {
   scopeUnitCode?: string
   selectedGuidelineId?: string | null
   onSelectGuideline?: (guideline: GuidelineSelection) => void
+  onPrefetchMatrixForGuideline?: (managementId: string, guidelineId: string) => void
   onOpenMatrixForGuideline?: (managementId: string, guidelineId: string) => void
 }
 
@@ -81,7 +82,7 @@ function selectionFor(item: Guideline): GuidelineSelection {
   return { id: item.id, managementId: item.management_id, label: item.guideline_text }
 }
 
-export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, scopeUnitCode, selectedGuidelineId, onSelectGuideline, onOpenMatrixForGuideline }: Props) {
+export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, scopeUnitCode, selectedGuidelineId, onSelectGuideline, onPrefetchMatrixForGuideline, onOpenMatrixForGuideline }: Props) {
   const unitOptions = units?.length ? units : fallbackUnits
   const scoped = Boolean(scopePeriodId && scopeUnitCode)
   const [open, setOpen] = useState(false)
@@ -331,7 +332,7 @@ export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, sc
             const responsible = item.responsible_manager_id ? managerById.get(item.responsible_manager_id) : null
             const parsed = splitGuideline(item.guideline_text, item.code)
             const isSelected = unitCode !== 'CENTRAL' && selectedGuidelineId === item.id
-            return <tr key={item.id} className={`${!item.active ? 'inactive-row ' : ''}${isSelected ? 'guideline-selected' : ''}`.trim()} aria-selected={isSelected || undefined} onClick={() => unitCode !== 'CENTRAL' && onSelectGuideline?.({ id: item.id, managementId: item.management_id, label: item.guideline_text })}>
+            return <tr key={item.id} className={`${!item.active ? 'inactive-row ' : ''}${isSelected ? 'guideline-selected' : ''}`.trim()} aria-selected={isSelected || undefined} onPointerEnter={() => unitCode !== 'CENTRAL' && onPrefetchMatrixForGuideline?.(item.management_id, item.id)} onFocus={() => unitCode !== 'CENTRAL' && onPrefetchMatrixForGuideline?.(item.management_id, item.id)} onClick={() => unitCode !== 'CENTRAL' && onSelectGuideline?.({ id: item.id, managementId: item.management_id, label: item.guideline_text })}>
               <td className="guideline-number">{displayNumber(item, index)}</td>
               <td className="guideline-text-cell"><div className="guideline-text-matrix-row"><span className="guideline-text-copy">{parsed.code && <strong className="guideline-code">{parsed.code}: </strong>}{parsed.text}</span>{unitCode !== 'CENTRAL' && onOpenMatrixForGuideline && <button type="button" className="guideline-row-matrix-arrow" onClick={event => stopAndRun(event, () => onOpenMatrixForGuideline?.(item.management_id, item.id))} title="Abrir matriz de este lineamiento" aria-label={`Abrir matriz de ${parsed.code || `lineamiento ${index + 1}`}`}><ArrowRight size={18}/></button>}</div></td>
               <td className="guideline-management">{managementById.get(item.management_id)?.name || '—'}</td>

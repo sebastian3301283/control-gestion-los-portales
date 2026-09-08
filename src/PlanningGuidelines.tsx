@@ -5,6 +5,7 @@ import GuidelineMultiImport from './GuidelineMultiImport'
 import GuidelinePptPanel from './GuidelinePptPanel'
 import CentralGuidelineWorkspace from './CentralGuidelineWorkspace'
 import { invalidatePlanningCache, prefetchMatrixWorkspace } from './lib/planning-query-cache'
+import { prefetchMatrixTargetRows } from './lib/matrix-target-prefetch'
 import './planning-guidelines.css'
 
 type Unit = { code: string; name: string }
@@ -116,15 +117,26 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
     }
   }
 
+  useEffect(() => {
+    if (!selectedArea) return
+    void prefetchMatrixTargetRows(periodId, unit.code, selectedArea.id, null).catch(() => undefined)
+  }, [selectedArea, periodId, unit.code])
+
+  function prefetchMatrixForGuideline(managementId: string, guidelineId: string) {
+    void prefetchMatrixTargetRows(periodId, unit.code, managementId, guidelineId).catch(() => undefined)
+  }
+
   function openMatrixForSelectedArea() {
     if (!selectedArea) return
     void prefetchMatrixWorkspace(periodId, unit.code).catch(() => undefined)
+    void prefetchMatrixTargetRows(periodId, unit.code, selectedArea.id, null).catch(() => undefined)
     setFullscreen(false)
     onOpenMatrixForArea?.(selectedArea.id, null)
   }
 
   function openMatrixForGuideline(managementId: string, guidelineId: string) {
     void prefetchMatrixWorkspace(periodId, unit.code).catch(() => undefined)
+    void prefetchMatrixTargetRows(periodId, unit.code, managementId, guidelineId).catch(() => undefined)
     setFullscreen(false)
     onOpenMatrixForArea?.(managementId, guidelineId)
     // Dashboard's legacy callback still writes an area target. Replace it immediately
@@ -151,7 +163,7 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
     {canManage && <div className="planning-guideline-admin-note"><strong>Administración de lineamientos</strong><span>Puedes importar lineamientos desde Excel, PDF, PowerPoint o imagen; cada lineamiento de HU/DEP/VS/HOT crea automáticamente su propia matriz.</span></div>}
     {importNotice && <div className="planning-guideline-import-notice">{importNotice}</div>}
 
-    {isCentral ? <CentralGuidelineWorkspace key={catalogRevision} periodId={periodId} canManage={canManage} initialAreaId={guidelineTarget?.managementId} focusGuidelineId={guidelineTarget?.guidelineId} onAreaChange={setSelectedArea} /> : <GuidelineCatalogV2 key={catalogRevision} units={[unit]} canManage={canManage} scopePeriodId={periodId} scopeUnitCode={unit.code} selectedGuidelineId={selectedGuideline?.id || guidelineTarget?.guidelineId || null} onSelectGuideline={setSelectedGuideline} onOpenMatrixForGuideline={openMatrixForGuideline} />}
+    {isCentral ? <CentralGuidelineWorkspace key={catalogRevision} periodId={periodId} canManage={canManage} initialAreaId={guidelineTarget?.managementId} focusGuidelineId={guidelineTarget?.guidelineId} onAreaChange={setSelectedArea} /> : <GuidelineCatalogV2 key={catalogRevision} units={[unit]} canManage={canManage} scopePeriodId={periodId} scopeUnitCode={unit.code} selectedGuidelineId={selectedGuideline?.id || guidelineTarget?.guidelineId || null} onSelectGuideline={setSelectedGuideline} onPrefetchMatrixForGuideline={prefetchMatrixForGuideline} onOpenMatrixForGuideline={openMatrixForGuideline} />}
 
     <GuidelinePptPanel unit={unit} periodId={periodId} canManage={canManage} managementId={isCentral ? selectedArea?.id : null} managementName={isCentral ? selectedArea?.name : null} guidelineId={selectedGuideline?.id || null} guidelineLabel={selectedGuideline?.label || null} />
 

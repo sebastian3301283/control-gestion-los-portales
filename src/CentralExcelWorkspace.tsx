@@ -2,6 +2,7 @@ import { CSSProperties, Fragment, KeyboardEvent, useEffect, useMemo, useRef, use
 import { ArrowRight, Building2, Download, History, LoaderCircle, Maximize2, Minimize2, Plus, RotateCcw, Trash2, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { supabase } from './lib/supabase'
 import { loadCentralMatrixWorkspaceData } from './lib/planning-query-cache'
+import { takePrefetchedMatrixRows } from './lib/matrix-target-prefetch'
 import { actionPlanFromSubpoints, buildCentralSubpointDrafts, findIncompleteCentralSubpoint, normalizeCentralSubpointRows, type CentralSubpointDraft, type CentralSubpointRecord } from './central-subpoint-records.js'
 import { filterHighestAreaManagers, groupHistoryByPerson, historyActionLabel } from './central-matrix-view-model.js'
 import './matrix-workspace-v5.css'
@@ -248,26 +249,39 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
     if (!supabase) return
     const requestId = ++loadRowsRequestRef.current
     if (!keepEditor) setRowsLoading(true)
-    const rowResult = await supabase.from('matrix_rows').select('*').eq('matrix_id', matrixId).order('sort_order').order('created_at')
-    if (requestId !== loadRowsRequestRef.current) return
-    if (rowResult.error) { setRowsLoading(false); onError('No pudimos cargar la matriz.'); return }
-    const nextRows = (rowResult.data || []) as MatrixRow[]
-    const rowIds = nextRows.map(row => row.id)
-    const [linksResult, subpointsResult] = rowIds.length
-      ? await Promise.all([
-          supabase.from('matrix_row_responsibles').select('row_id,manager_id,sort_order').in('row_id', rowIds).order('sort_order'),
-          supabase.from('matrix_row_subpoints').select('id,matrix_row_id,text,milestones,kpi,start_date,end_date,sort_order').in('matrix_row_id', rowIds).order('sort_order').order('created_at'),
-        ])
-      : [{ data: [], error: null }, { data: [], error: null }]
-    if (requestId !== loadRowsRequestRef.current) return
-    if (linksResult.error || subpointsResult.error) {
-      setRowsLoading(false)
-      onError('No pudimos cargar responsables y subpuntos sin riesgo de perder información.')
-      return
+    const prefetched = keepEditor ? null : await takePrefetchedMatrixRows(matrixId, true)
+    let nextRows: MatrixRow[]
+    let responsibleRows: RowResponsible[]
+    let subpointRows: PersistedCentralSubpoint[]
+    if (prefetched) {
+      nextRows = prefetched.rows as MatrixRow[]
+      responsibleRows = prefetched.responsibles as RowResponsible[]
+      subpointRows = prefetched.subpoints as PersistedCentralSubpoint[]
+    } else {
+      const rowResult = await supabase.from('matrix_rows').select('*').eq('matrix_id', matrixId).order('sort_order').order('created_at')
+      if (requestId !== loadRowsRequestRef.current) return
+      if (rowResult.error) { setRowsLoading(false); onError('No pudimos cargar la matriz.'); return }
+      nextRows = (rowResult.data || []) as MatrixRow[]
+      const rowIds = nextRows.map(row => row.id)
+      const [linksResult, subpointsResult] = rowIds.length
+        ? await Promise.all([
+            supabase.from('matrix_row_responsibles').select('row_id,manager_id,sort_order').in('row_id', rowIds).order('sort_order'),
+            supabase.from('matrix_row_subpoints').select('id,matrix_row_id,text,milestones,kpi,start_date,end_date,sort_order').in('matrix_row_id', rowIds).order('sort_order').order('created_at'),
+          ])
+        : [{ data: [], error: null }, { data: [], error: null }]
+      if (requestId !== loadRowsRequestRef.current) return
+      if (linksResult.error || subpointsResult.error) {
+        setRowsLoading(false)
+        onError('No pudimos cargar responsables y subpuntos sin riesgo de perder información.')
+        return
+      }
+      responsibleRows = (linksResult.data || []) as RowResponsible[]
+      subpointRows = (subpointsResult.data || []) as PersistedCentralSubpoint[]
     }
+    if (requestId !== loadRowsRequestRef.current) return
 
     const groupedResponsibleIds: Record<string, string[]> = {}
-    ;((linksResult.data || []) as RowResponsible[]).forEach(link => {
+    ;responsibleRows.forEach(link => {
       if (!groupedResponsibleIds[link.row_id]) groupedResponsibleIds[link.row_id] = []
       groupedResponsibleIds[link.row_id].push(link.manager_id)
     })
@@ -276,7 +290,7 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
     })
 
     const groupedSubpoints: Record<string, PersistedCentralSubpoint[]> = {}
-    ;((subpointsResult.data || []) as PersistedCentralSubpoint[]).forEach(item => {
+    ;subpointRows.forEach(item => {
       if (!groupedSubpoints[item.matrix_row_id]) groupedSubpoints[item.matrix_row_id] = []
       groupedSubpoints[item.matrix_row_id].push(item)
     })
