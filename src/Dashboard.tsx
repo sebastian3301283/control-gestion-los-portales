@@ -142,7 +142,7 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
   const [logoutBusy, setLogoutBusy] = useState(false)
   const [selectedUnit, setSelectedUnitState] = useState<string>('TODAS')
   const [periods, setPeriods] = useState<PlanningPeriod[]>([])
-  const [selectedHomeYear, setSelectedHomeYear] = useState(2026)
+  const [selectedHomeYear, setSelectedHomeYear] = useState<number>(() => new Date().getFullYear())
   const [planningEntry, setPlanningEntry] = useState<PlanningEntry>(null)
 
   const today = useMemo(() => new Intl.DateTimeFormat('es-PE', {
