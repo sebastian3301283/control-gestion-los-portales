@@ -1,0 +1,34 @@
+name: Move planning module critical CSS
+
+on:
+  push:
+    branches:
+      - auditoria-codex-parcial
+    paths:
+      - scripts/move-planning-module-css.mjs
+      - .github/workflows/move-planning-module-css.yml
+
+permissions:
+  contents: write
+
+jobs:
+  move-css:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: auditoria-codex-parcial
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Move critical CSS into base planning stylesheet
+        run: node scripts/move-planning-module-css.mjs
+      - name: Commit deterministic CSS move
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/planning.css src/planning-guidelines.css
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: prevent unstyled planning module flash"
+          git push origin HEAD:auditoria-codex-parcial
