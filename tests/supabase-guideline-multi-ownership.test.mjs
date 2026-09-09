@@ -1,12 +1,14 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { readdir, readFile } from 'node:fs/promises'
 
-const migrationUrl = new URL('../supabase/migrations/20260908223000_planning_guideline_multi_ownership.sql', import.meta.url)
+const migrationsDir = new URL('../supabase/migrations/', import.meta.url)
+const migrationName = (await readdir(migrationsDir)).find(name => name.endsWith('_planning_guideline_multi_ownership.sql'))
 
 async function migrationText() {
+  if (!migrationName) return ''
   try {
-    return await readFile(migrationUrl, 'utf8')
+    return await readFile(new URL(migrationName, migrationsDir), 'utf8')
   } catch {
     return ''
   }
