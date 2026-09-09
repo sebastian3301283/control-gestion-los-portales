@@ -36,7 +36,7 @@ test('V12 builds Matriz Resumen for any rendered matrix without extra Supabase q
   assert.doesNotMatch(source.slice(summaryStart, historyStart), /supabase\./)
 })
 
-test('all units are intercepted by the common paged metadata history before their legacy handlers can run', async () => {
+test('all units list paged history metadata first and fetch snapshots only for expanded detail', async () => {
   const source = await read(v12Url)
 
   assert.match(source, /const HISTORY_PAGE_SIZE = 20/)
@@ -50,10 +50,13 @@ test('all units are intercepted by the common paged metadata history before thei
   assert.match(source, /event\.stopPropagation\(\)/)
 
   const historyStart = source.indexOf('async function loadHistoryPage')
+  const detailStart = source.indexOf('async function loadHistoryDetail')
   const restoreStart = source.indexOf('async function restoreVersion')
   assert.notEqual(historyStart, -1)
+  assert.notEqual(detailStart, -1)
   assert.notEqual(restoreStart, -1)
-  assert.doesNotMatch(source.slice(historyStart, restoreStart), /snapshot/)
+  assert.doesNotMatch(source.slice(historyStart, detailStart), /snapshot/)
+  assert.match(source.slice(detailStart, restoreStart), /select\('version_no,snapshot'\)/)
 })
 
 test('non-Central matrices receive Central commandbar behavior and creation wording without changing their persistence model', async () => {
