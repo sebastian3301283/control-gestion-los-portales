@@ -129,3 +129,30 @@ test('responsible picker is centered and styled consistently in every HU DEP VS 
   assert.match(css, /\.matrix-unit-excel \.matrix-central-responsible-picker>summary\{[^}]*display:flex[^}]*align-items:center[^}]*min-height:40px/)
   assert.match(css, /summary::-webkit-details-marker\{display:none\}/)
 })
+
+test('unit objectives are grouped in Excel-style OB rows instead of repeating badges inside every action', async () => {
+  const { groupRowsByObjective } = await loadModel()
+  assert.equal(typeof groupRowsByObjective, 'function')
+  const rows = [
+    { id: 'r1', objective_group: 'Fortalecer ECOM' },
+    { id: 'r2', objective_group: 'Fortalecer ECOM' },
+    { id: 'r3', objective_group: 'Mejorar revenue management' },
+    { id: 'r4', objective_group: 'Fortalecer ECOM' },
+  ]
+  assert.deepEqual(groupRowsByObjective(rows).map(group => ({ objective: group.objective, ids: group.rows.map(row => row.id) })), [
+    { objective: 'Fortalecer ECOM', ids: ['r1', 'r2', 'r4'] },
+    { objective: 'Mejorar revenue management', ids: ['r3'] },
+  ])
+})
+
+test('unit matrix labels the editor as Objetivo and renders full-width numbered objective rows', async () => {
+  const source = await readFile(new URL('../src/UnitExcelWorkspace.tsx', import.meta.url), 'utf8')
+  const css = await readFile(new URL('../src/unit-excel-workspace.css', import.meta.url), 'utf8')
+  assert.match(source, /<span>Objetivo<\/span>/)
+  assert.doesNotMatch(source, />Objetivo general</)
+  assert.doesNotMatch(source, /matrix-unit-objective-badge/)
+  assert.match(source, /objectiveGroups\.map\(\(group, groupIndex\)/)
+  assert.match(source, /matrix-unit-objective-row/)
+  assert.match(source, /OB\{groupIndex \+ 1\}:/)
+  assert.match(css, /\.matrix-unit-objective-row td\{[^}]*background:/)
+})
