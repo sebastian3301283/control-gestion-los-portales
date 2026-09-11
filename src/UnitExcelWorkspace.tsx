@@ -566,6 +566,7 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
     return <details className="matrix-central-responsible-picker">
       <summary>{selectedNames.length ? <span className="matrix-central-summary-chips">{selectedNames.map(name => <i key={name}>{name}</i>)}</span> : <span>Seleccionar responsables</span>}</summary>
       <div className="matrix-central-responsible-menu">
+        <div className="matrix-central-responsible-menu-head"><strong>Responsables</strong><button type="button" className="matrix-central-responsible-close" aria-label="Cerrar selector de responsables" onClick={event => { event.preventDefault(); event.stopPropagation(); event.currentTarget.closest('details')?.removeAttribute('open') }}><X size={14}/></button></div>
         {gerenteManagers.length === 0 ? <small>No hay gerentes activos disponibles.</small> : gerenteManagers.map(manager => <label key={manager.id}><input type="checkbox" checked={selectedResponsibleIds.includes(manager.id)} onChange={() => toggleResponsible(manager.id)}/><span><strong>{manager.name}</strong>{manager.cargo && <small>{manager.cargo}</small>}</span></label>)}
       </div>
     </details>
