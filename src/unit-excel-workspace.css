@@ -29,6 +29,14 @@
 .matrix-unit-excel .matrix-central-responsible-picker>summary{display:flex;align-items:center;width:100%;min-height:40px;padding:6px 8px;box-sizing:border-box;border:1px solid #d3e0e9;border-radius:5px;background:#fff;color:#17324a;cursor:pointer;list-style:none;text-align:left}
 .matrix-unit-excel .matrix-central-responsible-picker>summary::-webkit-details-marker{display:none}
 .matrix-unit-excel .matrix-central-responsible-picker>summary::marker{content:''}
+.matrix-unit-excel .matrix-central-responsible-menu{width:100%;max-height:220px;box-sizing:border-box;left:0;right:auto;padding:5px;overflow:auto}
+.matrix-unit-excel .matrix-central-responsible-menu-head{position:sticky;top:-5px;z-index:3;display:flex;align-items:center;justify-content:space-between;gap:8px;margin:-5px -5px 4px;padding:7px 8px;background:#fff;border-bottom:1px solid #e1eaf0}
+.matrix-unit-excel .matrix-central-responsible-menu-head>strong{font-size:10px;color:#17324a}
+.matrix-unit-excel .matrix-central-responsible-close{display:grid;place-items:center;width:26px;height:26px;flex:0 0 26px;padding:0;border:1px solid #cbd9e3;border-radius:5px;background:#fff;color:#516b80;cursor:pointer}
+.matrix-unit-excel .matrix-central-responsible-close:hover{background:#f2f7fb;border-color:#aac3d6}
+.matrix-unit-excel .matrix-central-responsible-menu label{gap:7px;padding:6px 7px}
+.matrix-unit-excel .matrix-central-summary-chips{gap:3px}
+.matrix-unit-excel .matrix-central-summary-chips i{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 .matrix-unit-objective-row td{padding:8px 11px!important;background:#fff2c7!important;color:#1d2b36!important;font-size:12px!important;font-weight:800!important;border-bottom:1px solid #e1c86f!important;border-right:0!important}
 .matrix-unit-objective-row strong{font-weight:950}
