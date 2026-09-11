@@ -23,12 +23,15 @@ test('lineamientos no Central muestran múltiples gerencias y responsables sin c
   assert.match(guideline, /Gerentes responsables · Bonistas/)
 })
 
-test('matriz no Central muestra encabezado de plan y selector de objetivo general', () => {
+test('matriz no Central muestra encabezado de plan y objetivos agrupados como el Excel', () => {
   assert.match(unitMatrix, /matrix-unit-plan-header/)
   assert.match(unitMatrix, /PLAN DE ACCIÓN/)
-  assert.match(unitMatrix, /Objetivo general/)
+  assert.match(unitMatrix, /<span>Objetivo<\/span>/)
+  assert.doesNotMatch(unitMatrix, />Objetivo general</)
   assert.match(unitMatrix, /Crear nuevo objetivo/)
   assert.match(unitMatrix, /availableObjectives/)
+  assert.match(unitMatrix, /matrix-unit-objective-row/)
+  assert.match(unitMatrix, /OB\{groupIndex \+ 1\}:/)
 })
 
 test('historial usa portal global y resumen de cambios por versión', () => {
