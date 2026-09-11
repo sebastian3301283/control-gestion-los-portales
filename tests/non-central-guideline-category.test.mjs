@@ -5,11 +5,11 @@ import { readFile } from 'node:fs/promises'
 const catalog = await readFile(new URL('../src/GuidelineCatalogV2.tsx', import.meta.url), 'utf8')
 const queryCache = await readFile(new URL('../src/lib/planning-query-cache.ts', import.meta.url), 'utf8')
 
-test('HU DEP VS HOT expose the same Categoria field used by Central', () => {
+test('HU DEP VS HOT expose Categoria immediately after N', () => {
   assert.match(catalog, /category: string \| null/)
   assert.match(catalog, /const \[formCategory, setFormCategory\] = useState\(''\)/)
-  assert.match(catalog, /<th>Categoría<\/th><th>N°<\/th><th>Lineamientos Estratégicos<\/th>/)
-  assert.match(catalog, /className="guideline-category"[^>]*>\{item\.category \|\| '—'\}/)
+  assert.match(catalog, /<th>N°<\/th><th>Categoría<\/th><th>Lineamientos Estratégicos<\/th>/)
+  assert.match(catalog, /<td className="guideline-number">\{displayNumber\(item, index\)\}<\/td>\s*<td className="guideline-category">\{item\.category \|\| '—'\}<\/td>/)
   assert.match(catalog, /<label>Categoría<input value=\{formCategory\}/)
 })
 
