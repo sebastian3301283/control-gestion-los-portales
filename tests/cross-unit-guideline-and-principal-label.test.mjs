@@ -30,5 +30,5 @@ test('auto-proceso permite gerencias activadas para la unidad aunque su origen s
   assert.match(migration.sql, /matrix_unit_area_catalog/i)
   assert.match(migration.sql, /catalog\.unit_code\s*=\s*unit_code_input/i)
   assert.match(migration.sql, /catalog\.management_id\s*=\s*management_id_input/i)
-  assert.doesNotMatch(migration.sql, /managements_global[\s\S]{0,400}unit_code\s*=\s*unit_code_input/i)
+  assert.doesNotMatch(migration.sql, /\bm\.unit_code\s*=\s*unit_code_input/i)
 })
