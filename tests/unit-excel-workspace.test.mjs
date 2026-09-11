@@ -130,6 +130,19 @@ test('responsible picker is centered and styled consistently in every HU DEP VS 
   assert.match(css, /summary::-webkit-details-marker\{display:none\}/)
 })
 
+test('responsible picker fits the Responsable cell and has an explicit close button without clearing selections', async () => {
+  const source = await readFile(new URL('../src/UnitExcelWorkspace.tsx', import.meta.url), 'utf8')
+  const css = await readFile(new URL('../src/unit-excel-workspace.css', import.meta.url), 'utf8')
+  assert.match(source, /matrix-central-responsible-menu-head/)
+  assert.match(source, />Responsables<\/strong>/)
+  assert.match(source, /matrix-central-responsible-close/)
+  assert.match(source, /aria-label="Cerrar selector de responsables"/)
+  assert.match(source, /closest\('details'\)\?\.removeAttribute\('open'\)/)
+  assert.match(css, /\.matrix-unit-excel \.matrix-central-responsible-menu\{[^}]*width:100%[^}]*max-height:220px[^}]*box-sizing:border-box/)
+  assert.match(css, /\.matrix-unit-excel \.matrix-central-responsible-menu-head\{/)
+  assert.match(css, /\.matrix-unit-excel \.matrix-central-responsible-close\{/)
+})
+
 test('unit objectives are grouped in Excel-style OB rows instead of repeating badges inside every action', async () => {
   const { groupRowsByObjective } = await loadModel()
   assert.equal(typeof groupRowsByObjective, 'function')
