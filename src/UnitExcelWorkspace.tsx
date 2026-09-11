@@ -1,10 +1,10 @@
-import { ChangeEvent, CSSProperties, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { ChangeEvent, CSSProperties, Fragment, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowRight, Building2, Download, History, LoaderCircle, Maximize2, Minimize2, Plus, RotateCcw, Trash2, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { supabase } from './lib/supabase'
 import { loadGuidelineMultiRelations, loadUnitMatrixWorkspaceData } from './lib/planning-query-cache'
 import { exportStyledPlanWorkbook } from './lib/styled-plan-export'
 import { takePrefetchedMatrixRows } from './lib/matrix-target-prefetch'
-import { filterGerenteManagers, toggleResponsibleId } from './unit-excel-model.js'
+import { filterGerenteManagers, groupRowsByObjective, toggleResponsibleId } from './unit-excel-model.js'
 import './matrix-workspace-v5.css'
 import './matrix-workspace-v10.css'
 import './central-excel-workspace.css'
@@ -142,6 +142,7 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
     })
     return [...unique.values()]
   }, [rows])
+  const objectiveGroups = useMemo(() => groupRowsByObjective(rows) as Array<{ objective: string; rows: MatrixRow[] }>, [rows])
   const firstResponsible = useMemo(() => {
     const firstRow = rows.find(row => (responsibleIdsByRow[row.id] || []).length || row.responsible_text)
     if (!firstRow) return 'Sin asignar'
@@ -371,7 +372,7 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
 
   async function saveRow() {
     if (!supabase || !selectedMatrix || !effectiveCanManage || saving) return
-    if (!textValue(rowDraft.objective_group)) { onError('Selecciona o escribe el Objetivo general de esta acción.'); return }
+    if (!textValue(rowDraft.objective_group)) { onError('Selecciona o escribe el Objetivo de esta acción.'); return }
     setSaving(true); onError(''); onNotice('')
     const previousRow = editingRowId ? rows.find(row => row.id === editingRowId) || null : null
     const responsibleNames = selectedResponsibleIds.map(id => managerById.get(id)?.name).filter((name): name is string => Boolean(name))
@@ -570,6 +571,12 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
     </details>
   }
 
+  function renderObjectiveEditorRow(key: string) {
+    return <tr className="matrix-unit-objective-editor-row" key={key}><td colSpan={tableColSpan}>
+      <div className="matrix-unit-objective-picker"><label><span>Objetivo</span>{availableObjectives.length && !creatingObjective ? <select value={rowDraft.objective_group || ''} onChange={event => { if (event.target.value === '__new__') { updateDraft('objective_group', ''); setCreatingObjective(true) } else updateDraft('objective_group', event.target.value) }}><option value="">Seleccionar objetivo</option>{availableObjectives.map(objective => <option key={objective} value={objective}>{objective}</option>)}<option value="__new__">+ Crear nuevo objetivo</option></select> : <input value={rowDraft.objective_group || ''} onChange={event => updateDraft('objective_group', event.target.value)} placeholder={availableObjectives.length ? 'Escribe el nuevo objetivo' : 'Escribe el primer objetivo'} autoFocus={!editingRowId}/>}</label>{creatingObjective && availableObjectives.length > 0 && <button type="button" onClick={() => { setCreatingObjective(false); updateDraft('objective_group', availableObjectives[0] || '') }}>Usar objetivo existente</button>}</div>
+    </td></tr>
+  }
+
   function renderSpreadsheetDraftRow(key: string) {
     return <tr className="matrix-v5-edit-row matrix-v10-central-excel-row matrix-unit-excel-row--editing matrix-central-in-grid-draft" key={key} onKeyDown={handleEditKeyDown}>
       <td className="matrix-central-sheet-cell matrix-central-sheet-cell--action"><textarea rows={1} value={rowDraft.objective || ''} onChange={event => updateDraft('objective', event.target.value)} placeholder="Acción" aria-label="Acción" autoFocus/></td>
@@ -610,22 +617,24 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
       </div>
 
       <div className="matrix-v5-summary"><div><span>Área</span><strong>{selectedArea?.name || '—'}</strong></div><div><span>Unidad</span><strong>{unitName}</strong></div><div><span>Responsable principal</span><strong>{firstResponsible}</strong></div></div>
-      {rowFormOpen && <div className="matrix-unit-objective-picker"><label><span>Objetivo general</span>{availableObjectives.length && !creatingObjective ? <select value={rowDraft.objective_group || ''} onChange={event => { if (event.target.value === '__new__') { updateDraft('objective_group', ''); setCreatingObjective(true) } else updateDraft('objective_group', event.target.value) }}><option value="">Seleccionar objetivo</option>{availableObjectives.map(objective => <option key={objective} value={objective}>{objective}</option>)}<option value="__new__">+ Crear nuevo objetivo</option></select> : <input value={rowDraft.objective_group || ''} onChange={event => updateDraft('objective_group', event.target.value)} placeholder={availableObjectives.length ? 'Escribe el nuevo objetivo general' : 'Escribe el primer objetivo general'} autoFocus={!editingRowId}/>}</label>{creatingObjective && availableObjectives.length > 0 && <button type="button" onClick={() => { setCreatingObjective(false); updateDraft('objective_group', availableObjectives[0] || '') }}>Usar objetivo existente</button>}</div>}
       <div className="matrix-unit-excel-note">Esta matriz pertenece únicamente al lineamiento desde el que ingresaste.</div>
 
       <div className="matrix-v5-sheet-card"><div className="matrix-v5-sheet-scroll" style={zoomStyle}><table className="matrix-v5-sheet matrix-v10-central-excel matrix-central-spreadsheet-grid matrix-unit-excel"><thead><tr><th>Acción</th><th>Responsable</th><th>Prioridad</th><th>Hitos / Fechas</th><th>Entregable</th><th>Riesgos de no ejecutar</th><th>Restricciones</th><th>Soporte</th><th>Comité</th></tr></thead><tbody>
-        {rowsLoading ? <tr><td colSpan={tableColSpan} className="matrix-v5-table-empty"><LoaderCircle className="spin" size={20}/> Cargando matriz...</td></tr> : rows.length === 0 && !rowFormOpen ? <tr><td colSpan={tableColSpan} className="matrix-v5-table-empty">La matriz está lista. Presiona “Añadir acción” para comenzar.</td></tr> : rows.map(row => {
-          if (editingRowId === row.id) return renderSpreadsheetDraftRow(`edit-${row.id}`)
-          const responsibleIds = responsibleIdsByRow[row.id] || (row.responsible_manager_id ? [row.responsible_manager_id] : [])
-          const responsibleNames = responsibleIds.map(id => managerById.get(id)?.name).filter(Boolean)
-          return <tr data-matrix-row-id={row.id} key={row.id} className={`matrix-v10-central-excel-row ${effectiveCanManage ? 'matrix-v10-central-excel-row--editable' : ''}`} onClick={() => startEditRow(row)}>
-            <td className="matrix-v5-action-cell"><small className="matrix-unit-objective-badge">{row.objective_group || 'Sin objetivo'}</small><span>{row.objective || '—'}</span></td>
-            <td>{responsibleNames.length ? <div className="matrix-central-responsible-chips">{responsibleNames.map(name => <span key={name}>{name}</span>)}</div> : row.responsible_text || '—'}</td>
-            <td>{row.priority ? <span className={`matrix-v5-priority matrix-v5-priority--${priorityClass(row.priority)}`}>{row.priority}</span> : '—'}</td>
-            <td>{row.milestones || '—'}</td><td>{row.deliverables || '—'}</td><td>{row.risks || '—'}</td><td>{row.restrictions || '—'}</td><td>{row.support || '—'}</td><td>{row.committee || '—'}</td>
-          </tr>
-        })}
-        {rowFormOpen && !editingRowId && renderSpreadsheetDraftRow('new-unit-action')}
+        {rowsLoading ? <tr><td colSpan={tableColSpan} className="matrix-v5-table-empty"><LoaderCircle className="spin" size={20}/> Cargando matriz...</td></tr> : rows.length === 0 && !rowFormOpen ? <tr><td colSpan={tableColSpan} className="matrix-v5-table-empty">La matriz está lista. Presiona “Añadir acción” para comenzar.</td></tr> : objectiveGroups.map((group, groupIndex) => <Fragment key={`${normalizeText(group.objective)}-${groupIndex}`}>
+          <tr className="matrix-unit-objective-row"><td colSpan={tableColSpan}><strong>OB{groupIndex + 1}:</strong> {group.objective}</td></tr>
+          {group.rows.map(row => {
+            if (editingRowId === row.id) return <Fragment key={`edit-${row.id}`}>{renderObjectiveEditorRow(`objective-edit-${row.id}`)}{renderSpreadsheetDraftRow(`edit-${row.id}`)}</Fragment>
+            const responsibleIds = responsibleIdsByRow[row.id] || (row.responsible_manager_id ? [row.responsible_manager_id] : [])
+            const responsibleNames = responsibleIds.map(id => managerById.get(id)?.name).filter(Boolean)
+            return <tr data-matrix-row-id={row.id} key={row.id} className={`matrix-v10-central-excel-row ${effectiveCanManage ? 'matrix-v10-central-excel-row--editable' : ''}`} onClick={() => startEditRow(row)}>
+              <td className="matrix-v5-action-cell"><span>{row.objective || '—'}</span></td>
+              <td>{responsibleNames.length ? <div className="matrix-central-responsible-chips">{responsibleNames.map(name => <span key={name}>{name}</span>)}</div> : row.responsible_text || '—'}</td>
+              <td>{row.priority ? <span className={`matrix-v5-priority matrix-v5-priority--${priorityClass(row.priority)}`}>{row.priority}</span> : '—'}</td>
+              <td>{row.milestones || '—'}</td><td>{row.deliverables || '—'}</td><td>{row.risks || '—'}</td><td>{row.restrictions || '—'}</td><td>{row.support || '—'}</td><td>{row.committee || '—'}</td>
+            </tr>
+          })}
+        </Fragment>)}
+        {rowFormOpen && !editingRowId && <>{renderObjectiveEditorRow('new-unit-objective')}{renderSpreadsheetDraftRow('new-unit-action')}</>}
       </tbody></table></div></div>
       {expanded && <div className="matrix-central-zoom-dock" aria-label="Zoom de matriz"><button title="Alejar" onClick={() => setZoom(value => Math.max(.75, +(value - .1).toFixed(2)))}><ZoomOut size={15}/></button><span>{Math.round(zoom * 100)}%</span><button title="Acercar" onClick={() => setZoom(value => Math.min(1.4, +(value + .1).toFixed(2)))}><ZoomIn size={15}/></button><button title="Restablecer zoom" onClick={() => setZoom(1)}><RotateCcw size={14}/></button></div>}
       <div className="matrix-v5-footer"><span>{rows.length} acción{rows.length === 1 ? '' : 'es'}</span><small>Edición tipo Excel · Tab para avanzar · Ctrl+Enter para guardar</small></div>
