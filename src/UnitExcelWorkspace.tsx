@@ -1,7 +1,10 @@
-import { ChangeEvent, CSSProperties, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, ArrowRight, Building2, Check, Download, History, LoaderCircle, Maximize2, Minimize2, Plus, RotateCcw, Trash2, Upload, X, ZoomIn, ZoomOut } from 'lucide-react'
+import { ChangeEvent, CSSProperties, Fragment, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowRight, Building2, Download, History, LoaderCircle, Maximize2, Minimize2, Plus, RotateCcw, Trash2, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { supabase } from './lib/supabase'
-import { filterGerenteManagers, toggleResponsibleId } from './unit-excel-model.js'
+import { loadGuidelineMultiRelations, loadUnitMatrixWorkspaceData } from './lib/planning-query-cache'
+import { exportStyledPlanWorkbook } from './lib/styled-plan-export'
+import { takePrefetchedMatrixRows } from './lib/matrix-target-prefetch'
+import { filterGerenteManagers, groupRowsByObjective, toggleResponsibleId } from './unit-excel-model.js'
 import './matrix-workspace-v5.css'
 import './matrix-workspace-v10.css'
 import './central-excel-workspace.css'
@@ -11,6 +14,7 @@ type UnitCode = 'HU' | 'DEP' | 'VS' | 'HOT'
 type Area = { id: string; name: string; unit_code: string; directory_group: string }
 type Process = { id: string; management_id: string; unit_code: string }
 type Matrix = { id: string; name: string; process_id: string; status: string; guideline_id: string | null }
+type MatrixTarget = { periodId: string; unitCode: string; managementId: string; guidelineId?: string | null; createdAt: number }
 type Manager = { id: string; name: string; cargo: string | null; unit_code: string; directory_group: string; active?: boolean }
 type MatrixRow = {
   id: string
@@ -44,6 +48,8 @@ type Props = {
   canManage: boolean
   onError: (message: string) => void
   onNotice: (message: string) => void
+  onActiveMatrixChange?: (matrixId: string) => void
+  onGuidelineContextChange?: (context: { managementId: string; guidelineId: string | null }) => void
 }
 
 const XLSX_MODULE_URL = 'https://unpkg.com/xlsx@0.18.5/xlsx.mjs'
@@ -57,11 +63,6 @@ function normalizeText(value: unknown) {
   return String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase().replace(/\s+/g, ' ')
 }
 function textValue(value: unknown) { return String(value ?? '').trim() }
-function formatDate(value: string | null) {
-  if (!value) return '—'
-  const [year, month, day] = value.split('-')
-  return year && month && day ? `${day}/${month}/${year}` : value
-}
 function formatDateTime(value: string) {
   try { return new Intl.DateTimeFormat('es-PE', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) } catch { return value }
 }
@@ -93,7 +94,7 @@ function splitResponsibleNames(value: unknown) {
   return String(value ?? '').split(/[;,\n|]+/).map(item => item.trim()).filter(Boolean)
 }
 
-export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName, canManage, onError, onNotice }: Props) {
+export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName, canManage, onError, onNotice, onActiveMatrixChange, onGuidelineContextChange }: Props) {
   const [page, setPage] = useState<'areas' | 'sheet'>('areas')
   const [areas, setAreas] = useState<Area[]>([])
   const [processes, setProcesses] = useState<Process[]>([])
@@ -112,6 +113,10 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
   const [rowFormOpen, setRowFormOpen] = useState(false)
   const [rowDraft, setRowDraft] = useState<RowDraft>(emptyRow)
   const [selectedResponsibleIds, setSelectedResponsibleIds] = useState<string[]>([])
+  const [activeGuidelineLabel, setActiveGuidelineLabel] = useState('')
+  const [guidelineManagementNames, setGuidelineManagementNames] = useState<string[]>([])
+  const [guidelineResponsibleNames, setGuidelineResponsibleNames] = useState<string[]>([])
+  const [creatingObjective, setCreatingObjective] = useState(false)
   const [areaCanEdit, setAreaCanEdit] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [zoom, setZoom] = useState(1)
@@ -119,14 +124,25 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
   const [historyLoading, setHistoryLoading] = useState(false)
   const [versions, setVersions] = useState<MatrixVersion[]>([])
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const loadRowsRequestRef = useRef(0)
 
   const selectedArea = areas.find(item => item.id === selectedAreaId) || null
   const selectedMatrix = matrices.find(item => item.id === selectedMatrixId) || null
   const managerById = useMemo(() => new Map(managers.map(item => [item.id, item])), [managers])
   const gerenteManagers = useMemo(() => filterGerenteManagers(managers).sort((a, b) => a.name.localeCompare(b.name, 'es')), [managers])
   const effectiveCanManage = canManage || areaCanEdit
-  const tableColSpan = 13 + (effectiveCanManage ? 1 : 0)
+  const tableColSpan = 9
   const zoomStyle = { '--matrix-zoom': zoom } as CSSProperties
+  const availableObjectives = useMemo(() => {
+    const unique = new Map<string, string>()
+    rows.forEach(row => {
+      const value = textValue(row.objective_group)
+      const key = normalizeText(value)
+      if (key && !unique.has(key)) unique.set(key, value)
+    })
+    return [...unique.values()]
+  }, [rows])
+  const objectiveGroups = useMemo(() => groupRowsByObjective(rows) as Array<{ objective: string; rows: MatrixRow[] }>, [rows])
   const firstResponsible = useMemo(() => {
     const firstRow = rows.find(row => (responsibleIdsByRow[row.id] || []).length || row.responsible_text)
     if (!firstRow) return 'Sin asignar'
@@ -140,12 +156,48 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
   }, [periodId, unitCode])
   useEffect(() => {
     if (!selectedAreaId) { setAreaCanEdit(false); return }
-    void loadAreaEditPermission(selectedAreaId)
-  }, [selectedAreaId, unitCode])
+    void loadAreaEditPermission(selectedAreaId, selectedMatrix?.guideline_id || null)
+  }, [selectedAreaId, selectedMatrix?.guideline_id, unitCode])
   useEffect(() => {
     if (!selectedMatrixId) { setRows([]); setResponsibleIdsByRow({}); return }
     void loadRows(selectedMatrixId)
   }, [selectedMatrixId])
+  useEffect(() => {
+    onActiveMatrixChange?.(selectedMatrixId)
+    return () => onActiveMatrixChange?.('')
+  }, [onActiveMatrixChange, selectedMatrixId])
+  useEffect(() => {
+    if (!selectedMatrix) return
+    const process = processes.find(item => item.id === selectedMatrix.process_id)
+    const managementId = process?.management_id || selectedAreaId
+    if (managementId) onGuidelineContextChange?.({ managementId, guidelineId: selectedMatrix.guideline_id })
+  }, [selectedMatrix, selectedAreaId, processes, onGuidelineContextChange])
+  useEffect(() => {
+    const guidelineId = selectedMatrix?.guideline_id
+    if (!guidelineId || !supabase) {
+      setActiveGuidelineLabel(''); setGuidelineManagementNames([]); setGuidelineResponsibleNames([])
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      const parent = await supabase.from('planning_guidelines').select('guideline_text,management_id,responsible_manager_id').eq('id', guidelineId).maybeSingle()
+      if (cancelled || parent.error || !parent.data) return
+      let managementIds = [String(parent.data.management_id || '')].filter(Boolean)
+      let responsibleIds = [String(parent.data.responsible_manager_id || '')].filter(Boolean)
+      try {
+        const relations = await loadGuidelineMultiRelations([guidelineId])
+        if (relations.managements.length) managementIds = relations.managements.map(item => item.management_id)
+        if (relations.responsibles.length) responsibleIds = relations.responsibles.map(item => item.manager_id)
+      } catch {
+        // Compatibility fallback while a deployment and migration finish rolling out.
+      }
+      if (cancelled) return
+      setActiveGuidelineLabel(String(parent.data.guideline_text || ''))
+      setGuidelineManagementNames(managementIds.map(id => areas.find(area => area.id === id)?.name).filter((name): name is string => Boolean(name)))
+      setGuidelineResponsibleNames(responsibleIds.map(id => managerById.get(id)?.name).filter((name): name is string => Boolean(name)))
+    })()
+    return () => { cancelled = true }
+  }, [selectedMatrix?.guideline_id, areas, managerById])
   useEffect(() => {
     const handleRealtimeDataChange = (event: Event) => {
       const detail = (event as CustomEvent<{ matrixId?: string }>).detail
@@ -165,21 +217,19 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
     return () => { document.body.style.overflow = previousOverflow; window.removeEventListener('keydown', onKeyDown) }
   }, [expanded])
 
+  function matrixForGuideline(guidelineId: string) {
+    return matrices.find(item => item.guideline_id === guidelineId) || null
+  }
+
   async function loadWorkspace() {
     if (!supabase) return
     setLoading(true); onError('')
     try {
-      const [catalogResult, areaResult, processResult, matrixResult, managerResult] = await Promise.all([
-        supabase.from('matrix_unit_area_catalog').select('management_id').eq('unit_code', unitCode).order('created_at'),
-        supabase.from('managements_global').select('id,name,unit_code,directory_group').eq('active', true).order('name'),
-        supabase.from('processes').select('id,management_id,unit_code').eq('unit_code', unitCode).eq('active', true).order('created_at'),
-        supabase.from('matrices').select('id,name,process_id,status,guideline_id').eq('period_id', periodId).eq('unit_code', unitCode).eq('active', true).order('created_at'),
-        supabase.from('managers').select('id,name,cargo,unit_code,directory_group').eq('active', true).order('name'),
-      ])
-      if (catalogResult.error || areaResult.error || processResult.error || matrixResult.error || managerResult.error) throw new Error('LOAD')
-      const allAreas = (areaResult.data || []) as Area[]
-      const processData = (processResult.data || []) as Process[]
-      const allowedByCatalog = new Set((catalogResult.data || []).map(item => String(item.management_id)))
+      const workspaceData = await loadUnitMatrixWorkspaceData(periodId, unitCode)
+      const allAreas = workspaceData.managements as Area[]
+      const processData = workspaceData.processes as Process[]
+      const matrixData = workspaceData.matrices as Matrix[]
+      const allowedByCatalog = new Set(workspaceData.catalog.map(item => String(item.management_id)))
       const allowedByProcess = new Set(processData.map(item => item.management_id))
       const uniqueAreas = new Map<string, Area>()
       allAreas.forEach(area => {
@@ -187,61 +237,117 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
         const key = normalizeText(area.name)
         if (!uniqueAreas.has(key)) uniqueAreas.set(key, area)
       })
-      setAreas([...uniqueAreas.values()].sort((a, b) => a.name.localeCompare(b.name, 'es')))
+      const areaData = [...uniqueAreas.values()].sort((a, b) => a.name.localeCompare(b.name, 'es'))
+      setAreas(areaData)
       setProcesses(processData)
-      setMatrices((matrixResult.data || []) as Matrix[])
-      setManagers((managerResult.data || []) as Manager[])
+      setMatrices(matrixData)
+      setManagers(workspaceData.managers as Manager[])
+
+      let target: MatrixTarget | null = null
+      try {
+        const raw = sessionStorage.getItem('cg:matrix-target-management')
+        if (raw) target = JSON.parse(raw) as MatrixTarget
+      } catch {
+        sessionStorage.removeItem('cg:matrix-target-management')
+      }
+      if (target && (target.periodId !== periodId || target.unitCode !== unitCode || Date.now() - target.createdAt > 30000)) {
+        sessionStorage.removeItem('cg:matrix-target-management')
+        target = null
+      }
+      if (target?.guidelineId) {
+        const matrix = matrixData.find(item => item.guideline_id === target!.guidelineId) || null
+        const process = matrix ? processData.find(item => item.id === matrix.process_id) || null : null
+        const area = process ? allAreas.find(item => item.id === process.management_id) || null : null
+        sessionStorage.removeItem('cg:matrix-target-management')
+        if (!matrix || !process || !area) {
+          onError('No pudimos encontrar la matriz exclusiva de este lineamiento.')
+        } else {
+          setSelectedAreaId(area.id)
+          setSelectedMatrixId(matrix.id)
+          setPage('sheet')
+          onError('')
+          onNotice('')
+        }
+      }
     } catch {
       onError(`No pudimos cargar las áreas y matrices de ${unitName}.`)
     } finally { setLoading(false) }
   }
 
-  async function loadAreaEditPermission(areaId: string) {
+  async function loadAreaEditPermission(areaId: string, guidelineId: string | null) {
     if (!supabase) return
+    if (guidelineId) {
+      const { data, error } = await supabase.rpc('can_edit_guideline_multi', { guideline_id_input: guidelineId })
+      setAreaCanEdit(!error && Boolean(data))
+      return
+    }
     const { data, error } = await supabase.rpc('can_edit_management', { management_id_input: areaId, unit_code_input: unitCode })
     setAreaCanEdit(!error && Boolean(data))
   }
 
   async function loadRows(matrixId: string, keepEditor = false) {
     if (!supabase) return
+    const requestId = ++loadRowsRequestRef.current
     if (!keepEditor) setRowsLoading(true)
-    const rowResult = await supabase.from('matrix_rows').select('*').eq('matrix_id', matrixId).order('sort_order').order('created_at')
-    if (rowResult.error) { if (!keepEditor) setRowsLoading(false); onError('No pudimos cargar la matriz.'); return }
-    const nextRows = (rowResult.data || []) as MatrixRow[]
-    setRows(nextRows)
+    const prefetched = keepEditor ? null : await takePrefetchedMatrixRows(matrixId, false)
+    let nextRows: MatrixRow[]
+    let responsibleRows: RowResponsible[]
+    if (prefetched) {
+      nextRows = prefetched.rows as MatrixRow[]
+      responsibleRows = prefetched.responsibles as RowResponsible[]
+    } else {
+      const rowResult = await supabase.from('matrix_rows').select('*').eq('matrix_id', matrixId).order('sort_order').order('created_at')
+      if (requestId !== loadRowsRequestRef.current) return
+      if (rowResult.error) { setRowsLoading(false); onError('No pudimos cargar la matriz.'); return }
+      nextRows = (rowResult.data || []) as MatrixRow[]
+      responsibleRows = []
+      if (nextRows.length) {
+        const linksResult = await supabase.from('matrix_row_responsibles').select('row_id,manager_id,sort_order').in('row_id', nextRows.map(row => row.id)).order('sort_order')
+        if (requestId !== loadRowsRequestRef.current) return
+        if (linksResult.error) {
+          setRowsLoading(false)
+          onError('No pudimos cargar los responsables sin riesgo de perder información.')
+          return
+        }
+        responsibleRows = (linksResult.data || []) as RowResponsible[]
+      }
+    }
+    if (requestId !== loadRowsRequestRef.current) return
     const grouped: Record<string, string[]> = {}
     if (nextRows.length) {
-      const linksResult = await supabase.from('matrix_row_responsibles').select('row_id,manager_id,sort_order').in('row_id', nextRows.map(row => row.id)).order('sort_order')
-      if (!linksResult.error) {
-        ;((linksResult.data || []) as RowResponsible[]).forEach(link => {
-          if (!grouped[link.row_id]) grouped[link.row_id] = []
-          grouped[link.row_id].push(link.manager_id)
-        })
-      }
+      ;responsibleRows.forEach(link => {
+        if (!grouped[link.row_id]) grouped[link.row_id] = []
+        grouped[link.row_id].push(link.manager_id)
+      })
       nextRows.forEach(row => {
         if (!grouped[row.id]?.length && row.responsible_manager_id) grouped[row.id] = [row.responsible_manager_id]
       })
     }
+    if (requestId !== loadRowsRequestRef.current) return
+    setRows(nextRows)
     setResponsibleIdsByRow(grouped)
-    if (!keepEditor) setRowsLoading(false)
+    setRowsLoading(false)
   }
 
-  function matrixForArea(areaId: string) {
+  function matricesForArea(areaId: string) {
     const processIds = new Set(processes.filter(item => item.management_id === areaId).map(item => item.id))
-    return matrices.find(item => processIds.has(item.process_id)) || null
+    return matrices.filter(item => processIds.has(item.process_id))
+  }
+  function matrixForArea(areaId: string) {
+    const matches = matricesForArea(areaId)
+    return matches.length === 1 ? matches[0] : null
   }
   function openArea(area: Area) {
-    const matrix = matrixForArea(area.id)
+    const matches = matricesForArea(area.id)
+    if (matches.length > 1) { onError(`Esta gerencia tiene varias matrices. Abre la matriz desde el lineamiento correspondiente.`); return }
+    const matrix = matches[0] || null
     if (!matrix) { onError(`La matriz de “${area.name}” todavía no está preparada o no tienes acceso.`); return }
     setSelectedAreaId(area.id); setSelectedMatrixId(matrix.id); cancelRowEdit(); setPage('sheet'); onError(''); onNotice('')
-  }
-  function backToAreas() {
-    cancelRowEdit(); setSelectedAreaId(''); setSelectedMatrixId(''); setPage('areas'); onError(''); onNotice('')
   }
 
   function startNewRow() {
     if (rowFormOpen || !effectiveCanManage) return
-    setEditingRowId(null); setRowDraft({ ...emptyRow }); setSelectedResponsibleIds([]); setRowFormOpen(true); onError(''); onNotice('')
+    setEditingRowId(null); setRowDraft({ ...emptyRow, objective_group: availableObjectives[0] || '' }); setSelectedResponsibleIds([]); setCreatingObjective(availableObjectives.length === 0); setRowFormOpen(true); onError(''); onNotice('')
   }
   function startEditRow(row: MatrixRow) {
     if (!effectiveCanManage || rowFormOpen) return
@@ -253,10 +359,11 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
       deliverables: row.deliverables || '', committee: row.committee || '', status: row.status || 'DRAFT',
     })
     setSelectedResponsibleIds(responsibleIdsByRow[row.id] || (row.responsible_manager_id ? [row.responsible_manager_id] : []))
+    setCreatingObjective(false)
     setRowFormOpen(true); onError(''); onNotice('')
   }
   function cancelRowEdit() {
-    setEditingRowId(null); setRowFormOpen(false); setRowDraft(emptyRow); setSelectedResponsibleIds([])
+    setEditingRowId(null); setRowFormOpen(false); setRowDraft(emptyRow); setSelectedResponsibleIds([]); setCreatingObjective(false)
   }
   function updateDraft<K extends keyof RowDraft>(key: K, value: RowDraft[K]) { setRowDraft(current => ({ ...current, [key]: value })) }
   function toggleResponsible(managerId: string) {
@@ -265,7 +372,9 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
 
   async function saveRow() {
     if (!supabase || !selectedMatrix || !effectiveCanManage || saving) return
+    if (!textValue(rowDraft.objective_group)) { onError('Selecciona o escribe el Objetivo de esta acción.'); return }
     setSaving(true); onError(''); onNotice('')
+    const previousRow = editingRowId ? rows.find(row => row.id === editingRowId) || null : null
     const responsibleNames = selectedResponsibleIds.map(id => managerById.get(id)?.name).filter((name): name is string => Boolean(name))
     const payload = {
       matrix_id: selectedMatrix.id,
@@ -286,43 +395,85 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
       deliverables: rowDraft.deliverables || null,
       committee: rowDraft.committee || null,
       status: rowDraft.status,
-      sort_order: editingRowId ? rows.find(row => row.id === editingRowId)?.sort_order || 0 : rows.length,
+      sort_order: editingRowId ? previousRow?.sort_order || 0 : rows.length,
     }
     let rowId = editingRowId
     let created = false
+    const rollbackParentRow = async () => {
+      if (!rowId) return true
+      if (created) {
+        const { error } = await supabase.from('matrix_rows').delete().eq('id', rowId)
+        return !error
+      }
+      if (!previousRow) return false
+      const { error } = await supabase.from('matrix_rows').update({
+        objective_group: previousRow.objective_group,
+        objective: previousRow.objective,
+        action_plan: previousRow.action_plan,
+        responsible_manager_id: previousRow.responsible_manager_id,
+        responsible_text: previousRow.responsible_text,
+        priority: previousRow.priority,
+        milestones: previousRow.milestones,
+        kpi: previousRow.kpi,
+        target: previousRow.target,
+        start_date: previousRow.start_date,
+        end_date: previousRow.end_date,
+        risks: previousRow.risks,
+        restrictions: previousRow.restrictions,
+        support: previousRow.support,
+        deliverables: previousRow.deliverables,
+        committee: previousRow.committee,
+        status: previousRow.status,
+        sort_order: previousRow.sort_order,
+      }).eq('id', rowId)
+      return !error
+    }
     if (editingRowId) {
       const { error } = await supabase.from('matrix_rows').update(payload).eq('id', editingRowId)
-      if (error) { setSaving(false); onError('No pudimos actualizar la fila.'); return }
+      if (error) { setSaving(false); onError('No pudimos actualizar la acción.'); return }
     } else {
       const { data, error } = await supabase.from('matrix_rows').insert(payload).select('id').single()
-      if (error || !data?.id) { setSaving(false); onError('No pudimos agregar la fila.'); return }
+      if (error || !data?.id) { setSaving(false); onError('No pudimos agregar la acción.'); return }
       rowId = String(data.id); created = true
     }
     if (rowId) {
       const previousIds = responsibleIdsByRow[rowId] || []
+      const restoreResponsibles = async () => {
+        const removeResult = await supabase.from('matrix_row_responsibles').delete().eq('row_id', rowId)
+        if (removeResult.error) return false
+        if (!previousIds.length) return true
+        const restoreResult = await supabase.from('matrix_row_responsibles').insert(previousIds.map((managerId, index) => ({ row_id: rowId, manager_id: managerId, sort_order: index })))
+        return !restoreResult.error
+      }
       const deleteResult = await supabase.from('matrix_row_responsibles').delete().eq('row_id', rowId)
       if (deleteResult.error) {
-        if (created) await supabase.from('matrix_rows').delete().eq('id', rowId)
-        setSaving(false); onError('No pudimos actualizar los responsables.'); return
+        const parentRestored = await rollbackParentRow()
+        setSaving(false)
+        await loadRows(selectedMatrix.id, true)
+        onError(parentRestored ? 'No pudimos actualizar los responsables. No se conservaron cambios parciales.' : 'No pudimos actualizar los responsables ni confirmar la reversión. Recarga la matriz antes de continuar.')
+        return
       }
       if (selectedResponsibleIds.length) {
         const insertResult = await supabase.from('matrix_row_responsibles').insert(selectedResponsibleIds.map((managerId, index) => ({ row_id: rowId, manager_id: managerId, sort_order: index })))
         if (insertResult.error) {
-          if (previousIds.length) await supabase.from('matrix_row_responsibles').insert(previousIds.map((managerId, index) => ({ row_id: rowId, manager_id: managerId, sort_order: index })))
-          if (created) await supabase.from('matrix_rows').delete().eq('id', rowId)
-          setSaving(false); onError('No pudimos guardar los responsables seleccionados.'); return
+          const responsiblesRestored = await restoreResponsibles()
+          const parentRestored = await rollbackParentRow()
+          setSaving(false)
+          await loadRows(selectedMatrix.id, true)
+          onError(responsiblesRestored && parentRestored ? 'No pudimos guardar los responsables seleccionados. No se conservaron cambios parciales.' : 'No pudimos guardar los responsables ni confirmar la reversión completa. Recarga la matriz antes de continuar.')
+          return
         }
       }
     }
     const wasEditing = Boolean(editingRowId)
-    setSaving(false); cancelRowEdit(); onNotice(wasEditing ? 'Fila actualizada.' : 'Fila agregada.'); await loadRows(selectedMatrix.id)
+    setSaving(false); cancelRowEdit(); onNotice(wasEditing ? 'Acción actualizada.' : 'Acción agregada.'); await loadRows(selectedMatrix.id)
   }
 
   async function deleteRow(rowId: string) {
     if (!supabase || !selectedMatrix || !effectiveCanManage) return
     const { error } = await supabase.from('matrix_rows').delete().eq('id', rowId)
-    if (error) { onError('No pudimos eliminar la fila.'); return }
-    onNotice('Fila eliminada.'); await loadRows(selectedMatrix.id)
+    if (error) { onError('No pudimos eliminar la acción.'); return }
+    cancelRowEdit(); onNotice('Acción eliminada.'); await loadRows(selectedMatrix.id)
   }
 
   function handleEditKeyDown(event: KeyboardEvent<HTMLTableRowElement>) {
@@ -334,17 +485,17 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
     if (!selectedMatrix) return
     setExporting(true); onError('')
     try {
-      const XLSX = await import(/* @vite-ignore */ XLSX_MODULE_URL)
       const headers = ['OBJETIVO','ACCIÓN','RESPONSABLE','PRIORIDAD','Hitos / Fechas','KPI','INICIO','FIN','RIESGOS','RESTRICCIONES','SOPORTE','ENTREGABLE','COMITÉ']
-      const grid: unknown[][] = [[`PLAN DE ACCIÓN ${year}`], [`UNIDAD: ${unitName}`, `ÁREA: ${selectedArea?.name || ''}`], [], headers]
-      rows.forEach(row => {
+      const exportRows = rows.map(row => {
         const responsible = (responsibleIdsByRow[row.id] || []).map(id => managerById.get(id)?.name).filter(Boolean).join(', ') || row.responsible_text || ''
-        grid.push([row.objective_group || '', row.objective || '', responsible, row.priority || '', row.milestones || '', row.kpi || '', row.start_date || '', row.end_date || '', row.risks || '', row.restrictions || '', row.support || '', row.deliverables || '', row.committee || ''])
+        return [row.objective_group || '', row.objective || '', responsible, row.priority || '', row.milestones || '', row.kpi || '', row.start_date || '', row.end_date || '', row.risks || '', row.restrictions || '', row.support || '', row.deliverables || '', row.committee || '']
       })
-      const sheet = XLSX.utils.aoa_to_sheet(grid)
-      sheet['!cols'] = [{ wch: 42 }, { wch: 54 }, { wch: 32 }, { wch: 14 }, { wch: 26 }, { wch: 26 }, { wch: 14 }, { wch: 14 }, { wch: 30 }, { wch: 26 }, { wch: 26 }, { wch: 26 }, { wch: 24 }]
-      const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, sheet, 'Plan de Acción')
-      XLSX.writeFile(workbook, `Plan_de_Accion_${unitCode}_${selectedArea?.name || 'Area'}_${year}.xlsx`)
+      await exportStyledPlanWorkbook({
+        year, unitCode, unitName, areaName: selectedArea?.name, guideline: activeGuidelineLabel,
+        managementNames: guidelineManagementNames.length ? guidelineManagementNames : (selectedArea?.name ? [selectedArea.name] : []),
+        responsibleNames: guidelineResponsibleNames.length ? guidelineResponsibleNames : (firstResponsible !== 'Sin asignar' ? [firstResponsible] : []),
+        headers, rows: exportRows,
+      })
     } catch { onError('No pudimos exportar la matriz a Excel.') } finally { setExporting(false) }
   }
 
@@ -352,6 +503,7 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
     const file = event.target.files?.[0]; event.target.value = ''
     if (!file || !selectedMatrix || !supabase || !effectiveCanManage) return
     setImporting(true); onError(''); onNotice('')
+    const createdRowIds: string[] = []
     try {
       const XLSX = await import(/* @vite-ignore */ XLSX_MODULE_URL)
       const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true })
@@ -385,6 +537,7 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
         const { data, error } = await supabase.from('matrix_rows').insert(payload).select('id').single()
         if (error || !data?.id) throw error || new Error('INSERT')
         const rowId = String(data.id)
+        createdRowIds.push(rowId)
         if (managerIds.length) {
           const linkResult = await supabase.from('matrix_row_responsibles').insert(managerIds.map((managerId, index) => ({ row_id: rowId, manager_id: managerId, sort_order: index })))
           if (linkResult.error) { await supabase.from('matrix_rows').delete().eq('id', rowId); throw linkResult.error }
@@ -393,7 +546,10 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
       }
       if (!imported) { onError('No encontramos filas para importar.'); return }
       await loadRows(selectedMatrix.id); onNotice(`${imported} fila${imported === 1 ? '' : 's'} importada${imported === 1 ? '' : 's'} correctamente.`)
-    } catch { onError(`No pudimos importar el Excel de ${unitName}. Revisa el formato y los nombres de responsables.`) } finally { setImporting(false) }
+    } catch {
+      if (createdRowIds.length) await supabase.from('matrix_rows').delete().in('id', createdRowIds)
+      onError(`No pudimos importar el Excel de ${unitName}. No se conservaron filas parciales; revisa el formato y los nombres de responsables.`)
+    } finally { setImporting(false) }
   }
 
   async function openHistory() {
@@ -410,69 +566,79 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
     return <details className="matrix-central-responsible-picker">
       <summary>{selectedNames.length ? <span className="matrix-central-summary-chips">{selectedNames.map(name => <i key={name}>{name}</i>)}</span> : <span>Seleccionar responsables</span>}</summary>
       <div className="matrix-central-responsible-menu">
+        <div className="matrix-central-responsible-menu-head"><strong>Responsables</strong><button type="button" className="matrix-central-responsible-close" aria-label="Cerrar selector de responsables" onClick={event => { event.preventDefault(); event.stopPropagation(); event.currentTarget.closest('details')?.removeAttribute('open') }}><X size={14}/></button></div>
         {gerenteManagers.length === 0 ? <small>No hay gerentes activos disponibles.</small> : gerenteManagers.map(manager => <label key={manager.id}><input type="checkbox" checked={selectedResponsibleIds.includes(manager.id)} onChange={() => toggleResponsible(manager.id)}/><span><strong>{manager.name}</strong>{manager.cargo && <small>{manager.cargo}</small>}</span></label>)}
       </div>
     </details>
   }
 
+  function renderObjectiveEditorRow(key: string) {
+    return <tr className="matrix-unit-objective-editor-row" key={key}><td colSpan={tableColSpan}>
+      <div className="matrix-unit-objective-picker"><label><span>Objetivo</span>{availableObjectives.length && !creatingObjective ? <select value={rowDraft.objective_group || ''} onChange={event => { if (event.target.value === '__new__') { updateDraft('objective_group', ''); setCreatingObjective(true) } else updateDraft('objective_group', event.target.value) }}><option value="">Seleccionar objetivo</option>{availableObjectives.map(objective => <option key={objective} value={objective}>{objective}</option>)}<option value="__new__">+ Crear nuevo objetivo</option></select> : <input value={rowDraft.objective_group || ''} onChange={event => updateDraft('objective_group', event.target.value)} placeholder={availableObjectives.length ? 'Escribe el nuevo objetivo' : 'Escribe el primer objetivo'} autoFocus={!editingRowId}/>}</label>{creatingObjective && availableObjectives.length > 0 && <button type="button" onClick={() => { setCreatingObjective(false); updateDraft('objective_group', availableObjectives[0] || '') }}>Usar objetivo existente</button>}</div>
+    </td></tr>
+  }
+
   function renderSpreadsheetDraftRow(key: string) {
     return <tr className="matrix-v5-edit-row matrix-v10-central-excel-row matrix-unit-excel-row--editing matrix-central-in-grid-draft" key={key} onKeyDown={handleEditKeyDown}>
-      <td className="matrix-central-sheet-cell matrix-central-sheet-cell--objective"><input value={rowDraft.objective_group || ''} onChange={event => updateDraft('objective_group', event.target.value)} placeholder="Objetivo" aria-label="Objetivo" autoFocus/></td>
-      <td className="matrix-central-sheet-cell matrix-central-sheet-cell--action"><textarea rows={1} value={rowDraft.objective || ''} onChange={event => updateDraft('objective', event.target.value)} placeholder="Acción" aria-label="Acción"/></td>
+      <td className="matrix-central-sheet-cell matrix-central-sheet-cell--action"><textarea rows={1} value={rowDraft.objective || ''} onChange={event => updateDraft('objective', event.target.value)} placeholder="Acción" aria-label="Acción" autoFocus/></td>
       <td className="matrix-central-sheet-cell matrix-central-sheet-cell--responsible">{renderResponsiblePicker()}</td>
       <td className="matrix-central-sheet-cell"><select value={rowDraft.priority || ''} onChange={event => updateDraft('priority', event.target.value)} aria-label="Prioridad"><option value="">—</option><option>Alta</option><option>Media</option><option>Baja</option></select></td>
       <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.milestones || ''} onChange={event => updateDraft('milestones', event.target.value)} placeholder="Hito o fecha" aria-label="Hitos o fechas"/></td>
-      <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.kpi || ''} onChange={event => updateDraft('kpi', event.target.value)} placeholder="KPI" aria-label="KPI"/></td>
-      <td className="matrix-central-sheet-cell"><input type="date" value={rowDraft.start_date || ''} onChange={event => updateDraft('start_date', event.target.value)} aria-label="Inicio"/></td>
-      <td className="matrix-central-sheet-cell"><input type="date" value={rowDraft.end_date || ''} onChange={event => updateDraft('end_date', event.target.value)} aria-label="Fin"/></td>
-      <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.risks || ''} onChange={event => updateDraft('risks', event.target.value)} placeholder="Riesgos" aria-label="Riesgos"/></td>
+      <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.deliverables || ''} onChange={event => updateDraft('deliverables', event.target.value)} placeholder="Entregable" aria-label="Entregable"/></td>
+      <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.risks || ''} onChange={event => updateDraft('risks', event.target.value)} placeholder="Riesgos de no ejecutar" aria-label="Riesgos de no ejecutar"/></td>
       <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.restrictions || ''} onChange={event => updateDraft('restrictions', event.target.value)} placeholder="Restricciones" aria-label="Restricciones"/></td>
       <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.support || ''} onChange={event => updateDraft('support', event.target.value)} placeholder="Soporte" aria-label="Soporte"/></td>
-      <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.deliverables || ''} onChange={event => updateDraft('deliverables', event.target.value)} placeholder="Entregable" aria-label="Entregable"/></td>
       <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.committee || ''} onChange={event => updateDraft('committee', event.target.value)} placeholder="Comité" aria-label="Comité"/></td>
-      {effectiveCanManage && <td className="matrix-central-sheet-cell matrix-central-sheet-cell--actions"><div className="matrix-v5-row-actions matrix-central-edit-actions"><button type="button" title="Cancelar" onClick={cancelRowEdit}><X size={14}/></button><button type="button" className="save" title="Guardar · Ctrl+Enter" onClick={() => void saveRow()} disabled={saving}>{saving ? <LoaderCircle className="spin" size={14}/> : <Check size={14}/>}</button></div></td>}
     </tr>
   }
 
   return <div className={`matrix-v5 matrix-v10 matrix-v5--${unitAccent[unitCode]} ${page === 'sheet' ? 'matrix-v5--sheet' : ''} ${expanded ? 'matrix-v5--expanded' : ''}`}>
     {page === 'areas' && <>
-      <section className="matrix-v5-intro"><div><span>Periodo {year} · {unitCode}</span><h3>Matrices de {unitName}</h3><p>Selecciona un área para abrir su matriz. En Responsable podrás elegir uno o varios gerentes activos de la plataforma, sin filtro por área.</p></div></section>
-      {loading ? <div className="matrix-v5-loading"><LoaderCircle className="spin" size={22}/> Cargando matrices...</div> : <section className="matrix-v5-stage"><div className="matrix-v5-stage-head"><small>Áreas habilitadas</small><h4>Selecciona un área</h4></div>{areas.length === 0 ? <div className="matrix-v5-empty"><Building2 size={24}/><strong>No tienes áreas disponibles</strong></div> : <div className="matrix-v5-area-grid">{areas.map(area => <button className="matrix-v5-area-card" key={area.id} onClick={() => openArea(area)}><span><Building2 size={20}/></span><div><strong>{area.name}</strong><small>{matrixForArea(area.id) ? 'Matriz lista para abrir' : 'Sin matriz disponible'}</small></div><ArrowRight size={17}/></button>)}</div>}</section>}
+      <section className="matrix-v5-intro"><div><span>Periodo {year} · {unitCode}</span><h3>Matrices de {unitName}</h3><p>La matriz se abre desde el lineamiento correspondiente. Cada lineamiento tiene una matriz exclusiva.</p></div></section>
+      {loading ? <div className="matrix-v5-loading"><LoaderCircle className="spin" size={22}/> Cargando matrices...</div> : <section className="matrix-v5-stage"><div className="matrix-v5-stage-head"><small>Gerencias habilitadas</small><h4>Abriendo matriz</h4></div>{areas.length === 0 ? <div className="matrix-v5-empty"><Building2 size={24}/><strong>No tienes gerencias disponibles</strong></div> : <div className="matrix-v5-area-grid">{areas.map(area => { const matches = matricesForArea(area.id); return <button className="matrix-v5-area-card" key={area.id} onClick={() => openArea(area)}><span><Building2 size={20}/></span><div><strong>{area.name}</strong><small>{matches.length > 1 ? 'Abre desde un lineamiento' : matrixForArea(area.id) ? 'Matriz lista para abrir' : 'Sin matriz disponible'}</small></div><ArrowRight size={17}/></button> })}</div>}</section>}
     </>}
 
     {page === 'sheet' && selectedMatrix && <section className="matrix-v5-plan-shell">
-      <div className="matrix-v5-toolbar"><div className="matrix-v5-toolbar-actions">
-        <button className="matrix-v5-secondary" onClick={backToAreas}><ArrowLeft size={16}/> Áreas</button>
-        <button className="matrix-v5-secondary" onClick={() => setExpanded(value => !value)}>{expanded ? <Minimize2 size={16}/> : <Maximize2 size={16}/>} {expanded ? 'Salir de pantalla completa' : 'Expandir matriz'}</button>
-        {expanded && <div className="matrix-v5-zoom"><button title="Alejar" onClick={() => setZoom(value => Math.max(.75, +(value - .1).toFixed(2)))}><ZoomOut size={15}/></button><span>{Math.round(zoom * 100)}%</span><button title="Acercar" onClick={() => setZoom(value => Math.min(1.4, +(value + .1).toFixed(2)))}><ZoomIn size={15}/></button><button title="Restablecer zoom" onClick={() => setZoom(1)}><RotateCcw size={14}/></button></div>}
-        <button className="matrix-v5-secondary" onClick={() => void openHistory()}><History size={16}/> Historial</button>
-        {effectiveCanManage && <><input ref={fileInputRef} type="file" accept=".xlsx,.xls" hidden onChange={event => void importExcel(event)}/><button className="matrix-v5-secondary" onClick={() => fileInputRef.current?.click()} disabled={importing}><Upload size={16}/>{importing ? 'Importando...' : 'Importar Excel'}</button></>}
-        <button className="matrix-v5-secondary" onClick={() => void exportExcel()} disabled={exporting}><Download size={16}/>{exporting ? 'Exportando...' : 'Exportar Excel'}</button>
-        {effectiveCanManage && <button className="matrix-v5-primary" onClick={startNewRow}><Plus size={16}/> Nueva fila</button>}
-      </div></div>
+      <div className="matrix-central-page-head">
+        <div className="matrix-unit-plan-header"><span>PLAN DE ACCIÓN {year}</span><strong>{activeGuidelineLabel || 'Lineamiento estratégico'}</strong><div><small><b>Unidad</b>{unitName}</small><small><b>Gerencia(s) Responsable(s)</b>{guidelineManagementNames.join(', ') || selectedArea?.name || '—'}</small><small><b>Responsable(s)</b>{guidelineResponsibleNames.join(', ') || firstResponsible}</small></div></div>
+        <div className="matrix-central-commandbar" aria-label="Controles de matriz">
+          <div className="matrix-central-commandbar-primary">
+            <button className="matrix-v5-secondary" onClick={() => setExpanded(value => !value)}>{expanded ? <Minimize2 size={16}/> : <Maximize2 size={16}/>} {expanded ? 'Salir de pantalla completa' : 'Expandir matriz'}</button>
+            <button className="matrix-v5-secondary" onClick={() => void openHistory()}><History size={16}/> Historial</button>
+            {effectiveCanManage && <input ref={fileInputRef} type="file" accept=".xlsx,.xls" hidden disabled={importing} onChange={event => void importExcel(event)}/>} 
+            <button className="matrix-v5-secondary" onClick={() => void exportExcel()} disabled={exporting}><Download size={16}/>{exporting ? 'Exportando...' : 'Exportar Excel'}</button>
+            {effectiveCanManage && <button type="button" className="matrix-central-add-action" onClick={startNewRow} disabled={rowFormOpen}><Plus size={14}/> Añadir acción</button>}
+          </div>
+          {rowFormOpen && <div className="matrix-central-commandbar-context">
+            <button type="button" className="save" data-edit-action="save" onClick={() => void saveRow()} disabled={saving}>{saving && <LoaderCircle className="spin" size={13}/>} Guardar</button>
+            <button type="button" data-edit-action="cancel" onClick={cancelRowEdit}>Cancelar</button>
+            {editingRowId && <button type="button" className="danger" data-edit-action="delete" onClick={() => void deleteRow(editingRowId)}><Trash2 size={13}/> Eliminar acción</button>}
+          </div>}
+        </div>
+      </div>
 
-      <div className="matrix-v5-title"><span>Matriz de Plan de Acción</span><h2>PLAN DE ACCIÓN {year}</h2></div>
       <div className="matrix-v5-summary"><div><span>Área</span><strong>{selectedArea?.name || '—'}</strong></div><div><span>Unidad</span><strong>{unitName}</strong></div><div><span>Responsable principal</span><strong>{firstResponsible}</strong></div></div>
-      <div className="matrix-unit-excel-note">Los responsables disponibles son todos los gerentes activos de la plataforma; no se restringen por el área seleccionada.</div>
+      <div className="matrix-unit-excel-note">Esta matriz pertenece únicamente al lineamiento desde el que ingresaste.</div>
 
-      <div className="matrix-v5-sheet-card"><div className="matrix-v5-sheet-scroll" style={zoomStyle}><table className="matrix-v5-sheet matrix-v10-central-excel matrix-central-spreadsheet-grid matrix-unit-excel"><thead><tr><th>Objetivo</th><th>Acción</th><th>Responsable</th><th>Prioridad</th><th>Hitos / Fechas</th><th>KPI</th><th>Inicio</th><th>Fin</th><th>Riesgos</th><th>Restricciones</th><th>Soporte</th><th>Entregable</th><th>Comité</th>{effectiveCanManage && <th>Acciones</th>}</tr></thead><tbody>
-        {rowsLoading ? <tr><td colSpan={tableColSpan} className="matrix-v5-table-empty"><LoaderCircle className="spin" size={20}/> Cargando matriz...</td></tr> : rows.length === 0 && !rowFormOpen ? <tr><td colSpan={tableColSpan} className="matrix-v5-table-empty">La matriz está lista. Presiona “Nueva fila” para comenzar.</td></tr> : rows.map(row => {
-          if (editingRowId === row.id) return renderSpreadsheetDraftRow(`edit-${row.id}`)
-          const responsibleIds = responsibleIdsByRow[row.id] || (row.responsible_manager_id ? [row.responsible_manager_id] : [])
-          const responsibleNames = responsibleIds.map(id => managerById.get(id)?.name).filter(Boolean)
-          return <tr data-matrix-row-id={row.id} key={row.id} className={`matrix-v10-central-excel-row ${effectiveCanManage ? 'matrix-v10-central-excel-row--editable' : ''}`} onClick={() => startEditRow(row)}>
-            <td className="matrix-unit-objective-cell">{row.objective_group || '—'}</td>
-            <td className="matrix-v5-action-cell">{row.objective || '—'}</td>
-            <td>{responsibleNames.length ? <div className="matrix-central-responsible-chips">{responsibleNames.map(name => <span key={name}>{name}</span>)}</div> : row.responsible_text || '—'}</td>
-            <td>{row.priority ? <span className={`matrix-v5-priority matrix-v5-priority--${priorityClass(row.priority)}`}>{row.priority}</span> : '—'}</td>
-            <td>{row.milestones || '—'}</td><td>{row.kpi || '—'}</td><td>{formatDate(row.start_date)}</td><td>{formatDate(row.end_date)}</td>
-            <td>{row.risks || '—'}</td><td>{row.restrictions || '—'}</td><td>{row.support || '—'}</td><td>{row.deliverables || '—'}</td><td>{row.committee || '—'}</td>
-            {effectiveCanManage && <td><div className="matrix-v5-row-actions"><button type="button" title="Eliminar fila" className="danger" onClick={event => { event.stopPropagation(); void deleteRow(row.id) }}><Trash2 size={14}/></button></div></td>}
-          </tr>
-        })}
-        {rowFormOpen && !editingRowId && renderSpreadsheetDraftRow('new-unit-action')}
+      <div className="matrix-v5-sheet-card"><div className="matrix-v5-sheet-scroll" style={zoomStyle}><table className="matrix-v5-sheet matrix-v10-central-excel matrix-central-spreadsheet-grid matrix-unit-excel"><thead><tr><th>Acción</th><th>Responsable</th><th>Prioridad</th><th>Hitos / Fechas</th><th>Entregable</th><th>Riesgos de no ejecutar</th><th>Restricciones</th><th>Soporte</th><th>Comité</th></tr></thead><tbody>
+        {rowsLoading ? <tr><td colSpan={tableColSpan} className="matrix-v5-table-empty"><LoaderCircle className="spin" size={20}/> Cargando matriz...</td></tr> : rows.length === 0 && !rowFormOpen ? <tr><td colSpan={tableColSpan} className="matrix-v5-table-empty">La matriz está lista. Presiona “Añadir acción” para comenzar.</td></tr> : objectiveGroups.map((group, groupIndex) => <Fragment key={`${normalizeText(group.objective)}-${groupIndex}`}>
+          <tr className="matrix-unit-objective-row"><td colSpan={tableColSpan}><strong>OB{groupIndex + 1}:</strong> {group.objective}</td></tr>
+          {group.rows.map(row => {
+            if (editingRowId === row.id) return <Fragment key={`edit-${row.id}`}>{renderObjectiveEditorRow(`objective-edit-${row.id}`)}{renderSpreadsheetDraftRow(`edit-${row.id}`)}</Fragment>
+            const responsibleIds = responsibleIdsByRow[row.id] || (row.responsible_manager_id ? [row.responsible_manager_id] : [])
+            const responsibleNames = responsibleIds.map(id => managerById.get(id)?.name).filter(Boolean)
+            return <tr data-matrix-row-id={row.id} key={row.id} className={`matrix-v10-central-excel-row ${effectiveCanManage ? 'matrix-v10-central-excel-row--editable' : ''}`} onClick={() => startEditRow(row)}>
+              <td className="matrix-v5-action-cell"><span>{row.objective || '—'}</span></td>
+              <td>{responsibleNames.length ? <div className="matrix-central-responsible-chips">{responsibleNames.map(name => <span key={name}>{name}</span>)}</div> : row.responsible_text || '—'}</td>
+              <td>{row.priority ? <span className={`matrix-v5-priority matrix-v5-priority--${priorityClass(row.priority)}`}>{row.priority}</span> : '—'}</td>
+              <td>{row.milestones || '—'}</td><td>{row.deliverables || '—'}</td><td>{row.risks || '—'}</td><td>{row.restrictions || '—'}</td><td>{row.support || '—'}</td><td>{row.committee || '—'}</td>
+            </tr>
+          })}
+        </Fragment>)}
+        {rowFormOpen && !editingRowId && <>{renderObjectiveEditorRow('new-unit-objective')}{renderSpreadsheetDraftRow('new-unit-action')}</>}
       </tbody></table></div></div>
-      <div className="matrix-v5-footer"><span>{rows.length} fila{rows.length === 1 ? '' : 's'}</span><small>Edición tipo Excel · Tab para avanzar · Ctrl+Enter para guardar</small></div>
+      {expanded && <div className="matrix-central-zoom-dock" aria-label="Zoom de matriz"><button title="Alejar" onClick={() => setZoom(value => Math.max(.75, +(value - .1).toFixed(2)))}><ZoomOut size={15}/></button><span>{Math.round(zoom * 100)}%</span><button title="Acercar" onClick={() => setZoom(value => Math.min(1.4, +(value + .1).toFixed(2)))}><ZoomIn size={15}/></button><button title="Restablecer zoom" onClick={() => setZoom(1)}><RotateCcw size={14}/></button></div>}
+      <div className="matrix-v5-footer"><span>{rows.length} acción{rows.length === 1 ? '' : 'es'}</span><small>Edición tipo Excel · Tab para avanzar · Ctrl+Enter para guardar</small></div>
     </section>}
 
     {historyOpen && <div className="matrix-v10-history-backdrop" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target) setHistoryOpen(false) }}><section className="matrix-v10-history-dialog"><header><div><span>Historial de versiones</span><h3>{selectedArea?.name || 'Matriz'} · {year}</h3></div><button onClick={() => setHistoryOpen(false)}><X size={18}/></button></header>{historyLoading ? <div className="matrix-v10-history-loading"><LoaderCircle className="spin" size={20}/> Cargando historial...</div> : versions.length === 0 ? <div className="matrix-v10-history-empty">Todavía no hay versiones registradas.</div> : <div className="matrix-v10-history-list">{versions.map(version => <article key={version.id}><div className="matrix-v10-version-number">v{version.version_no}</div><div><strong>{historyActionLabel(version.action)}</strong><span>{formatDateTime(version.created_at)}</span><small>{version.changed_email || 'Versión del sistema'} · {Array.isArray(version.snapshot?.rows) ? version.snapshot?.rows?.length : 0} filas</small></div></article>)}</div>}</section></div>}

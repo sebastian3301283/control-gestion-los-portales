@@ -150,3 +150,5 @@ button { cursor: pointer; }
   .shield-bg { display: none; }
   .existing-account { flex-wrap: wrap; }
 }
+
+.module-loading-surface{min-height:100vh;display:grid;place-items:center;align-content:center;gap:10px;padding:24px;box-sizing:border-box;background:#f8fafc;color:#33536b;font-size:13px;font-weight:750}.module-loading-surface--module{min-height:260px;width:100%;border:1px solid #dce6ed;border-radius:14px;background:#fff}.module-loading-surface .spin{color:#176fb3}

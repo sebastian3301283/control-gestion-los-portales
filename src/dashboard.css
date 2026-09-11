@@ -313,6 +313,8 @@
 
 .dashboard-content {
   width: min(1380px, 100%);
+  min-width: 0;
+  max-width: 100%;
   margin: 0 auto;
   padding: 26px 30px 48px;
 }

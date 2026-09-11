@@ -20,3 +20,4 @@ export type CentralSubpointRecord = {
 export function buildCentralSubpointDrafts(records: CentralSubpointRecord[], legacyRow?: Record<string, unknown>): CentralSubpointDraft[]
 export function normalizeCentralSubpointRows(drafts: CentralSubpointDraft[]): Array<{ text: string; milestones: string | null; kpi: string | null; start_date: string | null; end_date: string | null; sort_order: number }>
 export function actionPlanFromSubpoints(rows: Array<{ text: string }>): string
+export function findIncompleteCentralSubpoint(rows: Array<{ text: string }>): number

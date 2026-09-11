@@ -76,3 +76,7 @@
   .matrix-v11-history-actions{grid-column:1/-1;justify-content:flex-end;padding-top:4px}
   .matrix-v11-guideline-shortcut{justify-content:stretch}.matrix-v11-guideline-shortcut button{width:100%;justify-content:center}
 }
+
+.matrix-v11-switch-backdrop{position:fixed;inset:0;z-index:1400;display:grid;place-items:center;background:rgba(15,35,52,.38);padding:18px}
+.matrix-v11-switch-dialog{width:min(430px,100%);border:1px solid #c7d8e4;border-radius:14px;background:#fff;box-shadow:0 24px 70px rgba(16,42,61,.22);padding:20px}
+.matrix-v11-switch-dialog h3{margin:0 0 7px;color:#17324a;font-size:17px}.matrix-v11-switch-dialog p{margin:0 0 16px;color:#637b8d;font-size:12px;line-height:1.5}.matrix-v11-switch-dialog>div{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}.matrix-v11-switch-dialog button{min-height:36px;border:1px solid #c5d6e2;border-radius:8px;background:#fff;color:#31566f;padding:0 12px;font-size:10.5px;font-weight:850;cursor:pointer}.matrix-v11-switch-dialog button.primary{background:#1769aa;border-color:#1769aa;color:#fff}

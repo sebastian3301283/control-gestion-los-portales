@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowLeft,
   ArrowRight,
@@ -14,19 +14,27 @@ import {
   LoaderCircle,
   LogOut,
   Menu,
-  Search,
   Settings,
   ShieldCheck,
-  Sparkles,
   X,
 } from 'lucide-react'
 import { supabase } from './lib/supabase'
-import CatalogConfiguration from './CatalogConfiguration'
-import MatrixWorkspace from './MatrixWorkspace'
-import PlanningGuidelines from './PlanningGuidelines'
+import { loadPlanningPeriods, prefetchGuidelineWorkspace, prefetchMatrixWorkspace } from './lib/planning-query-cache'
 import './dashboard.css'
 import './planning.css'
 import './interaction-fixes.css'
+
+const CatalogConfiguration = lazy(() => import('./CatalogConfiguration'))
+const PlanningGuidelines = lazy(() => import('./PlanningGuidelines'))
+const MatrixWorkspace = lazy(() => import('./MatrixWorkspace'))
+
+function prefetchCatalogConfigurationModule() { void import('./CatalogConfiguration').catch(() => undefined) }
+function prefetchPlanningGuidelinesModule() { void import('./PlanningGuidelines').catch(() => undefined) }
+function prefetchMatrixWorkspaceModule() { void import('./MatrixWorkspace').catch(() => undefined) }
+
+function ModuleLoading({ label = 'Cargando módulo...' }: { label?: string }) {
+  return <div className="module-loading-surface module-loading-surface--module" role="status"><LoaderCircle className="spin" size={24}/>{label}</div>
+}
 
 type UnitAccess = {
   code: 'HU' | 'DEP' | 'VS' | 'HOT' | 'CENTRAL'
@@ -53,6 +61,7 @@ type PlanningPeriod = {
 
 type Section = 'inicio' | 'planificacion' | 'configuracion' | 'reportes'
 type PlanningStep = 'units' | 'modules' | 'guidelines' | 'matrices'
+type GuidelineContext = { managementId: string; guidelineId: string | null }
 
 type PlanningEntry = {
   year: number
@@ -102,6 +111,12 @@ function sortUnits(units: UnitAccess[]) {
   return [...units].sort((a, b) => unitOrder.indexOf(a.code) - unitOrder.indexOf(b.code))
 }
 
+function periodStatusLabel(status: PlanningPeriod['status']) {
+  if (status === 'OPEN') return 'Actual'
+  if (status === 'CLOSED') return 'Cerrado'
+  return 'Borrador'
+}
+
 function ConfirmDialog({ open, title, message, confirmText, busy, onCancel, onConfirm }: {
   open: boolean
   title: string
@@ -136,7 +151,7 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
   const [logoutBusy, setLogoutBusy] = useState(false)
   const [selectedUnit, setSelectedUnitState] = useState<string>('TODAS')
   const [periods, setPeriods] = useState<PlanningPeriod[]>([])
-  const [selectedHomeYear, setSelectedHomeYear] = useState(2026)
+  const [selectedHomeYear, setSelectedHomeYear] = useState<number>(() => new Date().getFullYear())
   const [planningEntry, setPlanningEntry] = useState<PlanningEntry>(null)
 
   const today = useMemo(() => new Intl.DateTimeFormat('es-PE', {
@@ -147,20 +162,29 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
   const selectedHomeUnit = units.find(unit => unit.code === selectedUnit) || null
 
   useEffect(() => { void loadDashboardPeriods() }, [])
+  useEffect(() => {
+    const refresh = () => { void loadDashboardPeriods() }
+    window.addEventListener('planning-periods-changed', refresh)
+    return () => window.removeEventListener('planning-periods-changed', refresh)
+  }, [selectedHomeYear])
 
   async function loadDashboardPeriods() {
     if (!supabase) return
-    const { data } = await supabase.from('planning_periods').select('id, year, name, status').order('year', { ascending: true })
-    const next = (data || []) as PlanningPeriod[]
-    setPeriods(next)
-    if (next.length && !next.some(period => period.year === selectedHomeYear)) {
-      const preferred = next.find(period => period.status === 'OPEN') || next[0]
-      setSelectedHomeYear(preferred.year)
+    try {
+      const next = await loadPlanningPeriods() as PlanningPeriod[]
+      setPeriods(next)
+      if (next.length && !next.some(period => period.year === selectedHomeYear)) {
+        const preferred = next.find(period => period.status === 'OPEN') || next[0]
+        setSelectedHomeYear(preferred.year)
+      }
+    } catch {
+      // The planning view owns the visible error state; keep the dashboard usable here.
     }
   }
 
   function navigate(next: Section) {
-    if (next === 'planificacion') setPlanningEntry(null)
+    if (next === 'planificacion') { setPlanningEntry(null); prefetchPlanningGuidelinesModule() }
+    if (next === 'configuracion') prefetchCatalogConfigurationModule()
     setSection(next)
     setMenuOpen(false)
     setProfileOpen(false)
@@ -203,7 +227,7 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
 
       <div className="dashboard-main">
         <header className="dashboard-topbar">
-          <div className="topbar-left"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Menu size={22}/></button><div className="dashboard-search"><Search size={18}/><input placeholder="Buscar" /></div></div>
+          <div className="topbar-left"><button className="mobile-menu" onClick={() => setMenuOpen(true)}><Menu size={22}/></button></div>
           <div className="topbar-actions profile-menu-wrap">
             <button className="icon-button"><Bell size={19}/><span className="notification-dot" /></button>
             <button className={`profile-chip ${profileOpen ? 'profile-chip--open' : ''}`} onClick={() => setProfileOpen(value => !value)}><span className="profile-avatar">{initials(access)}</span><span className="profile-copy"><strong>{displayName}</strong><small>{roleLabel(access)}</small></span><ChevronDown className={profileOpen ? 'chevron-open' : ''} size={16}/></button>
@@ -215,7 +239,7 @@ export default function Dashboard({ access, onSignOut }: { access: DashboardAcce
           {section === 'inicio' ? <HomeView access={access} displayName={displayName} today={today} units={units} selectedUnit={selectedUnit} selectedHomeUnit={selectedHomeUnit} onSelectUnit={selectHomeUnit} periods={periods} selectedYear={selectedHomeYear} setSelectedYear={setSelectedHomeYear} openPlanning={openPlanning} /> : <>
             <div className="page-heading compact-heading"><div><span className="page-kicker">{sectionLabels[section]}</span><h1>{sectionLabels[section]}</h1><p>{sectionDescription(section)}</p></div></div>
             {section === 'planificacion' && <PlanningView key={planningEntry ? `${planningEntry.year}-${planningEntry.unitCode}-${planningEntry.token}` : 'planning-default'} access={access} units={units} initialYear={planningEntry?.year} initialUnitCode={planningEntry?.unitCode} />}
-            {section === 'configuracion' && <CatalogConfiguration units={units.map(unit => ({ code: unit.code, name: unit.name }))} canManage={access.global_role === 'GESTION_ESTRATEGICA'} />}
+            {section === 'configuracion' && <Suspense fallback={<ModuleLoading label="Cargando configuración..."/>}><CatalogConfiguration units={units.map(unit => ({ code: unit.code, name: unit.name }))} canManage={access.global_role === 'GESTION_ESTRATEGICA'} /></Suspense>}
             {section === 'reportes' && <ReportsView />}
           </>}
         </main>
@@ -239,10 +263,23 @@ function HomeView({ access, displayName, today, units, selectedUnit, selectedHom
   setSelectedYear: (year: number) => void
   openPlanning: (unit: UnitAccess['code']) => void
 }) {
+  const [periodDropdownOpen, setPeriodDropdownOpen] = useState(false)
+  const periodDropdownRef = useRef<HTMLDivElement>(null)
+  const selectedPeriod = periods.find(period => period.year === selectedYear) || null
+
+  useEffect(() => {
+    if (!periodDropdownOpen) return
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (periodDropdownRef.current && !periodDropdownRef.current.contains(event.target as Node)) setPeriodDropdownOpen(false)
+    }
+    document.addEventListener('mousedown', closeOnOutsideClick)
+    return () => document.removeEventListener('mousedown', closeOnOutsideClick)
+  }, [periodDropdownOpen])
+
   return <>
     <section className="welcome-card">
-      <div className="welcome-copy"><span className="welcome-kicker"><Sparkles size={15}/> Todo listo</span><h1>Hola, {displayName} 👋</h1><p>Elige una opción y empieza a trabajar.</p><div className="welcome-meta"><span><CalendarDays size={16}/> {today}</span><span><ShieldCheck size={16}/> {roleLabel(access)}</span></div></div>
-      <div className="welcome-period"><span>Periodo</span><strong>{selectedYear}</strong><label className="period-select-control"><CalendarDays size={16}/><select value={selectedYear} onChange={event => setSelectedYear(Number(event.target.value))}>{periods.map(period => <option key={period.id} value={period.year}>{period.year} · {period.status === 'OPEN' ? 'Actual' : period.status === 'CLOSED' ? 'Cerrado' : 'Borrador'}</option>)}</select><ChevronDown size={15}/></label></div>
+      <div className="welcome-copy"><h1>Hola, {displayName} 👋</h1><p>Elige una opción y empieza a trabajar.</p><div className="welcome-meta"><span><CalendarDays size={16}/> {today}</span><span><ShieldCheck size={16}/> {roleLabel(access)}</span></div></div>
+      <div className="welcome-period"><span>Periodo</span><strong>{selectedYear}</strong><div className="period-select-control" ref={periodDropdownRef}><button className="period-select-trigger" type="button" aria-haspopup="listbox" aria-expanded={periodDropdownOpen} onClick={() => setPeriodDropdownOpen(value => !value)}><CalendarDays size={16}/><span>Cambiar</span><ChevronDown className={periodDropdownOpen ? 'period-select-chevron open' : 'period-select-chevron'} size={15}/></button>{periodDropdownOpen && <div className="period-select-menu" role="listbox" aria-label="Seleccionar periodo">{periods.map(period => <button key={period.id} type="button" role="option" aria-selected={period.year === selectedYear} className={`period-select-option ${period.year === selectedYear ? 'active' : ''}`} onClick={() => { setSelectedYear(period.year); setPeriodDropdownOpen(false) }}><span className="period-select-copy"><strong>{period.year}</strong><small>{period.name}</small></span><span className={`period-select-badge ${period.status.toLowerCase()}`}>{periodStatusLabel(period.status)}</span></button>)}</div>}</div>{selectedPeriod && <small className="welcome-period-status">{periodStatusLabel(selectedPeriod.status)}</small>}</div>
     </section>
 
     <section className="dashboard-section">
@@ -250,12 +287,12 @@ function HomeView({ access, displayName, today, units, selectedUnit, selectedHom
       <div className="unit-grid friendly-unit-grid">{units.map(unit => <button key={unit.code} className={`unit-card unit-card--${unit.code.toLowerCase()} ${selectedUnit === unit.code ? 'selected' : ''}`} onClick={() => onSelectUnit(unit.code)}><div className="unit-card__top"><span className="unit-code">{unit.code}</span></div><div className="unit-icon"><Building2 size={26}/></div><h3>{unit.name}</h3><p>{unit.unit_role === 'GLOBAL' ? 'Acceso completo' : unit.unit_role === 'GERENTE_UNIDAD' ? 'Gerente de Unidad' : 'Equipo encargado'}</p><span className="unit-link">Entrar <ArrowRight size={16}/></span></button>)}</div>
     </section>
 
-    {selectedHomeUnit && <section className="dashboard-section unit-module-section"><div className="section-title-row"><div><span>{selectedHomeUnit.name}</span><h2>¿Qué quieres revisar?</h2></div></div><div className="unit-module-grid"><button className={`unit-module-card unit-module-card--${selectedHomeUnit.code.toLowerCase()}`} onClick={() => openPlanning(selectedHomeUnit.code)}><span className="unit-module-icon"><ClipboardList size={28}/></span><div><small>Periodo {selectedYear}</small><strong>Planificación</strong><p>Lineamientos, PPT y matrices de gestión.</p></div><ArrowRight size={20}/></button></div></section>}
+    {selectedHomeUnit && <section className="dashboard-section unit-module-section"><div className="section-title-row"><div><span>{selectedHomeUnit.name}</span><h2>¿Qué quieres revisar?</h2></div></div><div className="unit-module-grid"><button className={`unit-module-card unit-module-card--${selectedHomeUnit.code.toLowerCase()}`} onClick={() => openPlanning(selectedHomeUnit.code)}><span className="unit-module-icon"><ClipboardList size={28}/></span><div><small>Periodo {selectedYear}</small><strong>Planificación</strong><p>Lineamientos y documentos de soporte; la matriz se abre desde la gerencia correspondiente.</p></div><ArrowRight size={20}/></button></div></section>}
   </>
 }
 
 function sectionDescription(section: Section) {
-  if (section === 'planificacion') return 'Unidad → lineamientos o matrices.'
+  if (section === 'planificacion') return 'Unidad → lineamientos → matriz de la gerencia.'
   if (section === 'configuracion') return 'Administra periodos, áreas, bonistas y permisos de acceso.'
   return 'Consulta el avance y los resultados de gestión.'
 }
@@ -287,11 +324,17 @@ function PlanningView({ access, units, initialYear, initialUnitCode }: {
   async function loadPeriodContext() {
     if (!supabase) return
     setLoading(true); setError('')
-    const { data, error: queryError } = await supabase.from('planning_periods').select('id, year, name, status').order('year', { ascending: true })
+    let available: PlanningPeriod[] = []
+    try {
+      available = await loadPlanningPeriods() as PlanningPeriod[]
+    } catch {
+      setLoading(false)
+      setError('No pudimos cargar el periodo configurado.')
+      return
+    }
     setLoading(false)
-    if (queryError) { setError('No pudimos cargar el periodo configurado.'); return }
-    const available = (data || []) as PlanningPeriod[]
-    const preferred = (initialYear ? available.find(item => item.year === initialYear) : null) || available.find(item => item.status === 'OPEN') || available[0] || null
+    const currentYear = new Date().getFullYear()
+    const preferred = (initialYear ? available.find(item => item.year === initialYear) : available.find(item => item.year === currentYear)) || available.find(item => item.status === 'OPEN') || available[0] || null
     if (!preferred) { setError('No hay un periodo configurado. Créalo desde Configuración → Periodos.'); return }
     setSelectedPeriod(preferred)
     if (!initialUnitCode) { setSelectedPlanningUnit(null); setStep('units') }
@@ -317,7 +360,58 @@ function PlanningView({ access, units, initialYear, initialUnitCode }: {
     }
   }
 
-  const secondStepLabel = step === 'guidelines' ? '2. Lineamientos' : step === 'matrices' ? '2. Matrices' : '2. Planificación'
+  function openMatrixFromGuidelines(managementId: string, guidelineId?: string | null) {
+    if (!selectedPeriod || !selectedPlanningUnit) return
+    prefetchMatrixWorkspaceModule()
+    void prefetchMatrixWorkspace(selectedPeriod.id, selectedPlanningUnit.code).catch(() => undefined)
+    sessionStorage.setItem('cg:matrix-target-management', JSON.stringify({
+      periodId: selectedPeriod.id,
+      unitCode: selectedPlanningUnit.code,
+      managementId,
+      guidelineId,
+      createdAt: Date.now(),
+    }))
+    setStep('matrices')
+    setError('')
+    setNotice('')
+  }
+
+  async function openGuidelinesFromMatrix(target?: GuidelineContext) {
+    const period = selectedPeriod
+    const unit = selectedPlanningUnit
+    if (!period || !unit) return
+
+    let resolvedTarget = target
+    if (!resolvedTarget?.managementId && supabase) {
+      const areaName = document.querySelector<HTMLElement>('.matrix-v5-summary > div:first-child strong')?.textContent?.trim() || ''
+      if (areaName) {
+        const { data } = await supabase
+          .from('managements_global')
+          .select('id')
+          .eq('unit_code', unit.code)
+          .eq('name', areaName)
+          .maybeSingle()
+        if (data?.id) resolvedTarget = { managementId: String(data.id), guidelineId: target?.guidelineId || null }
+      }
+    }
+
+    if (resolvedTarget?.managementId) {
+      sessionStorage.setItem('cg:guideline-target', JSON.stringify({
+        periodId: period.id,
+        unitCode: unit.code,
+        managementId: resolvedTarget.managementId,
+        guidelineId: resolvedTarget.guidelineId,
+        createdAt: Date.now(),
+      }))
+    }
+    prefetchPlanningGuidelinesModule()
+    void prefetchGuidelineWorkspace(period.id, unit.code).catch(() => undefined)
+    setStep('guidelines')
+    setError('')
+    setNotice('')
+  }
+
+  const secondStepLabel = step === 'guidelines' ? '2. Lineamientos' : step === 'matrices' ? '2. Matriz' : '2. Planificación'
 
   return <div className="planning-flow">
     <div className="planning-breadcrumbs"><button className={step === 'units' ? 'current' : ''} onClick={() => { setStep('units'); setSelectedPlanningUnit(null) }}>1. Unidad</button><span>→</span><button className={step !== 'units' ? 'current' : ''} disabled={!selectedPeriod || !selectedPlanningUnit} onClick={() => selectedPlanningUnit && setStep('modules')}>{secondStepLabel}</button></div>
@@ -325,13 +419,13 @@ function PlanningView({ access, units, initialYear, initialUnitCode }: {
     {error && <div className="planning-message">{error}</div>}
     {notice && <div className="planning-message planning-message--success">{notice}</div>}
 
-    {loading ? <div className="planning-loading"><LoaderCircle className="spin" size={24}/> Cargando planificación...</div> : step === 'units' && selectedPeriod ? <section className="planning-panel"><div className="planning-title-row"><div><span>Paso 1 · Periodo {selectedPeriod.year}</span><h2>Elige una unidad</h2><p>Selecciona la unidad y luego decide si quieres trabajar sus lineamientos o sus matrices.</p></div></div><div className="planning-unit-grid">{units.map(unit => <button key={unit.code} className={`planning-unit-card planning-unit-card--${unit.code.toLowerCase()}`} onClick={() => selectUnit(unit)}><span className="planning-unit-icon"><Building2 size={27}/></span><div><small>{unit.code}</small><strong>{unit.name}</strong></div><ArrowRight size={19}/></button>)}</div></section> : null}
+    {loading ? <div className="planning-loading"><LoaderCircle className="spin" size={24}/> Cargando planificación...</div> : step === 'units' && selectedPeriod ? <section className="planning-panel"><div className="planning-title-row"><div><span>Paso 1 · Periodo {selectedPeriod.year}</span><h2>Elige una unidad</h2><p>Selecciona la unidad para trabajar sus lineamientos y abrir la matriz desde la gerencia correspondiente.</p></div></div><div className="planning-unit-grid">{units.map(unit => <button key={unit.code} className={`planning-unit-card planning-unit-card--${unit.code.toLowerCase()}`} onClick={() => selectUnit(unit)}><span className="planning-unit-icon"><Building2 size={27}/></span><div><small>{unit.code}</small><strong>{unit.name}</strong></div><ArrowRight size={19}/></button>)}</div></section> : null}
 
-    {step === 'modules' && selectedPeriod && selectedPlanningUnit && <section className="planning-panel"><div className="planning-title-row"><div><span>{selectedPlanningUnit.code} · Periodo {selectedPeriod.year}</span><h2>{selectedPlanningUnit.name}</h2><p>Elige qué quieres trabajar dentro de esta unidad.</p></div></div><div className="planning-module-choice-grid"><button className="planning-module-choice planning-module-choice--guidelines" onClick={() => { setStep('guidelines'); setError(''); setNotice('') }}><span className="planning-module-choice__icon"><BookOpenText size={25}/></span><span className="planning-module-choice__copy"><small>Planificación estratégica</small><strong>Lineamientos</strong><p>Consulta los lineamientos y el PPT de soporte de la unidad.</p></span><ArrowRight size={20}/></button><button className="planning-module-choice planning-module-choice--matrices" onClick={() => { setStep('matrices'); setError(''); setNotice('') }}><span className="planning-module-choice__icon"><ClipboardList size={25}/></span><span className="planning-module-choice__copy"><small>Plan de acción</small><strong>Matrices</strong><p>Entra por área y trabaja la matriz de gestión.</p></span><ArrowRight size={20}/></button></div></section>}
+    {step === 'modules' && selectedPeriod && selectedPlanningUnit && <section className="planning-panel"><div className="planning-title-row"><div><span>{selectedPlanningUnit.code} · Periodo {selectedPeriod.year}</span><h2>{selectedPlanningUnit.name}</h2><p>Trabaja los lineamientos y desde ellos abre directamente la matriz de la gerencia.</p></div></div><div className="planning-module-choice-grid"><button className="planning-module-choice planning-module-choice--guidelines" onClick={() => { prefetchPlanningGuidelinesModule(); void prefetchGuidelineWorkspace(selectedPeriod.id, selectedPlanningUnit.code).catch(() => undefined); setStep('guidelines'); setError(''); setNotice('') }}><span className="planning-module-choice__icon"><BookOpenText size={25}/></span><span className="planning-module-choice__copy"><small>Planificación estratégica</small><strong>Lineamientos</strong><p>Consulta lineamientos, documentos de soporte y entra a la matriz de cada gerencia.</p></span><ArrowRight size={20}/></button></div></section>}
 
-    {step === 'guidelines' && selectedPeriod && selectedPlanningUnit && <section className="planning-panel planning-panel--wide"><PlanningGuidelines unit={{ code: selectedPlanningUnit.code, name: selectedPlanningUnit.name }} periodId={selectedPeriod.id} canManage={canManage} /></section>}
+    {step === 'guidelines' && selectedPeriod && selectedPlanningUnit && <section className="planning-panel planning-panel--wide"><Suspense fallback={<ModuleLoading label="Cargando lineamientos..."/>}><PlanningGuidelines unit={{ code: selectedPlanningUnit.code, name: selectedPlanningUnit.name }} periodId={selectedPeriod.id} canManage={canManage} onOpenMatrixForArea={openMatrixFromGuidelines} /></Suspense></section>}
 
-    {step === 'matrices' && selectedPeriod && selectedPlanningUnit && <section className="planning-panel planning-panel--wide"><MatrixWorkspace periodId={selectedPeriod.id} year={selectedPeriod.year} unitCode={selectedPlanningUnit.code} unitName={selectedPlanningUnit.name} canManage={canManage} onError={setError} onNotice={setNotice} onViewGuidelines={() => { setStep('guidelines'); setError(''); setNotice('') }} /></section>}
+    {step === 'matrices' && selectedPeriod && selectedPlanningUnit && <section className="planning-panel planning-panel--wide"><Suspense fallback={<ModuleLoading label="Cargando matriz..."/>}><MatrixWorkspace periodId={selectedPeriod.id} year={selectedPeriod.year} unitCode={selectedPlanningUnit.code} unitName={selectedPlanningUnit.name} canManage={canManage} onError={setError} onNotice={setNotice} onViewGuidelines={target => { void openGuidelinesFromMatrix(target) }} /></Suspense></section>}
   </div>
 }
 
