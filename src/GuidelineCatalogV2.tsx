@@ -413,7 +413,7 @@ export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, sc
     const tableStyle = { '--guideline-accent': accent } as CSSProperties
     return <div className="guideline-v2-table-wrap" style={tableStyle}>
       <table className="guideline-catalog-table guideline-v2-table">
-        <thead><tr><th>Categoría</th><th>N°</th><th>Lineamientos Estratégicos</th><th>Gerencia Responsable</th><th>Gerente Responsable</th>{canManage && <th>Acciones</th>}</tr></thead>
+        <thead><tr><th>N°</th><th>Categoría</th><th>Lineamientos Estratégicos</th><th>Gerencia Responsable</th><th>Gerente Responsable</th>{canManage && <th>Acciones</th>}</tr></thead>
         <tbody>
           {items.length === 0 ? <tr><td colSpan={canManage ? 6 : 5} className="guideline-empty">No hay lineamientos en esta vista.</td></tr> : items.map((item, index) => {
             const responsible = item.responsible_manager_id ? managerById.get(item.responsible_manager_id) : null
@@ -422,8 +422,8 @@ export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, sc
             const parsed = splitGuideline(item.guideline_text, item.code)
             const isSelected = unitCode !== 'CENTRAL' && selectedGuidelineId === item.id
             return <tr key={item.id} className={`${!item.active ? 'inactive-row ' : ''}${isSelected ? 'guideline-selected' : ''}`.trim()} aria-selected={isSelected || undefined} onClick={() => unitCode !== 'CENTRAL' && onSelectGuideline?.({ id: item.id, managementId: item.management_id, label: item.guideline_text })}>
-              <td className="guideline-category">{item.category || '—'}</td>
               <td className="guideline-number">{displayNumber(item, index)}</td>
+              <td className="guideline-category">{item.category || '—'}</td>
               <td className="guideline-text-cell"><div className="guideline-text-matrix-row"><span className="guideline-text-copy">{parsed.code && <strong className="guideline-code">{parsed.code}: </strong>}{parsed.text}</span>{unitCode !== 'CENTRAL' && onOpenMatrixForGuideline && <button type="button" className="guideline-row-matrix-arrow" onPointerEnter={() => onPrefetchMatrixForGuideline?.(item.management_id, item.id)} onFocus={() => onPrefetchMatrixForGuideline?.(item.management_id, item.id)} onClick={event => stopAndRun(event, () => onOpenMatrixForGuideline?.(item.management_id, item.id))} title="Abrir matriz de este lineamiento" aria-label={`Abrir matriz de ${parsed.code || `lineamiento ${index + 1}`}`}><ArrowRight size={18}/></button>}</div></td>
               <td className="guideline-management">{unitCode === 'CENTRAL' ? (managementById.get(item.management_id)?.name || '—') : renderMultiChips(managementIds, 'management')}</td>
               <td>{unitCode === 'CENTRAL' ? (responsible ? <div className="guideline-responsible"><strong>{responsible.name}</strong><small>{responsible.cargo || 'Bonista'}</small></div> : <span className="muted">Sin asignar</span>) : renderMultiChips(responsibleIds, 'manager')}</td>
