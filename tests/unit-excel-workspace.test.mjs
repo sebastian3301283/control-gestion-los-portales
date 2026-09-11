@@ -122,3 +122,10 @@ test('editing an existing row has a compensating rollback when relation persiste
   }
   assert.match(centralSource, /restoreSubpoints/)
 })
+
+test('responsible picker is centered and styled consistently in every HU DEP VS HOT area matrix', async () => {
+  const css = await readFile(new URL('../src/unit-excel-workspace.css', import.meta.url), 'utf8')
+  assert.match(css, /\.matrix-unit-excel \.matrix-central-sheet-cell--responsible\{[^}]*vertical-align:middle!important/)
+  assert.match(css, /\.matrix-unit-excel \.matrix-central-responsible-picker>summary\{[^}]*display:flex[^}]*align-items:center[^}]*min-height:40px/)
+  assert.match(css, /summary::-webkit-details-marker\{display:none\}/)
+})
