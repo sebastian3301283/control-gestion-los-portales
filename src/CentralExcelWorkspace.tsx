@@ -537,7 +537,6 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
     } catch { onError('No pudimos exportar la matriz a Excel.') } finally { setExporting(false) }
   }
 
-
   async function openHistory() {
     if (!supabase || !selectedMatrix) return
     setHistoryOpen(true); setHistoryLoading(true); setVersions([]); setHistoryNamesByEmail({}); setExpandedHistoryActors(new Set())
@@ -666,7 +665,7 @@ export default function CentralExcelWorkspace({ periodId, year, unitName, canMan
         </div>
       </div>
 
-      <div className="matrix-v5-summary"><div><span>Área</span><strong>{selectedArea?.name || '—'}</strong></div><div><span>Unidad</span><strong>Central</strong></div><div><span>Responsable principal</span><label className="matrix-central-principal-responsible"><select value={selectedMatrix.principal_responsible_manager_id || ''} onChange={event => void savePrincipalResponsible(event.target.value)} disabled={!effectiveCanManage || principalSaving}><option value="">Sin asignar</option>{highestAreaManagers.map(manager => <option key={manager.id} value={manager.id}>{manager.name}{manager.cargo ? ` · ${manager.cargo}` : ''}</option>)}</select>{principalSaving && <LoaderCircle className="spin" size={14}/>}</label></div></div>
+      <div className="matrix-v5-summary"><div><span>Área</span><strong>{selectedArea?.name || '—'}</strong></div><div><span>Unidad</span><strong>Central</strong></div><div><span>Responsable principal</span><label className="matrix-central-principal-responsible"><select value={selectedMatrix.principal_responsible_manager_id || ''} onChange={event => void savePrincipalResponsible(event.target.value)} disabled={!effectiveCanManage || principalSaving}><option value="">Sin asignar</option>{highestAreaManagers.map(manager => <option key={manager.id} value={manager.id}>{manager.name}</option>)}</select>{principalSaving && <LoaderCircle className="spin" size={14}/>}</label></div></div>
 
       <div className="matrix-v5-sheet-card"><div className="matrix-v5-sheet-scroll" style={zoomStyle}><table className="matrix-v5-sheet matrix-v10-central-excel matrix-central-spreadsheet-grid"><thead><tr><th>Acción</th><th>Responsable</th><th>Prioridad</th><th>Hitos / Fechas</th><th>Entregable</th><th>Riesgos de no ejecutar</th><th>Restricciones</th><th>Soporte</th><th>Comité</th></tr></thead><tbody>
         {rowsLoading ? <tr><td colSpan={tableColSpan} className="matrix-v5-table-empty"><LoaderCircle className="spin" size={20}/> Cargando matriz...</td></tr> : guidelineGroups.length === 0 && !rowFormOpen ? <tr><td colSpan={tableColSpan} className="matrix-v5-table-empty">Aún no hay lineamientos disponibles para esta área.</td></tr> : <>
