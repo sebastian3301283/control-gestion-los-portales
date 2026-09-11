@@ -19,6 +19,6 @@ test('la matriz no Central oculta el resumen duplicado de área unidad y respons
 })
 
 test('la columna N° de lineamientos mantiene el mismo ancho y celdas rectas en header y body', () => {
-  assert.match(guidelineCss, /\.guideline-v2-table th:nth-child\(1\),\.guideline-v2-table td\.guideline-number\{[^}]*width:72px[^}]*min-width:72px[^}]*max-width:72px/i)
+  assert.match(guidelineCss, /\.guideline-v2-table th:nth-child\(2\),\.guideline-v2-table td\.guideline-number\{[^}]*width:72px[^}]*min-width:72px[^}]*max-width:72px/i)
   assert.match(guidelineCss, /\.guideline-v2-table td\.guideline-number\{[^}]*border-radius:0!important[^}]*text-align:center/i)
 })
