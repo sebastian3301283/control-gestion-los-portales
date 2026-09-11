@@ -13,7 +13,7 @@ const v11 = await readFile(new URL('../src/MatrixWorkspaceV11.tsx', import.meta.
 const planningCss = await readFile(new URL('../src/planning-guidelines.css', import.meta.url), 'utf8')
 
 test('HU/DEP/VS/HOT conservan la tabla de Lineamientos anterior y su color por unidad', () => {
-  assert.match(catalog, /<th>Categoría<\/th><th>N°<\/th><th>Lineamientos Estratégicos<\/th><th>Gerencia Responsable<\/th><th>Gerente Responsable<\/th>\{canManage && <th>Acciones<\/th>\}/)
+  assert.match(catalog, /<th>N°<\/th><th>Categoría<\/th><th>Lineamientos Estratégicos<\/th><th>Gerencia Responsable<\/th><th>Gerente Responsable<\/th>\{canManage && <th>Acciones<\/th>\}/)
   assert.match(catalog, /HU: '#2f9b5f'/)
   assert.match(catalog, /DEP: '#f28a22'/)
   assert.match(catalog, /VS: '#2bb5d6'/)
