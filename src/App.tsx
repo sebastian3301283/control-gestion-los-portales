@@ -8,6 +8,16 @@ function prefetchDashboardModule() {
   void import('./DashboardRestricted').catch(() => undefined)
 }
 
+function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => reject(new Error('REQUEST_TIMEOUT')), timeoutMs)
+    Promise.resolve(promise).then(
+      value => { window.clearTimeout(timeoutId); resolve(value) },
+      error => { window.clearTimeout(timeoutId); reject(error) },
+    )
+  })
+}
+
 type View = 'chooser' | 'corporate' | 'verify' | 'personal'
 
 type MessageTone = 'info' | 'success' | 'error'
@@ -45,6 +55,7 @@ export default function App() {
   const [message, setMessage] = useState('')
   const [messageTone, setMessageTone] = useState<MessageTone>('info')
   const [busy, setBusy] = useState(false)
+  const [busyLabel, setBusyLabel] = useState('')
   const [access, setAccess] = useState<AccessContext | null>(null)
 
   useEffect(() => {
@@ -69,6 +80,10 @@ export default function App() {
     restoreAccess()
     return () => { mounted = false }
   }, [])
+
+  useEffect(() => {
+    if (view === 'verify') prefetchDashboardModule()
+  }, [view])
 
   function setStatus(text: string, tone: MessageTone = 'info') {
     setMessage(text)
@@ -127,34 +142,48 @@ export default function App() {
     if (!supabase) return setStatus('No se pudo conectar con el servicio de autenticación.', 'error')
 
     setBusy(true)
-    const { error } = await supabase.auth.verifyOtp({
-      email,
-      token,
-      type: 'email',
-    })
+    setBusyLabel('Verificando código...')
 
-    if (error) {
+    try {
+      const { error } = await withTimeout(supabase.auth.verifyOtp({
+        email,
+        token,
+        type: 'email',
+      }), 20000)
+
+      if (error) {
+        setBusy(false)
+        setBusyLabel('')
+        return setStatus('El código no es válido o ya venció. Solicita uno nuevo.', 'error')
+      }
+
+      setBusyLabel('Validando permisos...')
+      const { data, error: accessError } = await withTimeout(supabase.rpc('current_access'), 10000)
+      const currentAccess = data as AccessContext | null
+
+      if (accessError || !currentAccess?.active) {
+        await supabase.auth.signOut()
+        setBusy(false)
+        setBusyLabel('')
+        return setStatus('Tu cuenta no tiene un perfil activo autorizado.', 'error')
+      }
+
+      if (!currentAccess.global_access && (!currentAccess.units || currentAccess.units.length === 0)) {
+        await supabase.auth.signOut()
+        setBusy(false)
+        setBusyLabel('')
+        return setStatus('Tu usuario está autorizado, pero todavía no tiene una unidad asignada.', 'error')
+      }
+
+      setBusyLabel('Abriendo Control de Gestión...')
+      setAccess(currentAccess)
       setBusy(false)
-      return setStatus('El código no es válido o ya venció. Solicita uno nuevo.', 'error')
+      setStatus('Acceso verificado correctamente.', 'success')
+    } catch {
+      setBusy(false)
+      setBusyLabel('')
+      return setStatus('La verificación está tardando más de lo esperado. Revisa tu conexión e inténtalo nuevamente.', 'error')
     }
-
-    prefetchDashboardModule()
-    const { data, error: accessError } = await supabase.rpc('current_access')
-    setBusy(false)
-
-    const currentAccess = data as AccessContext | null
-    if (accessError || !currentAccess?.active) {
-      await supabase.auth.signOut()
-      return setStatus('Tu cuenta no tiene un perfil activo autorizado.', 'error')
-    }
-
-    if (!currentAccess.global_access && (!currentAccess.units || currentAccess.units.length === 0)) {
-      await supabase.auth.signOut()
-      return setStatus('Tu usuario está autorizado, pero todavía no tiene una unidad asignada.', 'error')
-    }
-
-    setAccess(currentAccess)
-    setStatus('Acceso verificado correctamente.', 'success')
   }
 
   async function resendOtp() {
@@ -201,6 +230,7 @@ export default function App() {
     setPassword('')
     setOtp('')
     setMessage('')
+    setBusyLabel('')
     setAccess(null)
     setView(next)
   }
@@ -266,6 +296,7 @@ export default function App() {
               email={email}
               otp={otp}
               busy={busy}
+              busyLabel={busyLabel}
               message={message}
               tone={messageTone}
               onOtp={setOtp}
@@ -297,6 +328,7 @@ function OtpVerification(props: {
   email: string
   otp: string
   busy: boolean
+  busyLabel: string
   message: string
   tone: MessageTone
   onOtp: (value: string) => void
@@ -323,7 +355,7 @@ function OtpVerification(props: {
             placeholder="00000000"
           />
         </label>
-        <button className="submit-button" type="submit" disabled={props.busy}>{props.busy ? 'Verificando...' : 'Verificar y continuar'}<ArrowRight size={19}/></button>
+        <button className="submit-button" type="submit" disabled={props.busy}>{props.busy ? (props.busyLabel || 'Verificando código...') : 'Verificar y continuar'}<ArrowRight size={19}/></button>
       </form>
       <button className="resend-button" type="button" disabled={props.busy} onClick={props.onResend}>No recibí el código · Reenviar</button>
       {props.message && <div className={`form-message form-message--${props.tone}`}><CheckCircle2 size={18}/>{props.message}</div>}
