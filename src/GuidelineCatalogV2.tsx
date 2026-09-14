@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useMemo, useState, type CSSProperties, type Mouse
 import { ArrowRight, BookOpenText, Check, ChevronDown, LoaderCircle, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { deleteGuidelineSupportFiles } from './guideline-support-storage'
 import { supabase } from './lib/supabase'
-import { invalidatePlanningCache, loadGuidelineCentralAreaLabels, loadGuidelineCentralManagements, loadGuidelineMultiRelations, loadGuidelineUnitAreaLabels, loadManagerManagements, loadNonCentralGuidelineData, loadScopedGuidelineData } from './lib/planning-query-cache'
+import { invalidatePlanningCache, loadGuidelineCentralAreaLabels, loadGuidelineCentralManagements, loadGuidelineMultiRelations, loadGuidelineUnitAreaLabels, loadManagerManagements, loadNonCentralGuidelineData, loadScopedGuidelineData, loadScopedManagements } from './lib/planning-query-cache'
 import './guideline-catalog.css'
 import './guideline-catalog-v2.css'
 
@@ -423,10 +423,12 @@ export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, sc
     setSaving(true); setError(''); setNotice('')
     try {
       if (!isCentralForm) {
-        const resolvedManagementIds = resolveTechnicalManagementIds(selectedUnitAreaLabels, formManagementOptions)
-        const technicalManagementIds = resolvedManagementIds.length ? resolvedManagementIds : selectedManagementIds
+        // HU/DEP/VS/HOT are lineamiento-owned. The visible area labels are planning metadata only.
+        // Keep every active management in the unit as hidden compatibility ownership so access is
+        // unit-wide and the legacy non-null management/process schema never blocks a lineamiento.
+        const technicalManagementIds = (await loadScopedManagements(formUnitCode)).map(item => item.id)
         const technicalCentralManagementIds = resolveTechnicalManagementIds(selectedCentralAreaLabels, centralManagementOptions)
-        if (!technicalManagementIds.length) throw new Error('No existe un área técnica activa para crear la matriz de esta unidad.')
+        if (!technicalManagementIds.length) throw new Error('No hay configuración interna activa para esta unidad.')
         const { data, error: rpcError } = await supabase.rpc('save_planning_guideline_multi', {
           guideline_id_input: editingId || null,
           period_id_input: formPeriodId,
