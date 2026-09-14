@@ -114,7 +114,6 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
         setHeader(2, 'Lineamiento')
         if (isHotel) {
           setHeader(3, 'Áreas')
-          if (headers[3].colSpan !== 2) headers[3].colSpan = 2
         } else {
           setHeader(3, 'Áreas Matricial')
           setHeader(4, 'Gerencia Central')
@@ -124,31 +123,22 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
         table.querySelectorAll<HTMLTableRowElement>('tbody tr').forEach(row => {
           const cells = Array.from(row.cells)
           if (cells.length < 5 || cells.some(cell => cell.classList.contains('guideline-empty'))) return
+          if (!isHotel) return
 
-          if (isHotel) {
-            const lineCell = cells[2]
-            const actionCell = cells[5]
-            const actions = actionCell?.querySelector<HTMLElement>('.guideline-actions')
-            if (actions && !lineCell.contains(actions)) {
-              actions.classList.add('guideline-actions--inline')
-              lineCell.appendChild(actions)
-            }
-
-            const unitAreaCell = cells[3]
-            const centralAreaCell = cells[4]
-            if (!unitAreaCell || !centralAreaCell) return
-            if (unitAreaCell.colSpan !== 2) unitAreaCell.colSpan = 2
-            const signature = centralAreaCell.textContent?.trim() || ''
-            const currentCopy = unitAreaCell.querySelector<HTMLElement>('.guideline-hot-central-copy')
-            if (currentCopy?.dataset.signature === signature) return
-            currentCopy?.remove()
-            if (!signature || signature === 'Sin asignar') return
-            const copy = document.createElement('div')
-            copy.className = 'guideline-hot-central-copy'
-            copy.dataset.signature = signature
-            Array.from(centralAreaCell.childNodes).forEach(node => copy.appendChild(node.cloneNode(true)))
-            unitAreaCell.appendChild(copy)
-          }
+          const unitAreaCell = cells[3]
+          const centralAreaCell = cells[4]
+          if (!unitAreaCell || !centralAreaCell) return
+          if (unitAreaCell.colSpan !== 1) unitAreaCell.colSpan = 1
+          const signature = centralAreaCell.textContent?.trim() || ''
+          const currentCopy = unitAreaCell.querySelector<HTMLElement>('.guideline-hot-central-copy')
+          if (currentCopy?.dataset.signature === signature) return
+          currentCopy?.remove()
+          if (!signature || signature === 'Sin asignar') return
+          const copy = document.createElement('div')
+          copy.className = 'guideline-hot-central-copy'
+          copy.dataset.signature = signature
+          Array.from(centralAreaCell.childNodes).forEach(node => copy.appendChild(node.cloneNode(true)))
+          unitAreaCell.appendChild(copy)
         })
       })
     }
@@ -158,6 +148,32 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
     enhanceUnitTable()
     return () => observer.disconnect()
   }, [catalogRevision, canManage, periodId, unit.code])
+
+  useEffect(() => {
+    if (unit.code !== 'HOT') return
+    const root = rootRef.current
+    if (!root) return
+
+    const enhanceHotelForm = () => {
+      const fields = Array.from(root.querySelectorAll<HTMLElement>('.guideline-modal .guideline-multi-field'))
+      if (fields.length < 2) return
+      const areasField = fields[0]
+      const centralSource = fields[1]
+      areasField.classList.add('guideline-hot-areas-field')
+      centralSource.classList.add('guideline-hot-central-source')
+      const title = areasField.querySelector<HTMLElement>(':scope > span:first-child')
+      if (title && title.textContent !== 'Áreas') title.textContent = 'Áreas'
+      const help = areasField.querySelector<HTMLElement>(':scope > small')
+      if (help) help.textContent = 'Escribe las áreas manualmente. Puedes agregar varias.'
+      const centralChips = centralSource.querySelector<HTMLElement>('.guideline-editable-chips')
+      centralSource.classList.toggle('guideline-hot-central-source--empty', !centralChips?.children.length)
+    }
+
+    const observer = new MutationObserver(enhanceHotelForm)
+    observer.observe(root, { childList: true, subtree: true, characterData: true })
+    enhanceHotelForm()
+    return () => observer.disconnect()
+  }, [catalogRevision, unit.code])
 
   useEffect(() => {
     if (!fullscreen) return
@@ -232,7 +248,7 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
     }))
   }
 
-  return <div ref={rootRef} className={`planning-guidelines-host ${fullscreen ? 'planning-guidelines-host--fullscreen' : ''} ${isCentral ? 'planning-guidelines-host--central' : ''}`} onClickCapture={handleClickCapture}>
+  return <div ref={rootRef} className={`planning-guidelines-host ${fullscreen ? 'planning-guidelines-host--fullscreen' : ''} ${isCentral ? 'planning-guidelines-host--central' : ''} ${unit.code === 'HOT' ? 'planning-guidelines-host--hot' : ''}`} onClickCapture={handleClickCapture}>
     <div className="planning-guidelines-heading">
       <div><span>Lineamientos estratégicos</span><h3>Lineamientos de {unit.name}</h3><p>{isCentral ? 'Selecciona un área de Central para revisar sus lineamientos y documentos de soporte.' : canManage ? 'Selecciona un lineamiento para revisar sus soportes o usa la flecha para abrir su matriz exclusiva.' : 'Selecciona un lineamiento para revisar sus documentos de soporte.'}</p></div>
       <div className="planning-guidelines-heading-actions">
