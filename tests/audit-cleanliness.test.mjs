@@ -62,7 +62,7 @@ test('active source has no debugging leftovers or unfinished TODO markers', () =
 test('removed workspace and permission generations are not referenced by active source', () => {
   const combined = [...sources.values()].join('\n')
   for (const obsolete of [
-    'MatrixWorkspaceV3', 'MatrixWorkspaceV4', 'MatrixWorkspaceV5', 'MatrixWorkspaceV8', 'MatrixWorkspaceV14',
+    'MatrixWorkspaceV3', 'MatrixWorkspaceV4', 'MatrixWorkspaceV5', 'MatrixWorkspaceV8', 'MatrixWorkspaceV10', 'MatrixWorkspaceV14',
     'PermissionCatalogV2', 'PermissionCatalogV3', 'GuidelineCatalog', 'GuidelineDocumentImport', 'GuidelineGrid',
   ]) {
     assert.doesNotMatch(combined, new RegExp(`['\"]\\./${obsolete}['\"]`))
