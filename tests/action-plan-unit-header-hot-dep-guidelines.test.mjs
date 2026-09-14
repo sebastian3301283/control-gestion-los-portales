@@ -2,42 +2,51 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
-const workspace = await readFile(new URL('../src/UnitExcelWorkspace.tsx', import.meta.url), 'utf8')
+const leadership = await readFile(new URL('../src/UnitPlanLeadershipHeader.tsx', import.meta.url), 'utf8')
+const wrapper = await readFile(new URL('../src/MatrixWorkspaceV13.tsx', import.meta.url), 'utf8')
+const planning = await readFile(new URL('../src/PlanningGuidelines.tsx', import.meta.url), 'utf8')
 const guidelines = await readFile(new URL('../src/GuidelineCatalogV2.tsx', import.meta.url), 'utf8')
-const css = await readFile(new URL('../src/guideline-catalog-v2.css', import.meta.url), 'utf8')
+const css = await readFile(new URL('../src/guideline-unit-layout-overrides.css', import.meta.url), 'utf8')
 
 test('Plan de Acción usa Gerente de Unidad fijo por unidad y Gerente Responsable editable', () => {
-  assert.match(workspace, /HU:\s*'J\.P\. Le Bienvenu V\.'/)
-  assert.match(workspace, /VS:\s*'Juan Carlos Campana'/)
-  assert.match(workspace, /HOT:\s*'Lucienne Freundt'/)
-  assert.match(workspace, /DEP:\s*'Diego Abarca'/)
-  assert.match(workspace, /<b>Unidad<\/b>/)
-  assert.match(workspace, /<b>Gerente de Unidad<\/b>/)
-  assert.match(workspace, /<b>Gerente Responsable<\/b>/)
-  assert.match(workspace, /savePrincipalResponsible/)
-  assert.match(workspace, /principal_responsible_manager_id/)
+  assert.match(leadership, /HU:\s*'J\.P\. Le Bienvenu V\.'/)
+  assert.match(leadership, /VS:\s*'Juan Carlos Campana'/)
+  assert.match(leadership, /HOT:\s*'Lucienne Freundt'/)
+  assert.match(leadership, /DEP:\s*'Diego Abarca'/)
+  assert.match(leadership, /<b>Unidad<\/b>/)
+  assert.match(leadership, /<b>Gerente de Unidad<\/b>/)
+  assert.match(leadership, /<b>Gerente Responsable<\/b>/)
+  assert.match(leadership, /savePrincipalResponsible/)
+  assert.match(leadership, /principal_responsible_manager_id/)
+  assert.match(wrapper, /props\.unitCode !== 'CENTRAL'/)
 })
 
-test('Hoteles reduce Lineamientos a Categoría, Lineamiento y Áreas sin cambiar guardado', () => {
-  assert.match(guidelines, /unitCode === 'HOT'/)
-  assert.match(guidelines, /<th>Categoría<\/th><th>Lineamiento<\/th><th>Áreas<\/th>/)
-  assert.match(guidelines, /mergeAreaLabels\(unitLabels, centralLabels\)/)
-  assert.match(guidelines, /guideline-v2-table--hot/)
-  assert.match(guidelines, /save_planning_guideline_multi/)
-  assert.match(guidelines, /unit_area_labels_input: selectedUnitAreaLabels/)
-  assert.match(guidelines, /central_area_labels_input: selectedCentralAreaLabels/)
+test('Hoteles reduce Lineamientos a Categoría, Lineamiento y una sola región visual de Áreas', () => {
+  assert.match(planning, /unit\.code !== 'HOT' && unit\.code !== 'DEP'/)
+  assert.match(planning, /setHeader\(1, 'Categoría'\)/)
+  assert.match(planning, /setHeader\(2, 'Lineamiento'\)/)
+  assert.match(planning, /setHeader\(3, 'Áreas'\)/)
+  assert.match(planning, /headers\[3\]\.colSpan = 2/)
+  assert.match(planning, /guideline-hot-central-copy/)
   assert.match(css, /\.guideline-v2-table--hot/)
+  assert.match(css, /\.guideline-v2-table--hot th:nth-child\(5\)/)
 })
 
-test('Departamentos conserva cuatro columnas con encabezados específicos', () => {
-  assert.match(guidelines, /unitCode === 'DEP'/)
-  assert.match(guidelines, /<th>Categoría<\/th><th>Lineamiento<\/th><th>Áreas Matricial<\/th><th>Gerencia Central<\/th>/)
-  assert.match(guidelines, /guideline-v2-table--dep/)
+test('Departamentos conserva cuatro columnas visibles con encabezados específicos', () => {
+  assert.match(planning, /setHeader\(3, 'Áreas Matricial'\)/)
+  assert.match(planning, /setHeader\(4, 'Gerencia Central'\)/)
+  assert.match(planning, /guideline-v2-table--dep/)
   assert.match(css, /\.guideline-v2-table--dep/)
+  assert.match(css, /\.guideline-v2-table--dep th:nth-child\(1\)/)
+  assert.match(css, /\.guideline-v2-table--dep th:nth-child\(6\)/)
 })
 
-test('HU y VS conservan la tabla estándar compartida', () => {
+test('HU y VS conservan la tabla estándar y la edición/importación de lineamientos', () => {
   assert.match(guidelines, /<th>N°<\/th><th>Categoría<\/th><th>Lineamientos Estratégicos<\/th>/)
   assert.match(guidelines, /Áreas de Unidad/)
   assert.match(guidelines, /Áreas de Central/)
+  assert.match(guidelines, /save_planning_guideline_multi/)
+  assert.match(guidelines, /unit_area_labels_input: selectedUnitAreaLabels/)
+  assert.match(guidelines, /central_area_labels_input: selectedCentralAreaLabels/)
+  assert.match(planning, /<GuidelineMultiImport/)
 })
