@@ -31,7 +31,7 @@ export default function MatrixWorkspaceV13(props: Props) {
   const { onActiveMatrixChange: _onActiveMatrixChange, ...workspaceProps } = props
   return <MatrixRealtimeLayer matrixId={activeMatrixId}>
     <div ref={hostRef} className={`matrix-v12-theme-host matrix-v12--${props.unitCode.toLowerCase()}`}>
-      {props.unitCode !== 'CENTRAL' && <UnitPlanLeadershipHeader hostRef={hostRef} matrixId={activeMatrixId} unitCode={props.unitCode} unitName={props.unitName} canManage={props.canManage} onError={props.onError} onNotice={props.onNotice} />}
+      {props.unitCode !== 'CENTRAL' && <UnitPlanLeadershipHeader hostRef={hostRef} matrixId={activeMatrixId} unitCode={props.unitCode} unitName={props.unitName} onError={props.onError} />}
       <MatrixWorkspaceV12 {...workspaceProps} onActiveMatrixChange={handleActiveMatrixChange} />
     </div>
   </MatrixRealtimeLayer>
