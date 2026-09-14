@@ -69,8 +69,8 @@ test('el wrapper deja que UnitExcel consuma el target con guidelineId y Central 
   assert.match(unitExcel, /item\.guideline_id === guidelineId/)
 })
 
-test('la matriz HU/DEP/VS/HOT usa exactamente los encabezados visibles de Central', () => {
-  assert.match(unitExcel, /<thead><tr><th>Acción<\/th><th>Responsable<\/th><th>Prioridad<\/th><th>Hitos \/ Fechas<\/th><th>Entregable<\/th><th>Riesgos de no ejecutar<\/th><th>Restricciones<\/th><th>Soporte<\/th><th>Comité<\/th><\/tr><\/thead>/)
+test('la matriz HU/DEP/VS/HOT conserva sus columnas acordadas y deja riesgos y restricciones al final', () => {
+  assert.match(unitExcel, /<thead><tr><th>Acción<\/th><th>Responsable<\/th><th>Prioridad<\/th><th>Hitos \/ Fechas<\/th><th>Entregable<\/th><th>Soporte<\/th><th>Comité<\/th><th>Riesgos de no ejecutar<\/th><th>Restricciones<\/th><\/tr><\/thead>/)
   assert.doesNotMatch(unitExcel, /<thead><tr><th>Objetivo<\/th>/)
   assert.doesNotMatch(unitExcel, /<th>KPI<\/th><th>Inicio<\/th><th>Fin<\/th>/)
 })
