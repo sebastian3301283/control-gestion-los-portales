@@ -8,9 +8,10 @@ async function readOptional(url) {
 
 const planning = await readFile(new URL('../src/PlanningGuidelines.tsx', import.meta.url), 'utf8')
 const leadership = await readFile(new URL('../src/UnitPlanLeadershipHeader.tsx', import.meta.url), 'utf8')
+const config = await readOptional(new URL('../src/GuidelineResponsibleConfiguration.tsx', import.meta.url))
 const realtimeCss = await readFile(new URL('../src/matrix-realtime-layer.css', import.meta.url), 'utf8')
 const exporter = await readOptional(new URL('../src/lib/styled-guideline-export.ts', import.meta.url))
-const migration = await readOptional(new URL('../supabase/migrations/20260914175633_matrix_principal_responsible_labels.sql', import.meta.url))
+const migration = await readOptional(new URL('../supabase/migrations/20260914201709_planning_guideline_principal_responsible_labels.sql', import.meta.url))
 
 test('Gestión Estratégica puede descargar Lineamientos en Excel con formato por unidad', () => {
   assert.match(planning, /exportStyledGuidelineWorkbook/)
@@ -25,15 +26,16 @@ test('Gestión Estratégica puede descargar Lineamientos en Excel con formato po
   assert.match(exporter, /Lineamientos_/)
 })
 
-test('Gerente Responsable es manual, múltiple y persistente por matriz', () => {
-  assert.match(leadership, /matrix_principal_responsible_labels/)
-  assert.match(leadership, /responsibleDraft/)
-  assert.match(leadership, /Agregar responsable/)
-  assert.match(leadership, /selectedResponsibleLabels|responsibleLabels/)
-  assert.doesNotMatch(leadership, /<select aria-label="Gerente Responsable"/)
-  assert.match(migration, /create table if not exists public\.matrix_principal_responsible_labels/)
+test('Gerente Responsable es manual, múltiple y persistente por lineamiento desde Configuración', () => {
+  assert.match(config, /planning_guideline_principal_responsible_labels/)
+  assert.match(config, /Agregar responsable/)
+  assert.match(config, /guideline_id:/)
+  assert.match(leadership, /planning_guideline_principal_responsible_labels/)
+  assert.doesNotMatch(leadership, /Agregar responsable/)
+  assert.doesNotMatch(leadership, />Editar</)
+  assert.match(migration, /create table if not exists public\.planning_guideline_principal_responsible_labels/)
+  assert.match(migration, /matrix_principal_responsible_labels/)
   assert.match(migration, /is_global_planning_manager\(\)/)
-  assert.match(migration, /principal_responsible_manager_id/)
 })
 
 test('Colaboración en tiempo real queda abajo a la izquierda', () => {
