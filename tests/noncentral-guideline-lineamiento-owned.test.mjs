@@ -8,7 +8,9 @@ const migrations = await readdir(new URL('../supabase/migrations/', import.meta.
 test('HU DEP VS HOT guardan por lineamiento sin exigir un área técnica del catálogo', () => {
   assert.doesNotMatch(catalog, /No existe un área técnica activa para crear la matriz de esta unidad/)
   assert.match(catalog, /loadScopedManagements\(formUnitCode/)
-  assert.match(catalog, /management_ids_input: technicalManagementIds/)
+  assert.match(catalog, /const orderedTechnicalManagementIds = formAreaId && technicalManagementIds\.includes\(formAreaId\)/)
+  assert.match(catalog, /\[formAreaId, \.\.\.technicalManagementIds\.filter\(id => id !== formAreaId\)\]/)
+  assert.match(catalog, /management_ids_input: orderedTechnicalManagementIds/)
 })
 
 test('la base desacopla la matriz por lineamiento de matrix_unit_area_catalog', async () => {
