@@ -32,13 +32,14 @@ test('Hoteles reduce Lineamientos a Categoría, Lineamiento y una sola región v
   assert.match(css, /\.guideline-v2-table--hot th:nth-child\(5\)/)
 })
 
-test('Departamentos conserva cuatro columnas visibles con encabezados específicos', () => {
+test('Departamentos conserva N°, Acciones y solo renombra las dos columnas de áreas', () => {
   assert.match(planning, /setHeader\(3, 'Áreas Matricial'\)/)
   assert.match(planning, /setHeader\(4, 'Gerencia Central'\)/)
   assert.match(planning, /guideline-v2-table--dep/)
+  assert.match(planning, /if \(isHotel\) \{[\s\S]*const actions = actionCell\?\.querySelector/)
   assert.match(css, /\.guideline-v2-table--dep/)
-  assert.match(css, /\.guideline-v2-table--dep th:nth-child\(1\)/)
-  assert.match(css, /\.guideline-v2-table--dep th:nth-child\(6\)/)
+  assert.doesNotMatch(css, /\.guideline-v2-table--dep th:nth-child\(1\)[^}]*display:none/)
+  assert.doesNotMatch(css, /\.guideline-v2-table--dep th:nth-child\(6\)[^}]*display:none/)
 })
 
 test('HU y VS conservan la tabla estándar y la edición/importación de lineamientos', () => {
