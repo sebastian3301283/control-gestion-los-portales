@@ -84,9 +84,11 @@ test('las generaciones retirables solo se eliminan después de demostrar que no 
   const { reachable } = await buildRuntimeReachability()
   const candidates = [
     'MatrixWorkspaceV10.tsx',
+    'catalog-configuration-v2.css',
     'central-excel-model.js',
     'central-table-rows.js',
-    'matrix-subpoints.js',
+    'matrix-subpoints.css',
+    'new-guideline.css',
   ]
   const existing = []
   for (const candidate of candidates) {
@@ -96,4 +98,9 @@ test('las generaciones retirables solo se eliminan después de demostrar que no 
     assert.equal(reachable.has(path), false, `${candidate} todavía participa del runtime y no se debe borrar`)
   }
   assert.deepEqual(existing, [], `Quedan generaciones/helpers muertos por retirar: ${existing.join(', ')}`)
+})
+
+test('matrix-subpoints.js permanece protegido porque forma parte del runtime activo', async () => {
+  const { reachable } = await buildRuntimeReachability()
+  assert.equal(reachable.has(join(srcRoot, 'matrix-subpoints.js')), true)
 })
