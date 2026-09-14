@@ -105,23 +105,6 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
   }, [periodId, catalogRevision, isCentral])
 
   useEffect(() => {
-    if (isCentral || !canManage) return
-    const root = rootRef.current
-    if (!root) return
-    const relocateMatrixActions = () => {
-      root.querySelectorAll<HTMLTableRowElement>('.guideline-v2-table tbody tr').forEach(row => {
-        const arrow = row.querySelector<HTMLButtonElement>('.guideline-row-matrix-arrow')
-        const actions = row.querySelector<HTMLElement>('.guideline-actions')
-        if (arrow && actions && arrow.parentElement !== actions) actions.insertBefore(arrow, actions.firstChild)
-      })
-    }
-    const observer = new MutationObserver(relocateMatrixActions)
-    observer.observe(root, { childList: true, subtree: true })
-    relocateMatrixActions()
-    return () => observer.disconnect()
-  }, [catalogRevision, canManage, isCentral, periodId, unit.code])
-
-  useEffect(() => {
     if (unit.code !== 'HOT' && unit.code !== 'DEP') return
     const root = rootRef.current
     if (!root) return
