@@ -24,21 +24,20 @@ test('Plan de Acción usa Gerente de Unidad fijo por unidad y Gerente Responsabl
 test('Hoteles conserva N° y Acciones, y unifica las áreas solo como presentación', () => {
   assert.match(planning, /setHeader\(3, 'Áreas'\)/)
   assert.match(planning, /guideline-hot-central-copy/)
-  assert.doesNotMatch(planning, /if \(isHotel\) \{[\s\S]*actions\.classList\.add\('guideline-actions--inline'\)/)
+  assert.doesNotMatch(planning, /actions\.classList\.add\('guideline-actions--inline'\)/)
+  assert.doesNotMatch(planning, /headers\[3\]\.colSpan = 2/)
   assert.match(css, /\.guideline-v2-table--hot/)
   assert.doesNotMatch(css, /\.guideline-v2-table--hot th:nth-child\(1\)[^}]*display:none/)
   assert.doesNotMatch(css, /\.guideline-v2-table--hot th:nth-child\(6\)[^}]*display:none/)
   assert.match(css, /\.guideline-v2-table--hot th:nth-child\(5\)[^}]*display:none/)
 })
 
-test('Hoteles edita una sola lista manual de Áreas y no separa Unidad/Central', () => {
-  assert.match(guidelines, /formUnitCode === 'HOT'/)
-  assert.match(guidelines, />Áreas<\/span>/)
-  assert.match(guidelines, /addHotelAreaLabels/)
-  assert.match(guidelines, /hotelAreaLabels/)
-  assert.match(guidelines, /unit_area_labels_input: formUnitCode === 'HOT' \? hotelAreaLabels : selectedUnitAreaLabels/)
-  assert.match(guidelines, /central_area_labels_input: formUnitCode === 'HOT' \? \[\] : selectedCentralAreaLabels/)
-  assert.match(guidelines, /central_management_ids_input: formUnitCode === 'HOT' \? \[\] : technicalCentralManagementIds/)
+test('Hoteles presenta una sola sección visual de Áreas en Nuevo/Editar', () => {
+  assert.match(planning, /guideline-hot-areas-field/)
+  assert.match(planning, /guideline-hot-central-source/)
+  assert.match(planning, /title\.textContent = 'Áreas'/)
+  assert.match(css, /\.planning-guidelines-host--hot \.guideline-hot-central-source \.guideline-free-area-entry\{display:none!important\}/)
+  assert.match(css, /\.planning-guidelines-host--hot \.guideline-hot-central-source>span:first-child\{display:none!important\}/)
 })
 
 test('Departamentos conserva N°, Acciones y solo renombra las dos columnas de áreas', () => {
