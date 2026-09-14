@@ -71,8 +71,7 @@ function splitGuideline(value: string, explicitCode?: string | null) {
 
 function displayNumber(item: Guideline, index: number) {
   const parsed = splitGuideline(item.guideline_text, item.code)
-  const match = parsed.code.match(/L(\d+)/i)
-  return match ? Number(match[1]) : index + 1
+  return parsed.code || String(index + 1)
 }
 
 function colorForArea(name: string) {
