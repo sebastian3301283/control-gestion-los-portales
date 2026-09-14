@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useMemo, useState, type CSSProperties, type Mouse
 import { ArrowRight, BookOpenText, Check, ChevronDown, LoaderCircle, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { deleteGuidelineSupportFiles } from './guideline-support-storage'
 import { supabase } from './lib/supabase'
-import { invalidatePlanningCache, loadGuidelineCentralAreaLabels, loadGuidelineCentralManagements, loadGuidelineMultiRelations, loadGuidelineUnitAreaLabels, loadManagerManagements, loadNonCentralGuidelineData, loadScopedGuidelineData, loadScopedManagements } from './lib/planning-query-cache'
+import { invalidatePlanningCache, loadGuidelineCentralAreaLabels, loadGuidelineCentralManagements, loadGuidelineMultiRelations, loadGuidelineUnitAreaLabels, loadManagerManagements, loadNonCentralGuidelineData, loadScopedGuidelineAssignees, loadScopedGuidelineData, loadScopedManagements } from './lib/planning-query-cache'
 import './guideline-catalog.css'
 import './guideline-catalog-v2.css'
 
@@ -122,6 +122,9 @@ export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, sc
   const [centralManagements, setCentralManagements] = useState<Management[]>([])
   const [managers, setManagers] = useState<Manager[]>([])
   const [links, setLinks] = useState<ManagerManagement[]>([])
+  const [assigneeManagements, setAssigneeManagements] = useState<Management[]>([])
+  const [assigneeManagers, setAssigneeManagers] = useState<Manager[]>([])
+  const [assigneeLinks, setAssigneeLinks] = useState<ManagerManagement[]>([])
   const [guidelines, setGuidelines] = useState<Guideline[]>([])
   const [guidelineManagements, setGuidelineManagements] = useState<GuidelineManagement[]>([])
   const [guidelineResponsibles, setGuidelineResponsibles] = useState<GuidelineResponsible[]>([])
@@ -191,13 +194,21 @@ export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, sc
     return managements.filter(item => item.active && allowed.has(item.id)).sort((a, b) => a.name.localeCompare(b.name, 'es'))
   }, [managements, formUnitCode, matrixAreaIds])
 
+  const assignmentManagementOptions = useMemo(() => assigneeManagements
+    .filter(item => item.active && item.unit_code === formUnitCode)
+    .sort((a, b) => a.name.localeCompare(b.name, 'es')), [assigneeManagements, formUnitCode])
+
   const centralManagementOptions = useMemo(() => centralManagements.filter(item => item.active && item.unit_code === 'CENTRAL').sort((a, b) => a.name.localeCompare(b.name, 'es')), [centralManagements])
 
   const responsibleOptions = useMemo(() => {
-    if (formUnitCode !== 'CENTRAL' || !formAreaId) return []
-    const allowedManagerIds = new Set(links.filter(link => link.management_id === formAreaId).map(link => link.manager_id))
-    return managers.filter(item => item.active && allowedManagerIds.has(item.id)).sort((a, b) => a.name.localeCompare(b.name, 'es'))
-  }, [formAreaId, formUnitCode, managers, links])
+    if (!formAreaId) return []
+    if (formUnitCode === 'CENTRAL') {
+      const allowedManagerIds = new Set(links.filter(link => link.management_id === formAreaId).map(link => link.manager_id))
+      return managers.filter(item => item.active && allowedManagerIds.has(item.id)).sort((a, b) => a.name.localeCompare(b.name, 'es'))
+    }
+    const allowedManagerIds = new Set(assigneeLinks.filter(link => link.management_id === formAreaId).map(link => link.manager_id))
+    return assigneeManagers.filter(item => item.active && item.unit_code === formUnitCode && allowedManagerIds.has(item.id)).sort((a, b) => a.name.localeCompare(b.name, 'es'))
+  }, [formAreaId, formUnitCode, managers, links, assigneeManagers, assigneeLinks])
 
   const filteredGuidelines = useMemo(() => guidelines.filter(item => {
     if (periodId && item.period_id !== periodId) return false
@@ -244,6 +255,29 @@ export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, sc
     } catch {
       setGuidelineManagements([])
       setGuidelineResponsibles([])
+    }
+  }
+
+  async function loadAssigneesForUnit(nextUnitCode: string, preferredManagementId = '') {
+    if (nextUnitCode === 'CENTRAL') {
+      setAssigneeManagements([])
+      setAssigneeManagers([])
+      setAssigneeLinks([])
+      return
+    }
+    try {
+      const data = await loadScopedGuidelineAssignees(nextUnitCode)
+      setAssigneeManagements(data.managements as Management[])
+      setAssigneeManagers(data.managers as Manager[])
+      setAssigneeLinks(data.links as ManagerManagement[])
+      if (preferredManagementId && !data.managements.some(item => item.active && item.unit_code === nextUnitCode && item.id === preferredManagementId)) {
+        setFormAreaId('')
+        setFormResponsibleId('')
+      }
+    } catch {
+      setAssigneeManagements([])
+      setAssigneeManagers([])
+      setAssigneeLinks([])
     }
   }
 
@@ -344,6 +378,7 @@ export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, sc
     setSelectedResponsibleIds([])
     setFormActive(true)
     setFormOpen(true); setError(''); setNotice('')
+    if (unitCode !== 'CENTRAL') void loadAssigneesForUnit(unitCode)
   }
 
   function openEdit(item: Guideline) {
@@ -368,6 +403,7 @@ export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, sc
     setSelectedResponsibleIds([])
     setFormActive(item.active)
     setFormOpen(true); setError(''); setNotice('')
+    if (item.unit_code !== 'CENTRAL') void loadAssigneesForUnit(item.unit_code, item.management_id)
   }
 
   function closeForm() { setFormOpen(false); setEditingId(null) }
@@ -427,20 +463,23 @@ export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, sc
         // Keep every active management in the unit as hidden compatibility ownership so access is
         // unit-wide and the legacy non-null management/process schema never blocks a lineamiento.
         const technicalManagementIds = (await loadScopedManagements(formUnitCode)).map(item => item.id)
+        const orderedTechnicalManagementIds = formAreaId && technicalManagementIds.includes(formAreaId)
+          ? [formAreaId, ...technicalManagementIds.filter(id => id !== formAreaId)]
+          : technicalManagementIds
         const technicalCentralManagementIds = resolveTechnicalManagementIds(selectedCentralAreaLabels, centralManagementOptions)
         if (!technicalManagementIds.length) throw new Error('No hay configuración interna activa para esta unidad.')
         const { data, error: rpcError } = await supabase.rpc('save_planning_guideline_multi', {
           guideline_id_input: editingId || null,
           period_id_input: formPeriodId,
           unit_code_input: formUnitCode,
-          management_ids_input: technicalManagementIds,
+          management_ids_input: orderedTechnicalManagementIds,
           central_management_ids_input: technicalCentralManagementIds,
           unit_area_labels_input: selectedUnitAreaLabels,
           central_area_labels_input: selectedCentralAreaLabels,
           category_input: formCategory.trim() || null,
           code_input: code || null,
           guideline_text_input: guidelineText,
-          responsible_ids_input: [],
+          responsible_ids_input: formResponsibleId ? [formResponsibleId] : [],
           active_input: formActive,
         })
         if (rpcError || !data) throw rpcError || new Error('No se recibió el lineamiento guardado.')
@@ -505,11 +544,12 @@ export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, sc
 
   function renderTable(items: Guideline[], accent: string) {
     const tableStyle = { '--guideline-accent': accent } as CSSProperties
+    const showActions = canManage || (unitCode !== 'CENTRAL' && Boolean(onOpenMatrixForGuideline))
     return <div className="guideline-v2-table-wrap" style={tableStyle}>
       <table className="guideline-catalog-table guideline-v2-table">
-        <thead><tr><th>N°</th><th>Categoría</th><th>Lineamientos Estratégicos</th><th>{unitCode === 'CENTRAL' ? 'Gerencia Responsable' : 'Áreas de Unidad'}</th><th>{unitCode === 'CENTRAL' ? 'Gerente Responsable' : 'Áreas de Central'}</th>{canManage && <th>Acciones</th>}</tr></thead>
+        <thead><tr><th>N°</th><th>Categoría</th><th>Lineamientos Estratégicos</th><th>{unitCode === 'CENTRAL' ? 'Gerencia Responsable' : 'Áreas de Unidad'}</th><th>{unitCode === 'CENTRAL' ? 'Gerente Responsable' : 'Áreas de Central'}</th>{showActions && <th>Acciones</th>}</tr></thead>
         <tbody>
-          {items.length === 0 ? <tr><td colSpan={canManage ? 6 : 5} className="guideline-empty">No hay lineamientos en esta vista.</td></tr> : items.map((item, index) => {
+          {items.length === 0 ? <tr><td colSpan={showActions ? 6 : 5} className="guideline-empty">No hay lineamientos en esta vista.</td></tr> : items.map((item, index) => {
             const responsible = item.responsible_manager_id ? managerById.get(item.responsible_manager_id) : null
             const managementIds = managementIdsByGuideline.get(item.id) || [item.management_id]
             const unitLabels = unitAreaLabelsByGuideline.get(item.id) || managementIds.map(id => managementById.get(id)?.name || '').filter(Boolean)
@@ -520,10 +560,10 @@ export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, sc
             return <tr key={item.id} className={`${!item.active ? 'inactive-row ' : ''}${isSelected ? 'guideline-selected' : ''}`.trim()} aria-selected={isSelected || undefined} onClick={() => unitCode !== 'CENTRAL' && onSelectGuideline?.({ id: item.id, managementId: item.management_id, label: item.guideline_text })}>
               <td className="guideline-number">{displayNumber(item, index)}</td>
               <td className="guideline-category">{item.category || '—'}</td>
-              <td className="guideline-text-cell"><div className="guideline-text-matrix-row"><span className="guideline-text-copy">{parsed.text}</span>{unitCode !== 'CENTRAL' && onOpenMatrixForGuideline && <button type="button" className="guideline-row-matrix-arrow" onPointerEnter={() => onPrefetchMatrixForGuideline?.(item.management_id, item.id)} onFocus={() => onPrefetchMatrixForGuideline?.(item.management_id, item.id)} onClick={event => stopAndRun(event, () => onOpenMatrixForGuideline?.(item.management_id, item.id))} title="Abrir matriz de este lineamiento" aria-label={`Abrir matriz de ${parsed.code || `lineamiento ${index + 1}`}`}><ArrowRight size={18}/></button>}</div></td>
+              <td className="guideline-text-cell"><span className="guideline-text-copy">{parsed.text}</span></td>
               <td className="guideline-management">{unitCode === 'CENTRAL' ? (managementById.get(item.management_id)?.name || '—') : renderTextChips(unitLabels)}</td>
               <td>{unitCode === 'CENTRAL' ? (responsible ? <div className="guideline-responsible"><strong>{responsible.name}</strong><small>{responsible.cargo || 'Bonista'}</small></div> : <span className="muted">Sin asignar</span>) : renderTextChips(centralLabels)}</td>
-              {canManage && <td><div className="guideline-actions"><button onClick={event => stopAndRun(event, () => openEdit(item))} title="Editar"><Pencil size={14}/></button><button className="danger" onClick={event => stopAndRun(event, () => void deleteGuideline(item))} title="Eliminar"><Trash2 size={14}/></button></div></td>}
+              {showActions && <td><div className="guideline-actions">{unitCode !== 'CENTRAL' && onOpenMatrixForGuideline && <button type="button" className="guideline-row-matrix-arrow" onPointerEnter={() => onPrefetchMatrixForGuideline?.(item.management_id, item.id)} onFocus={() => onPrefetchMatrixForGuideline?.(item.management_id, item.id)} onClick={event => stopAndRun(event, () => onOpenMatrixForGuideline?.(item.management_id, item.id))} title="Abrir matriz de este lineamiento" aria-label={`Abrir matriz de ${parsed.code || `lineamiento ${index + 1}`}`}><ArrowRight size={18}/></button>}{canManage && <><button onClick={event => stopAndRun(event, () => openEdit(item))} title="Editar"><Pencil size={14}/></button><button className="danger" onClick={event => stopAndRun(event, () => void deleteGuideline(item))} title="Eliminar"><Trash2 size={14}/></button></>}</div></td>}
             </tr>
           })}
         </tbody>
@@ -541,6 +581,7 @@ export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, sc
     setSelectedCentralAreaLabels([])
     setCentralAreaDraft('')
     setSelectedResponsibleIds([])
+    void loadAssigneesForUnit(nextUnitCode)
   }
 
   return <section className={`guideline-config config-accordion ${open ? 'open' : ''}`}>
@@ -551,7 +592,7 @@ export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, sc
     </button>
 
     {open && <div className="config-accordion-body guideline-config-body guideline-v2-body">
-      {error && <div className="guideline-message error">{error}</div>}
+      {!formOpen && error && <div className="guideline-message error">{error}</div>}
       {notice && <div className="guideline-message success"><Check size={14}/>{notice}</div>}
 
       <div className="guideline-unit-selector" role="tablist" aria-label="Unidad de lineamientos">
@@ -573,14 +614,16 @@ export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, sc
       {formOpen && <div className="guideline-modal-backdrop" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target && !saving) closeForm() }}><form className="guideline-modal" onSubmit={saveGuideline}>
         <button className="guideline-modal-close" type="button" onClick={closeForm} disabled={saving}><X size={18}/></button>
         <div className="guideline-modal-heading"><span><BookOpenText size={20}/></span><div><small>{editingId ? 'Editar' : 'Nuevo'}</small><h3>Lineamiento estratégico</h3></div></div>
+        {error && <div className="guideline-message error guideline-modal-error">{error}</div>}
         <div className="guideline-form-grid">
           <label>Periodo<select value={formPeriodId} onChange={event => setFormPeriodId(event.target.value)} required>{periods.map(item => <option key={item.id} value={item.id}>{item.year}</option>)}</select></label>
           <label>Unidad<select value={formUnitCode} onChange={event => switchFormUnit(event.target.value)} required>{unitOptions.map(item => <option key={item.code} value={item.code}>{item.name}</option>)}</select></label>
           {formUnitCode === 'CENTRAL' ? <label>Gerencia responsable<select value={formAreaId} onChange={event => { setFormAreaId(event.target.value); setFormResponsibleId('') }} required><option value="">Seleccionar gerencia</option>{formManagementOptions.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label> : <div className="guideline-multi-field"><span>Áreas de Unidad</span><div className="guideline-free-area-entry"><input value={unitAreaDraft} placeholder="Escribe un área" onChange={event => setUnitAreaDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); addUnitAreaLabels() } }}/><button type="button" onClick={addUnitAreaLabels}>Agregar área</button></div><div className="guideline-editable-chips">{selectedUnitAreaLabels.map(label => <span key={normalize(label)}>{label}<button type="button" aria-label={`Quitar ${label}`} onClick={() => setSelectedUnitAreaLabels(current => current.filter(item => normalize(item) !== normalize(label)))}>×</button></span>)}</div><small>Escribe las áreas manualmente. Puedes agregar varias y no se muestran opciones de ningún catálogo.</small></div>}
+          {formUnitCode !== 'CENTRAL' && <label>Gerencia responsable (opcional)<select value={formAreaId} onChange={event => { setFormAreaId(event.target.value); setFormResponsibleId('') }}><option value="">Sin gerencia asignada</option>{assignmentManagementOptions.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select><small>Solo se muestran gerencias activas de la unidad seleccionada.</small></label>}
           <label>Categoría<input value={formCategory} onChange={event => setFormCategory(event.target.value)} placeholder="Ej. Estratégico"/></label>
           <label>Código<input value={formCode} onChange={event => setFormCode(event.target.value)} placeholder="L5"/></label>
           <label className="wide">Lineamiento<textarea value={formText} onChange={event => setFormText(event.target.value)} placeholder="Desarrollar productos alineados..." required/></label>
-          {formUnitCode === 'CENTRAL' ? <label className="wide">Gerente responsable · Bonistas<select value={formResponsibleId} onChange={event => setFormResponsibleId(event.target.value)}><option value="">Sin responsable</option>{responsibleOptions.map(item => <option key={item.id} value={item.id}>{item.name} · {item.cargo || 'Sin cargo'} · {unitByCode.get(item.unit_code) || item.unit_code}</option>)}</select><small>La lista sale directamente del directorio de Bonistas y se filtra por la gerencia seleccionada.</small></label> : <div className="guideline-multi-field wide"><span>Áreas de Central</span><div className="guideline-free-area-entry"><input value={centralAreaDraft} placeholder="Escribe un área de Central" onChange={event => setCentralAreaDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); addCentralAreaLabels() } }}/><button type="button" onClick={addCentralAreaLabels}>Agregar área Central</button></div><div className="guideline-editable-chips">{selectedCentralAreaLabels.map(label => <span key={normalize(label)}>{label}<button type="button" aria-label={`Quitar ${label}`} onClick={() => setSelectedCentralAreaLabels(current => current.filter(item => normalize(item) !== normalize(label)))}>×</button></span>)}</div><small>Escribe las áreas de Central manualmente. Puedes agregar varias aunque todavía no existan en el catálogo.</small></div>}
+          {formUnitCode === 'CENTRAL' ? <label className="wide">Gerente responsable · Bonistas<select value={formResponsibleId} onChange={event => setFormResponsibleId(event.target.value)}><option value="">Sin responsable</option>{responsibleOptions.map(item => <option key={item.id} value={item.id}>{item.name} · {item.cargo || 'Sin cargo'} · {unitByCode.get(item.unit_code) || item.unit_code}</option>)}</select><small>La lista sale directamente del directorio de Bonistas y se filtra por la gerencia seleccionada.</small></label> : <><label className="wide">Gerente responsable · Bonistas<select value={formResponsibleId} onChange={event => setFormResponsibleId(event.target.value)} disabled={!formAreaId}><option value="">Sin responsable</option>{responsibleOptions.map(item => <option key={item.id} value={item.id}>{item.name} · {item.cargo || 'Sin cargo'} · {unitByCode.get(item.unit_code) || item.unit_code}</option>)}</select><small>Solo se muestran Bonistas activos de la unidad vinculados a la gerencia seleccionada.</small></label><div className="guideline-multi-field wide"><span>Áreas de Central</span><div className="guideline-free-area-entry"><input value={centralAreaDraft} placeholder="Escribe un área de Central" onChange={event => setCentralAreaDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); addCentralAreaLabels() } }}/><button type="button" onClick={addCentralAreaLabels}>Agregar área Central</button></div><div className="guideline-editable-chips">{selectedCentralAreaLabels.map(label => <span key={normalize(label)}>{label}<button type="button" aria-label={`Quitar ${label}`} onClick={() => setSelectedCentralAreaLabels(current => current.filter(item => normalize(item) !== normalize(label)))}>×</button></span>)}</div><small>Escribe las áreas de Central manualmente. Puedes agregar varias aunque todavía no existan en el catálogo.</small></div></>}
           <label className="guideline-active"><input type="checkbox" checked={formActive} onChange={event => setFormActive(event.target.checked)}/> Activo</label>
         </div>
         <div className="guideline-modal-actions"><button type="button" onClick={closeForm} disabled={saving}>Cancelar</button><button className="primary" type="submit" disabled={saving}>{saving && <LoaderCircle className="spin" size={15}/>} Guardar lineamiento</button></div>
