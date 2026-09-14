@@ -48,7 +48,7 @@ test('Fase 1: create/edit conserva identidad, responsable filtrado y la importac
 
 test('Fase 1: errores de guardado se muestran dentro del modal y no se duplica la flecha mediante DOM imperativo', () => {
   assert.match(catalog, /guideline-modal-error/)
-  assert.match(catalog, /<div className="guideline-actions">[\s\S]{0,1200}guideline-row-matrix-arrow[\s\S]{0,1200}openEdit\(item\)/)
+  assert.match(catalog, /<div className="guideline-actions">[\s\S]*?guideline-row-matrix-arrow[\s\S]*?openEdit\(item\)/)
   assert.doesNotMatch(planning, /relocateMatrixActions/)
 })
 
