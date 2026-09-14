@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useMemo, useState, type CSSProperties, type Mouse
 import { ArrowRight, BookOpenText, Check, ChevronDown, LoaderCircle, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { deleteGuidelineSupportFiles } from './guideline-support-storage'
 import { supabase } from './lib/supabase'
-import { invalidatePlanningCache, loadGuidelineMultiRelations, loadManagerManagements, loadNonCentralGuidelineData, loadScopedGuidelineData } from './lib/planning-query-cache'
+import { invalidatePlanningCache, loadGuidelineCentralManagements, loadGuidelineMultiRelations, loadManagerManagements, loadNonCentralGuidelineData, loadScopedGuidelineData } from './lib/planning-query-cache'
 import './guideline-catalog.css'
 import './guideline-catalog-v2.css'
 
@@ -13,6 +13,7 @@ type Manager = { id: string; name: string; cargo: string | null; unit_code: stri
 type ManagerManagement = { manager_id: string; management_id: string }
 type GuidelineManagement = { guideline_id: string; management_id: string; sort_order: number }
 type GuidelineResponsible = { guideline_id: string; manager_id: string; sort_order: number }
+type GuidelineCentralManagement = { guideline_id: string; management_id: string; sort_order: number }
 type Guideline = {
   id: string
   period_id: string
@@ -98,11 +99,13 @@ export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, sc
   const [notice, setNotice] = useState('')
   const [periods, setPeriods] = useState<Period[]>([])
   const [managements, setManagements] = useState<Management[]>([])
+  const [centralManagements, setCentralManagements] = useState<Management[]>([])
   const [managers, setManagers] = useState<Manager[]>([])
   const [links, setLinks] = useState<ManagerManagement[]>([])
   const [guidelines, setGuidelines] = useState<Guideline[]>([])
   const [guidelineManagements, setGuidelineManagements] = useState<GuidelineManagement[]>([])
   const [guidelineResponsibles, setGuidelineResponsibles] = useState<GuidelineResponsible[]>([])
+  const [guidelineCentralManagements, setGuidelineCentralManagements] = useState<GuidelineCentralManagement[]>([])
   const [matrixAreaIds, setMatrixAreaIds] = useState<string[]>([])
   const [periodId, setPeriodId] = useState(scopePeriodId || '')
   const [unitCode, setUnitCode] = useState(scopeUnitCode || unitOptions.find(unit => unit.code === 'CENTRAL')?.code || unitOptions[0]?.code || 'CENTRAL')
@@ -117,11 +120,13 @@ export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, sc
   const [formText, setFormText] = useState('')
   const [formResponsibleId, setFormResponsibleId] = useState('')
   const [selectedManagementIds, setSelectedManagementIds] = useState<string[]>([])
+  const [selectedCentralManagementIds, setSelectedCentralManagementIds] = useState<string[]>([])
   const [selectedResponsibleIds, setSelectedResponsibleIds] = useState<string[]>([])
   const [formActive, setFormActive] = useState(true)
 
   const managerById = useMemo(() => new Map(managers.map(item => [item.id, item])), [managers])
   const managementById = useMemo(() => new Map(managements.map(item => [item.id, item])), [managements])
+  const centralManagementById = useMemo(() => new Map(centralManagements.map(item => [item.id, item])), [centralManagements])
   const unitByCode = useMemo(() => new Map(unitOptions.map(item => [item.code, item.name])), [unitOptions])
 
   const managementIdsByGuideline = useMemo(() => {
@@ -129,11 +134,11 @@ export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, sc
     guidelineManagements.forEach(link => grouped.set(link.guideline_id, [...(grouped.get(link.guideline_id) || []), link.management_id]))
     return grouped
   }, [guidelineManagements])
-  const responsibleIdsByGuideline = useMemo(() => {
+  const centralManagementIdsByGuideline = useMemo(() => {
     const grouped = new Map<string, string[]>()
-    guidelineResponsibles.forEach(link => grouped.set(link.guideline_id, [...(grouped.get(link.guideline_id) || []), link.manager_id]))
+    guidelineCentralManagements.forEach(link => grouped.set(link.guideline_id, [...(grouped.get(link.guideline_id) || []), link.management_id]))
     return grouped
-  }, [guidelineResponsibles])
+  }, [guidelineCentralManagements])
 
   const uniqueAreas = useMemo(() => {
     const unique = new Map<string, Management>()
@@ -145,19 +150,19 @@ export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, sc
     return [...unique.values()].sort((a, b) => a.name.localeCompare(b.name, 'es'))
   }, [managements])
 
-  // En HU/DEP/VS/HOT las gerencias responsables provienen de matrix_unit_area_catalog.
   const formManagementOptions = useMemo(() => {
     if (formUnitCode === 'CENTRAL') return managements.filter(item => item.active && item.unit_code === 'CENTRAL').sort((a, b) => a.name.localeCompare(b.name, 'es'))
     const allowed = new Set(matrixAreaIds)
     return managements.filter(item => item.active && allowed.has(item.id)).sort((a, b) => a.name.localeCompare(b.name, 'es'))
   }, [managements, formUnitCode, matrixAreaIds])
 
+  const centralManagementOptions = useMemo(() => centralManagements.filter(item => item.active && item.unit_code === 'CENTRAL').sort((a, b) => a.name.localeCompare(b.name, 'es')), [centralManagements])
+
   const responsibleOptions = useMemo(() => {
-    const areaIds = formUnitCode === 'CENTRAL' ? (formAreaId ? [formAreaId] : []) : selectedManagementIds
-    if (!areaIds.length) return []
-    const allowedManagerIds = new Set(links.filter(link => areaIds.includes(link.management_id)).map(link => link.manager_id))
+    if (formUnitCode !== 'CENTRAL' || !formAreaId) return []
+    const allowedManagerIds = new Set(links.filter(link => link.management_id === formAreaId).map(link => link.manager_id))
     return managers.filter(item => item.active && allowedManagerIds.has(item.id)).sort((a, b) => a.name.localeCompare(b.name, 'es'))
-  }, [formAreaId, formUnitCode, selectedManagementIds, managers, links])
+  }, [formAreaId, formUnitCode, managers, links])
 
   const filteredGuidelines = useMemo(() => guidelines.filter(item => {
     if (periodId && item.period_id !== periodId) return false
@@ -217,11 +222,13 @@ export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, sc
         const nextGuidelines = data.guidelines as Guideline[]
         setPeriods(data.periods as Period[])
         setManagements(data.managements as Management[])
-        setManagers(data.managers as Manager[])
-        setLinks(data.links as ManagerManagement[])
+        setCentralManagements(data.centralManagements as Management[])
+        setManagers([])
+        setLinks([])
         setGuidelines(nextGuidelines)
         setGuidelineManagements(data.relations.managements as GuidelineManagement[])
-        setGuidelineResponsibles(data.relations.responsibles as GuidelineResponsible[])
+        setGuidelineResponsibles([])
+        setGuidelineCentralManagements(data.relations.centralManagements as GuidelineCentralManagement[])
         setMatrixAreaIds(data.catalog.map(item => String(item.management_id)))
         setPeriodId(requestPeriodId)
         setUnitCode(targetUnit)
@@ -234,8 +241,10 @@ export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, sc
         const nextGuidelines = data.guidelines as Guideline[]
         setPeriods(data.periods as Period[])
         setManagements(nextManagements)
+        setCentralManagements([])
         setManagers(data.managers as Manager[])
         setGuidelines(nextGuidelines)
+        setGuidelineCentralManagements([])
         setMatrixAreaIds(data.catalog.map(item => String(item.management_id)))
         setPeriodId(requestPeriodId)
         setUnitCode(targetUnit)
@@ -255,13 +264,16 @@ export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, sc
       if (periodResult.error || areaResult.error || managerResult.error || linkResult.error || guidelineResult.error || matrixAreaResult.error) throw new Error('LOAD')
       const nextPeriods = (periodResult.data || []) as Period[]
       const nextGuidelines = (guidelineResult.data || []) as Guideline[]
+      const nextManagements = (areaResult.data || []) as Management[]
       setPeriods(nextPeriods)
-      setManagements((areaResult.data || []) as Management[])
+      setManagements(nextManagements)
+      setCentralManagements(nextManagements.filter(item => item.unit_code === 'CENTRAL'))
       setManagers((managerResult.data || []) as Manager[])
       setLinks((linkResult.data || []) as ManagerManagement[])
       setGuidelines(nextGuidelines)
       setMatrixAreaIds((matrixAreaResult.data || []).filter(item => String(item.unit_code) === unitCode).map(item => String(item.management_id)))
       await setMultiRelations(nextGuidelines)
+      try { setGuidelineCentralManagements(await loadGuidelineCentralManagements(nextGuidelines.map(item => item.id)) as GuidelineCentralManagement[]) } catch { setGuidelineCentralManagements([]) }
       if (!periodId && nextPeriods.length) {
         const currentYear = new Date().getFullYear()
         const preferred = nextPeriods.find(item => item.year === currentYear) || nextPeriods.find(item => item.status === 'OPEN') || nextPeriods[0]
@@ -280,6 +292,7 @@ export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, sc
     const firstManagementId = options[0]?.id || ''
     setFormAreaId(unitCode === 'CENTRAL' ? (areaFilter || firstManagementId) : '')
     setSelectedManagementIds(unitCode === 'CENTRAL' || !firstManagementId ? [] : [firstManagementId])
+    setSelectedCentralManagementIds([])
     setFormCategory('')
     setFormCode('')
     setFormText('')
@@ -292,17 +305,18 @@ export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, sc
   function openEdit(item: Guideline) {
     const parsed = splitGuideline(item.guideline_text, item.code)
     const multiManagementIds = managementIdsByGuideline.get(item.id) || [item.management_id]
-    const multiResponsibleIds = responsibleIdsByGuideline.get(item.id) || (item.responsible_manager_id ? [item.responsible_manager_id] : [])
+    const centralIds = centralManagementIdsByGuideline.get(item.id) || []
     setEditingId(item.id)
     setFormPeriodId(item.period_id)
     setFormUnitCode(item.unit_code)
     setFormAreaId(item.management_id)
     setSelectedManagementIds(item.unit_code === 'CENTRAL' ? [] : multiManagementIds)
+    setSelectedCentralManagementIds(item.unit_code === 'CENTRAL' ? [] : centralIds)
     setFormCategory(item.category || '')
     setFormCode(parsed.code)
     setFormText(parsed.text)
     setFormResponsibleId(item.responsible_manager_id || '')
-    setSelectedResponsibleIds(item.unit_code === 'CENTRAL' ? [] : multiResponsibleIds)
+    setSelectedResponsibleIds([])
     setFormActive(item.active)
     setFormOpen(true); setError(''); setNotice('')
   }
@@ -328,7 +342,7 @@ export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, sc
     const code = formCode.trim().toUpperCase().replace(/\s+/g, '')
     const isCentralForm = formUnitCode === 'CENTRAL'
     if (!formPeriodId || !formUnitCode || !text || (isCentralForm ? !formAreaId : !selectedManagementIds.length)) {
-      setError('Completa periodo, unidad, gerencia y lineamiento.'); return
+      setError('Completa periodo, unidad, área y lineamiento.'); return
     }
     const guidelineText = code ? `${code}: ${text}` : text
     setSaving(true); setError(''); setNotice('')
@@ -339,10 +353,11 @@ export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, sc
           period_id_input: formPeriodId,
           unit_code_input: formUnitCode,
           management_ids_input: selectedManagementIds,
+          central_management_ids_input: selectedCentralManagementIds,
           category_input: formCategory.trim() || null,
           code_input: code || null,
           guideline_text_input: guidelineText,
-          responsible_ids_input: selectedResponsibleIds,
+          responsible_ids_input: [],
           active_input: formActive,
         })
         if (rpcError || !data) throw rpcError || new Error('No se recibió el lineamiento guardado.')
@@ -400,32 +415,31 @@ export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, sc
     action()
   }
 
-  function renderMultiChips(ids: string[], kind: 'management' | 'manager') {
+  function renderManagementChips(ids: string[], lookup: Map<string, Management>) {
     if (!ids.length) return <span className="muted">Sin asignar</span>
-    return <div className="guideline-multi-chips">{ids.map(id => {
-      const label = kind === 'management' ? managementById.get(id)?.name : managerById.get(id)?.name
-      return label ? <span className="guideline-multi-chip" key={id}>{label}</span> : null
-    })}</div>
+    const labels = ids.map(id => lookup.get(id)).filter((item): item is Management => Boolean(item))
+    if (!labels.length) return <span className="muted">Sin asignar</span>
+    return <div className="guideline-multi-chips">{labels.map(item => <span className="guideline-multi-chip" key={item.id}>{item.name}</span>)}</div>
   }
 
   function renderTable(items: Guideline[], accent: string) {
     const tableStyle = { '--guideline-accent': accent } as CSSProperties
     return <div className="guideline-v2-table-wrap" style={tableStyle}>
       <table className="guideline-catalog-table guideline-v2-table">
-        <thead><tr><th>N°</th><th>Categoría</th><th>Lineamientos Estratégicos</th><th>Gerencia Responsable</th><th>Gerente Responsable</th>{canManage && <th>Acciones</th>}</tr></thead>
+        <thead><tr><th>N°</th><th>Categoría</th><th>Lineamientos Estratégicos</th><th>{unitCode === 'CENTRAL' ? 'Gerencia Responsable' : 'Áreas de Unidad'}</th><th>{unitCode === 'CENTRAL' ? 'Gerente Responsable' : 'Áreas de Central'}</th>{canManage && <th>Acciones</th>}</tr></thead>
         <tbody>
           {items.length === 0 ? <tr><td colSpan={canManage ? 6 : 5} className="guideline-empty">No hay lineamientos en esta vista.</td></tr> : items.map((item, index) => {
             const responsible = item.responsible_manager_id ? managerById.get(item.responsible_manager_id) : null
             const managementIds = managementIdsByGuideline.get(item.id) || [item.management_id]
-            const responsibleIds = responsibleIdsByGuideline.get(item.id) || (item.responsible_manager_id ? [item.responsible_manager_id] : [])
+            const centralIds = centralManagementIdsByGuideline.get(item.id) || []
             const parsed = splitGuideline(item.guideline_text, item.code)
             const isSelected = unitCode !== 'CENTRAL' && selectedGuidelineId === item.id
             return <tr key={item.id} className={`${!item.active ? 'inactive-row ' : ''}${isSelected ? 'guideline-selected' : ''}`.trim()} aria-selected={isSelected || undefined} onClick={() => unitCode !== 'CENTRAL' && onSelectGuideline?.({ id: item.id, managementId: item.management_id, label: item.guideline_text })}>
               <td className="guideline-number">{displayNumber(item, index)}</td>
               <td className="guideline-category">{item.category || '—'}</td>
               <td className="guideline-text-cell"><div className="guideline-text-matrix-row"><span className="guideline-text-copy">{parsed.text}</span>{unitCode !== 'CENTRAL' && onOpenMatrixForGuideline && <button type="button" className="guideline-row-matrix-arrow" onPointerEnter={() => onPrefetchMatrixForGuideline?.(item.management_id, item.id)} onFocus={() => onPrefetchMatrixForGuideline?.(item.management_id, item.id)} onClick={event => stopAndRun(event, () => onOpenMatrixForGuideline?.(item.management_id, item.id))} title="Abrir matriz de este lineamiento" aria-label={`Abrir matriz de ${parsed.code || `lineamiento ${index + 1}`}`}><ArrowRight size={18}/></button>}</div></td>
-              <td className="guideline-management">{unitCode === 'CENTRAL' ? (managementById.get(item.management_id)?.name || '—') : renderMultiChips(managementIds, 'management')}</td>
-              <td>{unitCode === 'CENTRAL' ? (responsible ? <div className="guideline-responsible"><strong>{responsible.name}</strong><small>{responsible.cargo || 'Bonista'}</small></div> : <span className="muted">Sin asignar</span>) : renderMultiChips(responsibleIds, 'manager')}</td>
+              <td className="guideline-management">{unitCode === 'CENTRAL' ? (managementById.get(item.management_id)?.name || '—') : renderManagementChips(managementIds, managementById)}</td>
+              <td>{unitCode === 'CENTRAL' ? (responsible ? <div className="guideline-responsible"><strong>{responsible.name}</strong><small>{responsible.cargo || 'Bonista'}</small></div> : <span className="muted">Sin asignar</span>) : renderManagementChips(centralIds, centralManagementById)}</td>
               {canManage && <td><div className="guideline-actions"><button onClick={event => stopAndRun(event, () => openEdit(item))} title="Editar"><Pencil size={14}/></button><button className="danger" onClick={event => stopAndRun(event, () => void deleteGuideline(item))} title="Eliminar"><Trash2 size={14}/></button></div></td>}
             </tr>
           })}
@@ -439,16 +453,12 @@ export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, sc
     setFormAreaId('')
     setFormResponsibleId('')
     setSelectedManagementIds([])
+    setSelectedCentralManagementIds([])
     setSelectedResponsibleIds([])
   }
 
   function toggleManagement(id: string) {
-    setSelectedManagementIds(current => {
-      const next = toggleId(current, id)
-      const allowedManagers = new Set(links.filter(link => next.includes(link.management_id)).map(link => link.manager_id))
-      setSelectedResponsibleIds(selected => selected.filter(managerId => allowedManagers.has(managerId)))
-      return next
-    })
+    setSelectedManagementIds(current => toggleId(current, id))
   }
 
   return <section className={`guideline-config config-accordion ${open ? 'open' : ''}`}>
@@ -484,11 +494,11 @@ export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, sc
         <div className="guideline-form-grid">
           <label>Periodo<select value={formPeriodId} onChange={event => setFormPeriodId(event.target.value)} required>{periods.map(item => <option key={item.id} value={item.id}>{item.year}</option>)}</select></label>
           <label>Unidad<select value={formUnitCode} onChange={event => switchFormUnit(event.target.value)} required>{unitOptions.map(item => <option key={item.code} value={item.code}>{item.name}</option>)}</select></label>
-          {formUnitCode === 'CENTRAL' ? <label>Gerencia responsable<select value={formAreaId} onChange={event => { setFormAreaId(event.target.value); setFormResponsibleId('') }} required><option value="">Seleccionar gerencia</option>{formManagementOptions.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label> : <div className="guideline-multi-field"><span>Gerencias responsables</span><div className="guideline-multi-options">{formManagementOptions.length ? formManagementOptions.map(item => <label key={item.id}><input type="checkbox" checked={selectedManagementIds.includes(item.id)} onChange={() => toggleManagement(item.id)}/><span>{item.name}</span></label>) : <small>No hay áreas activadas para esta unidad.</small>}</div><small>Solo aparecen las áreas configuradas en “Activar áreas por unidad”.</small></div>}
+          {formUnitCode === 'CENTRAL' ? <label>Gerencia responsable<select value={formAreaId} onChange={event => { setFormAreaId(event.target.value); setFormResponsibleId('') }} required><option value="">Seleccionar gerencia</option>{formManagementOptions.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label> : <div className="guideline-multi-field"><span>Áreas de Unidad</span><div className="guideline-multi-options">{formManagementOptions.length ? formManagementOptions.map(item => <label key={item.id}><input type="checkbox" checked={selectedManagementIds.includes(item.id)} onChange={() => toggleManagement(item.id)}/><span>{item.name}</span></label>) : <small>No hay áreas activadas para esta unidad.</small>}</div><small>Solo aparecen las áreas configuradas en “Activar áreas por unidad”.</small></div>}
           <label>Categoría<input value={formCategory} onChange={event => setFormCategory(event.target.value)} placeholder="Ej. Estratégico"/></label>
           <label>Código<input value={formCode} onChange={event => setFormCode(event.target.value)} placeholder="L5"/></label>
           <label className="wide">Lineamiento<textarea value={formText} onChange={event => setFormText(event.target.value)} placeholder="Desarrollar productos alineados..." required/></label>
-          {formUnitCode === 'CENTRAL' ? <label className="wide">Gerente responsable · Bonistas<select value={formResponsibleId} onChange={event => setFormResponsibleId(event.target.value)}><option value="">Sin responsable</option>{responsibleOptions.map(item => <option key={item.id} value={item.id}>{item.name} · {item.cargo || 'Sin cargo'} · {unitByCode.get(item.unit_code) || item.unit_code}</option>)}</select><small>La lista sale directamente del directorio de Bonistas y se filtra por la gerencia seleccionada.</small></label> : <div className="guideline-multi-field wide"><span>Gerentes responsables · Bonistas</span><div className="guideline-multi-options guideline-multi-options--people">{responsibleOptions.length ? responsibleOptions.map(item => <label key={item.id}><input type="checkbox" checked={selectedResponsibleIds.includes(item.id)} onChange={() => setSelectedResponsibleIds(current => toggleId(current, item.id))}/><span><strong>{item.name}</strong><small>{item.cargo || 'Bonista'}</small></span></label>) : <small>Selecciona una gerencia para ver sus responsables.</small>}</div><small>Puedes seleccionar varios responsables vinculados a cualquiera de las gerencias elegidas.</small></div>}
+          {formUnitCode === 'CENTRAL' ? <label className="wide">Gerente responsable · Bonistas<select value={formResponsibleId} onChange={event => setFormResponsibleId(event.target.value)}><option value="">Sin responsable</option>{responsibleOptions.map(item => <option key={item.id} value={item.id}>{item.name} · {item.cargo || 'Sin cargo'} · {unitByCode.get(item.unit_code) || item.unit_code}</option>)}</select><small>La lista sale directamente del directorio de Bonistas y se filtra por la gerencia seleccionada.</small></label> : <div className="guideline-multi-field wide"><span>Áreas de Central</span><div className="guideline-multi-options">{centralManagementOptions.length ? centralManagementOptions.map(item => <label key={item.id}><input type="checkbox" checked={selectedCentralManagementIds.includes(item.id)} onChange={() => setSelectedCentralManagementIds(current => toggleId(current, item.id))}/><span>{item.name}</span></label>) : <small>No hay áreas activas de Central.</small>}</div><small>Puedes seleccionar una o varias áreas de Central relacionadas con este lineamiento.</small></div>}
           <label className="guideline-active"><input type="checkbox" checked={formActive} onChange={event => setFormActive(event.target.checked)}/> Activo</label>
         </div>
         <div className="guideline-modal-actions"><button type="button" onClick={closeForm} disabled={saving}>Cancelar</button><button className="primary" type="submit" disabled={saving}>{saving && <LoaderCircle className="spin" size={15}/>} Guardar lineamiento</button></div>
