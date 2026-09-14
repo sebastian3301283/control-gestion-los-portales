@@ -7,6 +7,7 @@ export type RealtimeChangePayload = {
 }
 
 export function matrixIdFromChange(payload: RealtimeChangePayload): string
+export function matrixRecordIdFromChange(payload: RealtimeChangePayload): string
 export function parentRowIdFromChange(payload: RealtimeChangePayload): string
 export function shouldRefreshMatrix(payload: RealtimeChangePayload, activeMatrixId: string): boolean
 export function sameCollaborationLocation(left: CollaborationLocation | null, right: CollaborationLocation | null): boolean
