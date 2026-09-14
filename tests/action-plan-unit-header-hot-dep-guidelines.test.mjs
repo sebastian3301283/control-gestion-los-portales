@@ -8,7 +8,7 @@ const planning = await readFile(new URL('../src/PlanningGuidelines.tsx', import.
 const guidelines = await readFile(new URL('../src/GuidelineCatalogV2.tsx', import.meta.url), 'utf8')
 const css = await readFile(new URL('../src/guideline-unit-layout-overrides.css', import.meta.url), 'utf8')
 
-test('Plan de Acción usa Gerente de Unidad fijo por unidad y Gerente Responsable manual múltiple', () => {
+test('Plan de Acción usa Gerente de Unidad fijo y Gerente Responsable configurado por lineamiento', () => {
   assert.match(leadership, /HU:\s*'J\.P\. Le Bienvenu V\.'/)
   assert.match(leadership, /VS:\s*'Juan Carlos Campana'/)
   assert.match(leadership, /HOT:\s*'Lucienne Freundt'/)
@@ -16,9 +16,10 @@ test('Plan de Acción usa Gerente de Unidad fijo por unidad y Gerente Responsabl
   assert.match(leadership, /<b>Unidad<\/b>/)
   assert.match(leadership, /<b>Gerente de Unidad<\/b>/)
   assert.match(leadership, /<b>Gerente Responsable<\/b>/)
-  assert.match(leadership, /matrix_principal_responsible_labels/)
-  assert.match(leadership, /Agregar responsable/)
-  assert.doesNotMatch(leadership, /<select aria-label="Gerente Responsable"/)
+  assert.match(leadership, /planning_guideline_principal_responsible_labels/)
+  assert.match(leadership, /matrix-unit-principal-readonly/)
+  assert.doesNotMatch(leadership, /Agregar responsable/)
+  assert.doesNotMatch(leadership, />Editar</)
   assert.match(wrapper, /props\.unitCode !== 'CENTRAL'/)
 })
 
