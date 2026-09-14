@@ -124,29 +124,31 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
         table.querySelectorAll<HTMLTableRowElement>('tbody tr').forEach(row => {
           const cells = Array.from(row.cells)
           if (cells.length < 5 || cells.some(cell => cell.classList.contains('guideline-empty'))) return
-          const lineCell = cells[2]
-          const actionCell = cells[5]
-          const actions = actionCell?.querySelector<HTMLElement>('.guideline-actions')
-          if (actions && !lineCell.contains(actions)) {
-            actions.classList.add('guideline-actions--inline')
-            lineCell.appendChild(actions)
-          }
 
-          if (!isHotel) return
-          const unitAreaCell = cells[3]
-          const centralAreaCell = cells[4]
-          if (!unitAreaCell || !centralAreaCell) return
-          if (unitAreaCell.colSpan !== 2) unitAreaCell.colSpan = 2
-          const signature = centralAreaCell.textContent?.trim() || ''
-          const currentCopy = unitAreaCell.querySelector<HTMLElement>('.guideline-hot-central-copy')
-          if (currentCopy?.dataset.signature === signature) return
-          currentCopy?.remove()
-          if (!signature || signature === 'Sin asignar') return
-          const copy = document.createElement('div')
-          copy.className = 'guideline-hot-central-copy'
-          copy.dataset.signature = signature
-          Array.from(centralAreaCell.childNodes).forEach(node => copy.appendChild(node.cloneNode(true)))
-          unitAreaCell.appendChild(copy)
+          if (isHotel) {
+            const lineCell = cells[2]
+            const actionCell = cells[5]
+            const actions = actionCell?.querySelector<HTMLElement>('.guideline-actions')
+            if (actions && !lineCell.contains(actions)) {
+              actions.classList.add('guideline-actions--inline')
+              lineCell.appendChild(actions)
+            }
+
+            const unitAreaCell = cells[3]
+            const centralAreaCell = cells[4]
+            if (!unitAreaCell || !centralAreaCell) return
+            if (unitAreaCell.colSpan !== 2) unitAreaCell.colSpan = 2
+            const signature = centralAreaCell.textContent?.trim() || ''
+            const currentCopy = unitAreaCell.querySelector<HTMLElement>('.guideline-hot-central-copy')
+            if (currentCopy?.dataset.signature === signature) return
+            currentCopy?.remove()
+            if (!signature || signature === 'Sin asignar') return
+            const copy = document.createElement('div')
+            copy.className = 'guideline-hot-central-copy'
+            copy.dataset.signature = signature
+            Array.from(centralAreaCell.childNodes).forEach(node => copy.appendChild(node.cloneNode(true)))
+            unitAreaCell.appendChild(copy)
+          }
         })
       })
     }
