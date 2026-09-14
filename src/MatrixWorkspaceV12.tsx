@@ -88,6 +88,16 @@ export default function MatrixWorkspaceV12(props: Props) {
   const [expandedHistoryVersionNo, setExpandedHistoryVersionNo] = useState<number | null>(null)
   const [canRestore, setCanRestore] = useState(false)
   const [restoringVersionNo, setRestoringVersionNo] = useState<number | null>(null)
+  const [pendingRestoreVersion, setPendingRestoreVersion] = useState<HistoryVersion | null>(null)
+
+  useEffect(() => {
+    if (!pendingRestoreVersion) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && restoringVersionNo === null) setPendingRestoreVersion(null)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [pendingRestoreVersion, restoringVersionNo])
 
   const handleActiveMatrixChange = useCallback((nextMatrixId: string) => {
     setMatrixId(nextMatrixId)
@@ -202,15 +212,30 @@ export default function MatrixWorkspaceV12(props: Props) {
     setHistoryDetails(current => ({ ...current, [version.version_no]: { loading: false, summary: detail.summary, changes: detail.changes } }))
   }
 
-  async function restoreVersion(version: HistoryVersion) {
-    if (!supabase || restoringVersionNo !== null) return
+  function requestRestore(version: HistoryVersion) {
+    if (restoringVersionNo !== null) return
     if (hostRef.current?.querySelector('.matrix-collab-user')) {
       props.onError('Hay una fila en edición. Espera a que termine antes de restaurar una versión.')
       return
     }
+    props.onError('')
+    setPendingRestoreVersion(version)
+  }
+
+  async function confirmRestore() {
+    const version = pendingRestoreVersion
+    if (!version || !supabase || restoringVersionNo !== null) return
+    if (hostRef.current?.querySelector('.matrix-collab-user')) {
+      setPendingRestoreVersion(null)
+      props.onError('Hay una fila en edición. Espera a que termine antes de restaurar una versión.')
+      return
+    }
     const areaName = hostRef.current?.querySelector<HTMLElement>('.matrix-v5-summary > div:first-child strong')?.textContent?.trim() || ''
-    if (!areaName) { props.onError('No pudimos identificar el área de esta matriz.'); return }
-    if (!window.confirm(`¿Restaurar la versión v${version.version_no}? La matriz actual quedará registrada en el historial y podrás volver a ella después.`)) return
+    if (!areaName) {
+      setPendingRestoreVersion(null)
+      props.onError('No pudimos identificar el área de esta matriz.')
+      return
+    }
 
     setRestoringVersionNo(version.version_no)
     props.onError(''); props.onNotice('')
@@ -221,8 +246,13 @@ export default function MatrixWorkspaceV12(props: Props) {
       version_no_input: version.version_no,
     })
     setRestoringVersionNo(null)
-    if (error) { props.onError(error.message || 'No pudimos restaurar la versión seleccionada.'); return }
+    if (error) {
+      setPendingRestoreVersion(null)
+      props.onError(error.message || 'No pudimos restaurar la versión seleccionada.')
+      return
+    }
 
+    setPendingRestoreVersion(null)
     setHistoryOpen(false)
     setViewMode('matrix')
     props.onNotice(`Versión v${version.version_no} restaurada correctamente.`)
@@ -314,6 +344,7 @@ export default function MatrixWorkspaceV12(props: Props) {
     setHistoryOpen(false)
     setHistoryVersions([])
     setHistoryDetails({})
+    setPendingRestoreVersion(null)
   }, [matrixId])
 
   useEffect(() => {
@@ -342,10 +373,10 @@ export default function MatrixWorkspaceV12(props: Props) {
     return groups
   }, [historyNamesByEmail, historyVersions])
 
-  const historyLayer = historyOpen ? <div className="matrix-v10-history-backdrop matrix-v12-history-portal" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target) setHistoryOpen(false) }}>
-    <section className="matrix-v10-history-dialog matrix-v12-history-dialog" role="dialog" aria-modal="true">
-      <header><div><span>Historial de versiones</span><h3>{props.unitName} · {props.year}</h3><small>Resumen por persona y guardado. Expande una versión para ver únicamente los cambios relevantes.</small></div><button type="button" onClick={() => setHistoryOpen(false)}><X size={18}/></button></header>
-      {historyLoading ? <div className="matrix-v10-history-loading"><LoaderCircle className="spin" size={20}/> Cargando historial...</div> : historyGroups.length === 0 ? <div className="matrix-v10-history-empty">Todavía no hay versiones registradas.</div> : <div className="matrix-v10-history-list matrix-v12-history-list">{historyGroups.map(group => <section className="matrix-v12-history-person" key={group.key}><strong className="matrix-v12-history-person-name">{group.name}</strong>{group.versions.map(version => {
+  const historyLayer = historyOpen ? <div className="matrix-v10-history-backdrop matrix-v12-history-portal" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target && !pendingRestoreVersion) setHistoryOpen(false) }}>
+    <section className="matrix-v10-history-dialog matrix-v12-history-dialog" role="dialog" aria-modal="true" aria-labelledby="matrix-v12-history-title">
+      <header><div><span>Historial de versiones</span><h3 id="matrix-v12-history-title">{props.unitName} · {props.year}</h3><small>Resumen por persona y guardado. Expande una versión para ver únicamente los cambios relevantes.</small></div><button type="button" aria-label="Cerrar historial" onClick={() => setHistoryOpen(false)}><X size={18}/></button></header>
+      {historyLoading ? <div className="matrix-v10-history-loading" role="status"><LoaderCircle className="spin" size={20}/> Cargando historial...</div> : historyGroups.length === 0 ? <div className="matrix-v10-history-empty">Todavía no hay versiones registradas. Los cambios guardados aparecerán aquí.</div> : <div className="matrix-v10-history-list matrix-v12-history-list">{historyGroups.map(group => <section className="matrix-v12-history-person" key={group.key}><strong className="matrix-v12-history-person-name">{group.name}</strong>{group.versions.map(version => {
         const globalIndex = historyVersions.findIndex(item => item.id === version.id)
         const expanded = expandedHistoryVersionNo === version.version_no
         const detail = historyDetails[version.version_no]
@@ -355,11 +386,26 @@ export default function MatrixWorkspaceV12(props: Props) {
             <span className="matrix-v12-history-version-copy"><strong>{detail?.summary || historyActionLabel(version.action)}</strong><small>{formatDateTime(version.created_at)}</small></span>
             <span className="matrix-v12-history-expand">{expanded ? 'Ocultar detalle' : 'Ver detalle'}</span>
           </button>
-          {expanded && <div className="matrix-v12-history-detail">{detail?.loading ? <div className="matrix-v12-history-detail-loading"><LoaderCircle className="spin" size={16}/> Preparando cambios...</div> : <>{detail && <strong className="matrix-v12-history-detail-summary">{detail.summary}</strong>}{detail?.changes.length ? <div className="matrix-v12-history-diff"><div className="matrix-v12-history-diff-head"><span>Campo</span><span>Anterior</span><span>Nuevo</span></div>{detail.changes.map((change, index) => <div className="matrix-v12-history-diff-row" key={`${version.id}-${change.label}-${index}`}><strong>{change.label}</strong><span>{change.before}</span><span>{change.after}</span></div>)}</div> : <small className="matrix-v12-history-no-diff">No hay diferencias de contenido que mostrar para esta versión.</small>}</>}</div>}
-          {canRestore && globalIndex > 0 && <div className="matrix-v12-history-actions"><button type="button" onClick={() => void restoreVersion(version)} disabled={restoringVersionNo !== null}>{restoringVersionNo === version.version_no ? <><LoaderCircle className="spin" size={13}/> Restaurando...</> : <><RotateCcw size={13}/> Restaurar esta versión</>}</button></div>}
+          {expanded && <div className="matrix-v12-history-detail">{detail?.loading ? <div className="matrix-v12-history-detail-loading" role="status"><LoaderCircle className="spin" size={16}/> Preparando cambios...</div> : <>{detail && <strong className="matrix-v12-history-detail-summary">{detail.summary}</strong>}{detail?.changes.length ? <div className="matrix-v12-history-diff"><div className="matrix-v12-history-diff-head"><span>Campo</span><span>Anterior</span><span>Nuevo</span></div>{detail.changes.map((change, index) => <div className="matrix-v12-history-diff-row" key={`${version.id}-${change.label}-${index}`}><strong>{change.label}</strong><span>{change.before}</span><span>{change.after}</span></div>)}</div> : <small className="matrix-v12-history-no-diff">No hay diferencias de contenido que mostrar para esta versión.</small>}</>}</div>}
+          {canRestore && globalIndex > 0 && <div className="matrix-v12-history-actions"><button type="button" onClick={() => requestRestore(version)} disabled={restoringVersionNo !== null}>{restoringVersionNo === version.version_no ? <><LoaderCircle className="spin" size={13}/> Restaurando...</> : <><RotateCcw size={13}/> Restaurar esta versión</>}</button></div>}
         </article>
       })}</section>)}</div>}
       {historyHasMore && <footer className="matrix-v12-history-footer"><button type="button" onClick={() => void loadHistoryPage(historyVersions.length, true)} disabled={historyLoadingMore}>{historyLoadingMore && <LoaderCircle className="spin" size={13}/>} Cargar más</button></footer>}
+    </section>
+  </div> : null
+
+  const restoreLayer = pendingRestoreVersion ? <div className="matrix-v12-restore-confirm-backdrop" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target && restoringVersionNo === null) setPendingRestoreVersion(null) }}>
+    <section className="matrix-v12-restore-confirm" role="dialog" aria-modal="true" aria-labelledby="matrix-v12-restore-title">
+      <div className="matrix-v12-restore-confirm-icon"><RotateCcw size={22}/></div>
+      <div className="matrix-v12-restore-confirm-copy">
+        <span>Confirmar restauración</span>
+        <h3 id="matrix-v12-restore-title">¿Restaurar la versión v{pendingRestoreVersion.version_no}?</h3>
+        <p>La matriz actual quedará registrada en el historial y podrás volver a ella después.</p>
+      </div>
+      <div className="matrix-v12-restore-confirm-actions">
+        <button type="button" className="secondary" onClick={() => setPendingRestoreVersion(null)} disabled={restoringVersionNo !== null}>Cancelar</button>
+        <button type="button" className="primary" onClick={() => void confirmRestore()} disabled={restoringVersionNo !== null}>{restoringVersionNo === pendingRestoreVersion.version_no && <LoaderCircle className="spin" size={14}/>} {restoringVersionNo === pendingRestoreVersion.version_no ? 'Restaurando...' : 'Sí, restaurar'}</button>
+      </div>
     </section>
   </div> : null
 
@@ -372,7 +418,7 @@ export default function MatrixWorkspaceV12(props: Props) {
     {sheetReady && viewMode === 'summary' && <section className="matrix-v12-summary" aria-label="Vista Resumen">
       <header><div><span>Vista Resumen</span><h3>Plan de acción {props.year}</h3></div><small>{summaryRows.length} acción{summaryRows.length === 1 ? '' : 'es'}</small></header>
       <div className="matrix-v12-summary-scroll"><table className="matrix-v12-summary-table"><thead><tr><th>Acción</th><th>Responsable</th><th>Fecha</th><th>Entregable</th></tr></thead><tbody>
-        {summaryRows.length ? summaryRows.map(row => <tr key={row.key}><td>{row.action}</td><td>{row.responsible}</td><td>{row.date}</td><td>{row.deliverable}</td></tr>) : <tr><td colSpan={4}>Todavía no hay acciones para resumir.</td></tr>}
+        {summaryRows.length ? summaryRows.map(row => <tr key={row.key}><td>{row.action}</td><td>{row.responsible}</td><td>{row.date}</td><td>{row.deliverable}</td></tr>) : <tr><td colSpan={4}>Todavía no hay acciones para resumir. Agrega acciones en la vista Matriz para verlas aquí.</td></tr>}
       </tbody></table></div>
     </section>}
 
@@ -381,5 +427,6 @@ export default function MatrixWorkspaceV12(props: Props) {
     </div>
 
     {historyLayer && createPortal(historyLayer, document.body)}
+    {restoreLayer && createPortal(restoreLayer, document.body)}
   </div>
 }
