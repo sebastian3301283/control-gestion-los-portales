@@ -164,7 +164,7 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
       const title = areasField.querySelector<HTMLElement>(':scope > span:first-child')
       if (title && title.textContent !== 'Áreas') title.textContent = 'Áreas'
       const help = areasField.querySelector<HTMLElement>(':scope > small')
-      if (help) help.textContent = 'Escribe las áreas manualmente. Puedes agregar varias.'
+      if (help && help.textContent !== 'Escribe las áreas manualmente. Puedes agregar varias.') help.textContent = 'Escribe las áreas manualmente. Puedes agregar varias.'
       const centralChips = centralSource.querySelector<HTMLElement>('.guideline-editable-chips')
       centralSource.classList.toggle('guideline-hot-central-source--empty', !centralChips?.children.length)
     }
