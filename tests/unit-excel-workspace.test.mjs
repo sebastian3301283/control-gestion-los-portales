@@ -59,7 +59,7 @@ test('unit Excel workspace keeps the commandbar and uses manual multi-responsibl
   for (const label of ['Expandir matriz', 'Historial', 'Exportar Excel', 'Añadir acción']) assert.match(source, new RegExp(label))
   assert.doesNotMatch(source, />Importar Excel</)
   assert.doesNotMatch(source, />Nueva fila</)
-  assert.match(source, /<thead><tr><th>Acción<\/th><th>Responsable<\/th><th>Prioridad<\/th><th>Hitos \/ Fechas<\/th><th>Entregable<\/th><th>Riesgos de no ejecutar<\/th><th>Restricciones<\/th><th>Soporte<\/th><th>Comité<\/th><\/tr><\/thead>/)
+  assert.match(source, /<thead><tr><th>Acción<\/th><th>Responsable<\/th><th>Prioridad<\/th><th>Hitos \/ Fechas<\/th><th>Entregable<\/th><th>Soporte<\/th><th>Comité<\/th><th>Riesgos de no ejecutar<\/th><th>Restricciones<\/th><\/tr><\/thead>/)
   assert.match(source, /matrix_row_responsibles/)
   assert.match(source, /responsibleLabels/)
   assert.match(source, /responsible_text: responsibleLabels\.length/)
