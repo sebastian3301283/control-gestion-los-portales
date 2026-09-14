@@ -1,5 +1,6 @@
 import { FileSpreadsheet, FileText, LoaderCircle, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { loadScopedManagements } from './lib/planning-query-cache'
 import { supabase } from './lib/supabase'
 import './guideline-document-import.css'
 import './guideline-multi-import.css'
@@ -534,23 +535,16 @@ export default function GuidelineMultiImport({ unit, periodId, open, onClose, on
   const [error, setError] = useState('')
   const [fileName, setFileName] = useState('')
   const [managements, setManagements] = useState<Management[]>([])
-  const [matrixAreaIds, setMatrixAreaIds] = useState<string[]>([])
   const [rows, setRows] = useState<DraftRow[]>([])
   const isCentral = unit.code === 'CENTRAL'
   const activeRows = useMemo(() => rows.filter(row => row.enabled && (row.category.trim() || row.code.trim() || row.text.trim())), [rows])
-
-  const unitTechnicalCandidates = useMemo(() => managements.filter(item => item.active && item.unit_code === unit.code && matrixAreaIds.includes(item.id)), [managements, matrixAreaIds, unit.code])
   const centralManagements = useMemo(() => managements.filter(item => item.active && item.unit_code === 'CENTRAL'), [managements])
 
   useEffect(() => {
     if (!open || !supabase) return
     void (async () => {
-      const [areasResult, catalogResult] = await Promise.all([
-        supabase.from('managements_global').select('id,name,unit_code,active').eq('active', true).order('name'),
-        supabase.from('matrix_unit_area_catalog').select('management_id').eq('unit_code', unit.code).order('created_at'),
-      ])
-      if (!areasResult.error) setManagements((areasResult.data || []) as Management[])
-      if (!catalogResult.error) setMatrixAreaIds((catalogResult.data || []).map(item => String(item.management_id)))
+      const { data, error: areasError } = await supabase.from('managements_global').select('id,name,unit_code,active').eq('active', true).order('name')
+      if (!areasError) setManagements((data || []) as Management[])
     })()
   }, [open, unit.code])
 
@@ -598,6 +592,10 @@ export default function GuidelineMultiImport({ unit, periodId, open, onClose, on
       if (existingError) throw existingError
       const existingKeys = new Set((existing || []).map(item => normalize(`${item.category || ''}|${item.code || ''}|${item.guideline_text || ''}`)))
       const baseOrder = (existing || []).length
+      const technicalManagementIds = isCentral ? [] : (await loadScopedManagements(unit.code))
+        .filter(item => item.active && item.unit_code === unit.code)
+        .map(item => item.id)
+      if (!isCentral && !technicalManagementIds.length) throw new Error('No hay configuración interna activa para esta unidad.')
       let imported = 0
 
       for (let index = 0; index < activeRows.length; index += 1) {
@@ -618,15 +616,11 @@ export default function GuidelineMultiImport({ unit, periodId, open, onClose, on
         const key = normalize(`${category || ''}|${code}|${fullText}`)
         if (existingKeys.has(key)) continue
 
-        const technicalManagementIds = matchCatalogMany(row.unitAreas, unitTechnicalCandidates)
-        const fallbackManagementId = technicalManagementIds[0] || unitTechnicalCandidates[0]?.id || ''
-        if (!fallbackManagementId) throw new Error('No hay un área técnica activa para crear las matrices de esta unidad.')
-        const managementIds = technicalManagementIds.length ? technicalManagementIds : [fallbackManagementId]
         const { data, error: rpcError } = await supabase.rpc('save_planning_guideline_multi', {
           guideline_id_input: null,
           period_id_input: periodId,
           unit_code_input: unit.code,
-          management_ids_input: managementIds,
+          management_ids_input: technicalManagementIds,
           central_management_ids_input: matchCatalogMany(row.centralAreas, centralManagements),
           unit_area_labels_input: row.unitAreas,
           central_area_labels_input: row.centralAreas,
