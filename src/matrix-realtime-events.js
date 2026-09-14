@@ -9,6 +9,11 @@ export function matrixIdFromChange(payload) {
   return typeof record.matrix_id === 'string' ? record.matrix_id : ''
 }
 
+export function matrixRecordIdFromChange(payload) {
+  const record = changeRecord(payload)
+  return typeof record.id === 'string' ? record.id : ''
+}
+
 export function parentRowIdFromChange(payload) {
   const record = changeRecord(payload)
   if (typeof record.matrix_row_id === 'string') return record.matrix_row_id
