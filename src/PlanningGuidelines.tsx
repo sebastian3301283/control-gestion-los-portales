@@ -66,6 +66,15 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
   const [exporting, setExporting] = useState(false)
   const isCentral = unit.code === 'CENTRAL'
 
+  useEffect(() => {
+    if (!pendingDelete) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPendingDelete(null)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [pendingDelete])
+
   useEffect(() => { setSelectedArea(null); setSelectedGuideline(null) }, [periodId, unit.code])
   useEffect(() => {
     try {
@@ -338,7 +347,7 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
     </div>
 
     {canManage && <div className="planning-guideline-admin-note"><strong>Administración de lineamientos</strong><span>Puedes importar lineamientos desde Excel, PDF, PowerPoint o imagen; cada lineamiento de HU/DEP/VS/HOT crea automáticamente su propia matriz.</span></div>}
-    {importNotice && <div className="planning-guideline-import-notice">{importNotice}</div>}
+    {importNotice && <div className="planning-guideline-import-notice" role="status" aria-live="polite">{importNotice}</div>}
 
     {isCentral ? <CentralGuidelineWorkspace key={catalogRevision} periodId={periodId} canManage={canManage} initialAreaId={guidelineTarget?.managementId} focusGuidelineId={guidelineTarget?.guidelineId} onAreaChange={setSelectedArea} /> : <GuidelineCatalogV2 key={catalogRevision} units={[unit]} canManage={canManage} scopePeriodId={periodId} scopeUnitCode={unit.code} selectedGuidelineId={selectedGuideline?.id || guidelineTarget?.guidelineId || null} onSelectGuideline={setSelectedGuideline} onPrefetchMatrixForGuideline={canManage ? prefetchMatrixForGuideline : undefined} onOpenMatrixForGuideline={canManage ? openMatrixForGuideline : undefined} />}
 
