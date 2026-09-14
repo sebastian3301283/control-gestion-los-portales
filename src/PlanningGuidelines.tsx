@@ -1,9 +1,11 @@
-import { AlertTriangle, ClipboardList, FileSpreadsheet } from 'lucide-react'
+import { AlertTriangle, ClipboardList, Download, FileSpreadsheet } from 'lucide-react'
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import GuidelineCatalogV2 from './GuidelineCatalogV2'
 import GuidelineMultiImport from './GuidelineMultiImport'
 import GuidelinePptPanel from './GuidelinePptPanel'
 import CentralGuidelineWorkspace from './CentralGuidelineWorkspace'
+import { supabase } from './lib/supabase'
+import { exportStyledGuidelineWorkbook } from './lib/styled-guideline-export'
 import { invalidatePlanningCache, prefetchMatrixWorkspace } from './lib/planning-query-cache'
 import { prefetchMatrixTargetRows } from './lib/matrix-target-prefetch'
 import './planning-guidelines.css'
@@ -25,6 +27,31 @@ type SelectedArea = AreaOption | null
 type SelectedGuideline = { id: string; managementId: string; label: string } | null
 type GuidelineTarget = { periodId: string; unitCode: string; managementId: string; guidelineId: string | null; createdAt: number }
 
+function cleanCellText(cell?: Element | null) {
+  if (!cell) return ''
+  const clone = cell.cloneNode(true) as HTMLElement
+  clone.querySelectorAll('button,.guideline-actions,.central-guideline-inline-actions').forEach(node => node.remove())
+  return (clone.textContent || '').replace(/\s+/g, ' ').trim()
+}
+
+function chipLabels(cell?: Element | null) {
+  if (!cell) return [] as string[]
+  const chips = Array.from(cell.querySelectorAll<HTMLElement>('.guideline-multi-chip')).map(item => item.textContent?.replace(/\s+/g, ' ').trim() || '').filter(Boolean)
+  if (chips.length) return chips
+  const text = cleanCellText(cell)
+  return text && text !== 'Sin asignar' ? [text] : []
+}
+
+function uniqueLabels(values: string[]) {
+  const unique = new Map<string, string>()
+  values.forEach(value => {
+    const cleaned = value.replace(/\s+/g, ' ').trim()
+    const key = cleaned.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    if (cleaned && !unique.has(key)) unique.set(key, cleaned)
+  })
+  return [...unique.values()]
+}
+
 export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMatrixForArea }: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
   const bypassDeleteRef = useRef(false)
@@ -36,6 +63,7 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
   const [selectedArea, setSelectedArea] = useState<SelectedArea>(null)
   const [selectedGuideline, setSelectedGuideline] = useState<SelectedGuideline>(null)
   const [guidelineTarget, setGuidelineTarget] = useState<GuidelineTarget | null>(null)
+  const [exporting, setExporting] = useState(false)
   const isCentral = unit.code === 'CENTRAL'
 
   useEffect(() => { setSelectedArea(null); setSelectedGuideline(null) }, [periodId, unit.code])
@@ -248,12 +276,80 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
     }))
   }
 
+  async function downloadGuidelines() {
+    if (!canManage || !rootRef.current || exporting) return
+    setExporting(true)
+    setImportNotice('')
+    try {
+      let year = new Date().getFullYear()
+      if (supabase) {
+        const { data } = await supabase.from('planning_periods').select('year').eq('id', periodId).maybeSingle()
+        const parsedYear = Number(data?.year)
+        if (Number.isFinite(parsedYear) && parsedYear > 2000) year = parsedYear
+      }
+
+      let headers: string[] = []
+      let rows: string[][] = []
+      if (isCentral) {
+        const table = rootRef.current.querySelector<HTMLTableElement>('.central-guideline-table')
+        if (table) {
+          headers = ['Categoría', 'N°', 'Lineamiento']
+          rows = Array.from(table.querySelectorAll<HTMLTableRowElement>('tbody tr')).filter(row => !row.querySelector('.central-guideline-empty')).map(row => {
+            const cells = Array.from(row.cells)
+            return [cleanCellText(cells[0]), cleanCellText(cells[1]), cleanCellText(cells[2])]
+          })
+        }
+      } else {
+        const table = rootRef.current.querySelector<HTMLTableElement>('.guideline-v2-table')
+        if (table) {
+          const sourceRows = Array.from(table.querySelectorAll<HTMLTableRowElement>('tbody tr')).filter(row => !row.querySelector('.guideline-empty'))
+          if (unit.code === 'HOT') {
+            headers = ['N°', 'Categoría', 'Lineamiento', 'Áreas']
+            rows = sourceRows.map(row => {
+              const cells = Array.from(row.cells)
+              const areas = uniqueLabels([...chipLabels(cells[3]), ...chipLabels(cells[4])]).join(', ')
+              return [cleanCellText(cells[0]), cleanCellText(cells[1]), cleanCellText(cells[2]), areas]
+            })
+          } else {
+            headers = unit.code === 'DEP'
+              ? ['N°', 'Categoría', 'Lineamiento', 'Áreas Matricial', 'Gerencia Central']
+              : ['N°', 'Categoría', 'Lineamientos Estratégicos', 'Áreas de Unidad', 'Áreas de Central']
+            rows = sourceRows.map(row => {
+              const cells = Array.from(row.cells)
+              return [cleanCellText(cells[0]), cleanCellText(cells[1]), cleanCellText(cells[2]), chipLabels(cells[3]).join(', '), chipLabels(cells[4]).join(', ')]
+            })
+          }
+        }
+      }
+
+      if (!rows.length) {
+        setImportNotice(isCentral && !selectedArea ? 'Selecciona un área de Central antes de descargar el Excel.' : 'No hay lineamientos para descargar en esta vista.')
+        return
+      }
+
+      await exportStyledGuidelineWorkbook({
+        year,
+        unitCode: unit.code,
+        unitName: unit.name,
+        areaName: isCentral ? selectedArea?.name : null,
+        headers,
+        rows,
+      })
+      setImportNotice(`Excel de lineamientos de ${unit.name} descargado correctamente.`)
+    } catch {
+      setImportNotice('No pudimos generar el Excel de lineamientos. Inténtalo nuevamente.')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return <div ref={rootRef} className={`planning-guidelines-host ${fullscreen ? 'planning-guidelines-host--fullscreen' : ''} ${isCentral ? 'planning-guidelines-host--central' : ''} ${unit.code === 'HOT' ? 'planning-guidelines-host--hot' : ''}`} onClickCapture={handleClickCapture}>
     <div className="planning-guidelines-heading">
       <div><span>Lineamientos estratégicos</span><h3>Lineamientos de {unit.name}</h3><p>{isCentral ? 'Selecciona un área de Central para revisar sus lineamientos y documentos de soporte.' : canManage ? 'Selecciona un lineamiento para revisar sus soportes o usa la flecha para abrir su matriz exclusiva.' : 'Selecciona un lineamiento para revisar sus documentos de soporte.'}</p></div>
       <div className="planning-guidelines-heading-actions">
         {isCentral && selectedArea && <button className="planning-guideline-matrix-button" type="button" onClick={openMatrixForSelectedArea}><ClipboardList size={17}/> Ir a matriz de {selectedArea.name}</button>}
         <button className="planning-guideline-fullscreen-button" type="button" onClick={() => setFullscreen(value => !value)}><span aria-hidden="true">{fullscreen ? '↙' : '↗'}</span>{fullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}</button>
+        {canManage && <button className="planning-guideline-import-button" type="button" disabled={exporting} onClick={() => void downloadGuidelines()}><Download size={17}/>{exporting ? 'Generando Excel...' : 'Descargar Excel'}</button>}
         {canManage && <button className="planning-guideline-import-button" type="button" onClick={() => { setImportNotice(''); setImportOpen(true) }}><FileSpreadsheet size={17}/> Importar lineamientos</button>}
       </div>
     </div>
