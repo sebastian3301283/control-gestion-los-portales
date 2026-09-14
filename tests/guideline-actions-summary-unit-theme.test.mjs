@@ -12,6 +12,11 @@ test('Abrir matriz se reubica en Acciones antes de Editar y Eliminar', () => {
   assert.match(planning, /actions\.insertBefore\(arrow, actions\.firstChild\)/)
 })
 
+test('las tres acciones de lineamientos quedan reservadas a Gestión Estratégica', () => {
+  assert.match(planning, /onPrefetchMatrixForGuideline=\{canManage \? prefetchMatrixForGuideline : undefined\}/)
+  assert.match(planning, /onOpenMatrixForGuideline=\{canManage \? openMatrixForGuideline : undefined\}/)
+})
+
 test('MatrixWorkspaceV12 hereda el color de cada unidad en Resumen', () => {
   assert.match(v13, /matrix-v12-theme-host matrix-v12--\$\{props\.unitCode\.toLowerCase\(\)\}/)
   assert.match(v13, /matrix-workspace-v12-unit-theme\.css/)
