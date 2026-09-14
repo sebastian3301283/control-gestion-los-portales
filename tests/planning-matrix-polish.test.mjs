@@ -12,7 +12,8 @@ test('lineamientos no Central cargan Áreas de Unidad y Áreas de Central separa
   assert.match(guideline, /loadNonCentralGuidelineData/)
   assert.match(guideline, /matrixAreaIds/)
   assert.match(guideline, /selectedManagementIds/)
-  assert.match(guideline, /selectedCentralManagementIds/)
+  assert.match(guideline, /selectedUnitAreaLabels/)
+  assert.match(guideline, /selectedCentralAreaLabels/)
   assert.match(guideline, /save_planning_guideline_multi/)
 })
 
