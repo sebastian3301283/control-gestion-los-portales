@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
+// Regression: el orden visual debe ser idéntico en lectura y edición para HU, VS, DEP y HOT.
 const source = await readFile(new URL('../src/UnitExcelWorkspace.tsx', import.meta.url), 'utf8')
 
 test('HU VS DEP HOT dejan Riesgos y Restricciones como las dos últimas columnas', () => {
