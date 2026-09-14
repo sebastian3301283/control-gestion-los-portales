@@ -29,6 +29,7 @@ type ManagerManagement = { manager_id: string; management_id: string }
 type AreaLink = { management_id: string }
 type GuidelineManagement = { guideline_id: string; management_id: string; sort_order: number }
 type GuidelineResponsible = { guideline_id: string; manager_id: string; sort_order: number }
+type GuidelineCentralManagement = { guideline_id: string; management_id: string; sort_order: number }
 
 const planningGetCache = new Map<string, CacheEntry<unknown>>()
 
@@ -182,6 +183,32 @@ export function loadManagerManagements(managementIds: string[], force = false) {
   }, force)
 }
 
+export function loadGuidelineManagementRelations(guidelineIds: string[], force = false) {
+  const normalizedIds = normalizeIds(guidelineIds)
+  if (!normalizedIds.length) return Promise.resolve([] as GuidelineManagement[])
+  const key = normalizedIds.join(',')
+  return cachedPlanningGet<GuidelineManagement[]>(`guideline-multi:managements:${key}`, () => {
+    const client = requireSupabase()
+    return rowsOrThrow<GuidelineManagement>(client.from('planning_guideline_managements')
+      .select('guideline_id,management_id,sort_order')
+      .in('guideline_id', normalizedIds)
+      .order('sort_order'))
+  }, force)
+}
+
+export function loadGuidelineCentralManagements(guidelineIds: string[], force = false) {
+  const normalizedIds = normalizeIds(guidelineIds)
+  if (!normalizedIds.length) return Promise.resolve([] as GuidelineCentralManagement[])
+  const key = normalizedIds.join(',')
+  return cachedPlanningGet<GuidelineCentralManagement[]>(`guideline-multi:central-managements:${key}`, () => {
+    const client = requireSupabase()
+    return rowsOrThrow<GuidelineCentralManagement>(client.from('planning_guideline_central_managements')
+      .select('guideline_id,management_id,sort_order')
+      .in('guideline_id', normalizedIds)
+      .order('sort_order'))
+  }, force)
+}
+
 export function loadGuidelineMultiRelations(guidelineIds: string[], force = false) {
   const normalizedIds = normalizeIds(guidelineIds)
   if (!normalizedIds.length) {
@@ -189,13 +216,7 @@ export function loadGuidelineMultiRelations(guidelineIds: string[], force = fals
   }
   const key = normalizedIds.join(',')
   return Promise.all([
-    cachedPlanningGet<GuidelineManagement[]>(`guideline-multi:managements:${key}`, () => {
-      const client = requireSupabase()
-      return rowsOrThrow<GuidelineManagement>(client.from('planning_guideline_managements')
-        .select('guideline_id,management_id,sort_order')
-        .in('guideline_id', normalizedIds)
-        .order('sort_order'))
-    }, force),
+    loadGuidelineManagementRelations(normalizedIds, force),
     cachedPlanningGet<GuidelineResponsible[]>(`guideline-multi:responsibles:${key}`, () => {
       const client = requireSupabase()
       return rowsOrThrow<GuidelineResponsible>(client.from('planning_guideline_responsibles')
@@ -218,21 +239,28 @@ export async function loadScopedGuidelineData(periodId: string, unitCode: string
 }
 
 export async function loadNonCentralGuidelineData(periodId: string, unitCode: string) {
-  const [periods, guidelines, catalog] = await Promise.all([
+  const [periods, guidelines, catalog, centralManagements] = await Promise.all([
     loadPlanningPeriods(),
     loadPlanningGuidelines(periodId, unitCode),
     loadMatrixAreaCatalog(unitCode),
+    loadScopedManagements('CENTRAL'),
   ])
   const catalogManagementIds = catalog.map(item => item.management_id)
   const legacyManagementIds = guidelines.map(item => item.management_id)
   const managements = await loadManagementsByIds([...catalogManagementIds, ...legacyManagementIds])
-  const links = await loadManagerManagements(managements.map(item => item.id))
-  const relations = await loadGuidelineMultiRelations(guidelines.map(item => item.id))
-  const legacyManagerIds = guidelines.map(item => item.responsible_manager_id || '')
-  const relationManagerIds = relations.responsibles.map(item => item.manager_id)
-  const linkedManagerIds = links.map(item => item.manager_id)
-  const managers = await loadManagersByIds([...legacyManagerIds, ...relationManagerIds, ...linkedManagerIds])
-  return { periods, managements, managers, guidelines, catalog, links, relations }
+  const guidelineIds = guidelines.map(item => item.id)
+  const [managementRelations, centralRelations] = await Promise.all([
+    loadGuidelineManagementRelations(guidelineIds),
+    loadGuidelineCentralManagements(guidelineIds),
+  ])
+  return {
+    periods,
+    managements,
+    centralManagements,
+    guidelines,
+    catalog,
+    relations: { managements: managementRelations, centralManagements: centralRelations },
+  }
 }
 
 export async function loadCentralGuidelineData(periodId: string) {
