@@ -7,6 +7,7 @@ import CentralGuidelineWorkspace from './CentralGuidelineWorkspace'
 import { invalidatePlanningCache, prefetchMatrixWorkspace } from './lib/planning-query-cache'
 import { prefetchMatrixTargetRows } from './lib/matrix-target-prefetch'
 import './planning-guidelines.css'
+import './guideline-unit-layout-overrides.css'
 
 type Unit = { code: string; name: string }
 type Props = {
@@ -91,6 +92,70 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
     relocateMatrixActions()
     return () => observer.disconnect()
   }, [catalogRevision, canManage, isCentral, periodId, unit.code])
+
+  useEffect(() => {
+    if (unit.code !== 'HOT' && unit.code !== 'DEP') return
+    const root = rootRef.current
+    if (!root) return
+    const isHotel = unit.code === 'HOT'
+
+    const enhanceUnitTable = () => {
+      root.querySelectorAll<HTMLTableElement>('.guideline-v2-table').forEach(table => {
+        table.classList.toggle('guideline-v2-table--hot', isHotel)
+        table.classList.toggle('guideline-v2-table--dep', !isHotel)
+        const headers = Array.from(table.querySelectorAll<HTMLTableCellElement>('thead th'))
+        if (headers.length < 5) return
+
+        const setHeader = (index: number, label: string) => {
+          if (headers[index] && headers[index].textContent !== label) headers[index].textContent = label
+        }
+
+        setHeader(1, 'Categoría')
+        setHeader(2, 'Lineamiento')
+        if (isHotel) {
+          setHeader(3, 'Áreas')
+          if (headers[3].colSpan !== 2) headers[3].colSpan = 2
+        } else {
+          setHeader(3, 'Áreas Matricial')
+          setHeader(4, 'Gerencia Central')
+          if (headers[3].colSpan !== 1) headers[3].colSpan = 1
+        }
+
+        table.querySelectorAll<HTMLTableRowElement>('tbody tr').forEach(row => {
+          const cells = Array.from(row.cells)
+          if (cells.length < 5 || cells.some(cell => cell.classList.contains('guideline-empty'))) return
+          const lineCell = cells[2]
+          const actionCell = cells[5]
+          const actions = actionCell?.querySelector<HTMLElement>('.guideline-actions')
+          if (actions && !lineCell.contains(actions)) {
+            actions.classList.add('guideline-actions--inline')
+            lineCell.appendChild(actions)
+          }
+
+          if (!isHotel) return
+          const unitAreaCell = cells[3]
+          const centralAreaCell = cells[4]
+          if (!unitAreaCell || !centralAreaCell) return
+          if (unitAreaCell.colSpan !== 2) unitAreaCell.colSpan = 2
+          const signature = centralAreaCell.textContent?.trim() || ''
+          const currentCopy = unitAreaCell.querySelector<HTMLElement>('.guideline-hot-central-copy')
+          if (currentCopy?.dataset.signature === signature) return
+          currentCopy?.remove()
+          if (!signature || signature === 'Sin asignar') return
+          const copy = document.createElement('div')
+          copy.className = 'guideline-hot-central-copy'
+          copy.dataset.signature = signature
+          Array.from(centralAreaCell.childNodes).forEach(node => copy.appendChild(node.cloneNode(true)))
+          unitAreaCell.appendChild(copy)
+        })
+      })
+    }
+
+    const observer = new MutationObserver(enhanceUnitTable)
+    observer.observe(root, { childList: true, subtree: true, characterData: true })
+    enhanceUnitTable()
+    return () => observer.disconnect()
+  }, [catalogRevision, canManage, periodId, unit.code])
 
   useEffect(() => {
     if (!fullscreen) return
