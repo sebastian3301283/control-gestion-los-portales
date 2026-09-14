@@ -12,8 +12,9 @@ const unitExcel = await readFile(new URL('../src/UnitExcelWorkspace.tsx', import
 const v11 = await readFile(new URL('../src/MatrixWorkspaceV11.tsx', import.meta.url), 'utf8')
 const planningCss = await readFile(new URL('../src/planning-guidelines.css', import.meta.url), 'utf8')
 
-test('HU/DEP/VS/HOT conservan la tabla de Lineamientos anterior y su color por unidad', () => {
-  assert.match(catalog, /<th>N°<\/th><th>Categoría<\/th><th>Lineamientos Estratégicos<\/th><th>Gerencia Responsable<\/th><th>Gerente Responsable<\/th>\{canManage && <th>Acciones<\/th>\}/)
+test('HU/DEP/VS/HOT conservan la tabla de Lineamientos y cambian responsables por áreas', () => {
+  assert.match(catalog, /unitCode === 'CENTRAL' \? 'Gerencia Responsable' : 'Áreas de Unidad'/)
+  assert.match(catalog, /unitCode === 'CENTRAL' \? 'Gerente Responsable' : 'Áreas de Central'/)
   assert.match(catalog, /HU: '#2f9b5f'/)
   assert.match(catalog, /DEP: '#f28a22'/)
   assert.match(catalog, /VS: '#2bb5d6'/)
