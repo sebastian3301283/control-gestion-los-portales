@@ -76,6 +76,23 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
   }, [periodId, catalogRevision, isCentral])
 
   useEffect(() => {
+    if (isCentral || !canManage) return
+    const root = rootRef.current
+    if (!root) return
+    const relocateMatrixActions = () => {
+      root.querySelectorAll<HTMLTableRowElement>('.guideline-v2-table tbody tr').forEach(row => {
+        const arrow = row.querySelector<HTMLButtonElement>('.guideline-row-matrix-arrow')
+        const actions = row.querySelector<HTMLElement>('.guideline-actions')
+        if (arrow && actions && arrow.parentElement !== actions) actions.insertBefore(arrow, actions.firstChild)
+      })
+    }
+    const observer = new MutationObserver(relocateMatrixActions)
+    observer.observe(root, { childList: true, subtree: true })
+    relocateMatrixActions()
+    return () => observer.disconnect()
+  }, [catalogRevision, canManage, isCentral, periodId, unit.code])
+
+  useEffect(() => {
     if (!fullscreen) return
     const previous = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -139,8 +156,6 @@ export default function PlanningGuidelines({ unit, periodId, canManage, onOpenMa
     void prefetchMatrixTargetRows(periodId, unit.code, managementId, guidelineId).catch(() => undefined)
     setFullscreen(false)
     onOpenMatrixForArea?.(managementId, guidelineId)
-    // Dashboard's legacy callback still writes an area target. Replace it immediately
-    // with the exact guideline target before MatrixWorkspace mounts.
     sessionStorage.setItem('cg:matrix-target-management', JSON.stringify({
       periodId,
       unitCode: unit.code,
