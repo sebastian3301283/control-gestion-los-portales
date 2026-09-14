@@ -27,9 +27,10 @@ test('nueva accion se renderiza al final del objetivo seleccionado', () => {
   assert.match(unit, /isDraftForGroup && rowFormOpen && !editingRowId/)
 })
 
-test('Gerente Responsable tiene modo lectura y modo edicion con Listo', () => {
-  assert.match(leadership, /editingResponsibles/)
-  assert.match(leadership, />Listo</)
-  assert.match(leadership, /responsibleLabels\.length \? 'Editar' : 'Agregar responsables'/)
-  assert.match(leadership, /Agregar responsables/)
+test('Gerente Responsable del plan queda solo lectura y se resuelve por lineamiento', () => {
+  assert.match(leadership, /planning_guideline_principal_responsible_labels/)
+  assert.match(leadership, /matrix-unit-principal-readonly/)
+  assert.doesNotMatch(leadership, /editingResponsibles/)
+  assert.doesNotMatch(leadership, />Listo</)
+  assert.doesNotMatch(leadership, /Agregar responsables/)
 })
