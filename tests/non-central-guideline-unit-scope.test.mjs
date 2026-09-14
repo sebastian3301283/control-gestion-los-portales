@@ -15,9 +15,11 @@ test('HU/DEP/VS/HOT mantienen catálogo técnico de matriz oculto y Áreas de Un
   assert.doesNotMatch(catalog, /Solo aparecen las áreas configuradas en “Activar áreas por unidad”/)
 })
 
-test('Áreas de Central usa el catálogo Central completo y ya no depende de bonistas', () => {
+test('Áreas de Central también es manual y el catálogo Central queda solo para relación técnica oculta', () => {
   assert.match(catalog, /const centralManagementOptions = useMemo/)
-  assert.match(catalog, /centralManagements\.filter\(item => item\.active && item\.unit_code === 'CENTRAL'\)/)
+  assert.match(catalog, /selectedCentralAreaLabels/)
+  assert.match(catalog, /centralAreaDraft/)
+  assert.match(catalog, /Agregar área Central/)
   assert.match(queryCache, /loadScopedManagements\('CENTRAL'\)/)
   const nonCentralStart = queryCache.indexOf('export async function loadNonCentralGuidelineData')
   const nonCentralEnd = queryCache.indexOf('export async function loadCentralGuidelineData', nonCentralStart)
@@ -26,7 +28,7 @@ test('Áreas de Central usa el catálogo Central completo y ya no depende de bon
   assert.doesNotMatch(nonCentralBlock, /loadManagersByIds/)
 })
 
-test('cambiar de unidad limpia etiquetas manuales y selecciones Central para evitar datos cruzados', () => {
-  assert.match(catalog, /function switchFormUnit\(nextUnitCode: string\)[\s\S]+setFormUnitCode\(nextUnitCode\)[\s\S]+setFormAreaId\(''\)[\s\S]+setFormResponsibleId\(''\)[\s\S]+setSelectedManagementIds\(\[\]\)[\s\S]+setSelectedUnitAreaLabels\(\[\]\)[\s\S]+setUnitAreaDraft\(''\)[\s\S]+setSelectedCentralManagementIds\(\[\]\)/)
+test('cambiar de unidad limpia las dos colecciones de etiquetas manuales para evitar datos cruzados', () => {
+  assert.match(catalog, /function switchFormUnit\(nextUnitCode: string\)[\s\S]+setFormUnitCode\(nextUnitCode\)[\s\S]+setFormAreaId\(''\)[\s\S]+setFormResponsibleId\(''\)[\s\S]+setSelectedManagementIds\(\[\]\)[\s\S]+setSelectedUnitAreaLabels\(\[\]\)[\s\S]+setUnitAreaDraft\(''\)[\s\S]+setSelectedCentralAreaLabels\(\[\]\)[\s\S]+setCentralAreaDraft\(''\)/)
   assert.match(catalog, /onChange=\{event => switchFormUnit\(event\.target\.value\)\}/)
 })
