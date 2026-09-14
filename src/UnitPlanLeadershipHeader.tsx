@@ -1,11 +1,10 @@
 import { createPortal } from 'react-dom'
-import { useEffect, useMemo, useState, type RefObject } from 'react'
+import { useEffect, useState, type KeyboardEvent, type RefObject } from 'react'
 import { supabase } from './lib/supabase'
-import { filterGerenteManagers } from './unit-excel-model.js'
 import './unit-plan-leadership-header.css'
 
 type UnitCode = 'HU' | 'DEP' | 'VS' | 'HOT' | 'CENTRAL'
-type Manager = { id: string; name: string; cargo: string | null; unit_code: string; directory_group: string; active?: boolean }
+type PrincipalResponsibleLabel = { label: string; sort_order: number }
 type Props = {
   hostRef: RefObject<HTMLDivElement | null>
   matrixId: string
@@ -23,10 +22,23 @@ export const UNIT_MANAGER_NAMES: Record<Exclude<UnitCode, 'CENTRAL'>, string> = 
   DEP: 'Diego Abarca',
 }
 
+function normalize(value: string) {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
+function splitLabels(value: string) {
+  const unique = new Map<string, string>()
+  value.split(/[\n;,]+/).map(item => item.replace(/\s+/g, ' ').trim()).filter(Boolean).forEach(label => {
+    const key = normalize(label)
+    if (!unique.has(key)) unique.set(key, label)
+  })
+  return [...unique.values()]
+}
+
 export default function UnitPlanLeadershipHeader({ hostRef, matrixId, unitCode, unitName, canManage, onError, onNotice }: Props) {
   const [target, setTarget] = useState<HTMLElement | null>(null)
-  const [managers, setManagers] = useState<Manager[]>([])
-  const [principalResponsibleId, setPrincipalResponsibleId] = useState('')
+  const [responsibleLabels, setResponsibleLabels] = useState<string[]>([])
+  const [responsibleDraft, setResponsibleDraft] = useState('')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -53,46 +65,68 @@ export default function UnitPlanLeadershipHeader({ hostRef, matrixId, unitCode, 
 
   useEffect(() => {
     if (!supabase || unitCode === 'CENTRAL' || !matrixId) {
-      setManagers([])
-      setPrincipalResponsibleId('')
+      setResponsibleLabels([])
+      setResponsibleDraft('')
       return
     }
     let cancelled = false
-    void (async () => {
-      const [matrixResult, managerResult] = await Promise.all([
-        supabase.from('matrices').select('principal_responsible_manager_id').eq('id', matrixId).maybeSingle(),
-        supabase.from('managers').select('id,name,cargo,unit_code,directory_group,active').eq('active', true).order('name'),
-      ])
-      if (cancelled) return
-      if (!matrixResult.error) setPrincipalResponsibleId(String(matrixResult.data?.principal_responsible_manager_id || ''))
-      if (!managerResult.error) setManagers((managerResult.data || []) as Manager[])
-    })()
+    void supabase
+      .from('matrix_principal_responsible_labels')
+      .select('label,sort_order')
+      .eq('matrix_id', matrixId)
+      .order('sort_order')
+      .then(({ data, error }) => {
+        if (cancelled) return
+        if (error) {
+          onError('No pudimos cargar los Gerentes Responsables.')
+          return
+        }
+        setResponsibleLabels(((data || []) as PrincipalResponsibleLabel[]).map(item => item.label).filter(Boolean))
+      })
     return () => { cancelled = true }
-  }, [matrixId, unitCode])
+  }, [matrixId, unitCode, onError])
 
-  const gerenteManagers = useMemo(() => {
-    const filtered = filterGerenteManagers(managers) as Manager[]
-    const selected = managers.find(manager => manager.id === principalResponsibleId)
-    if (selected && !filtered.some(manager => manager.id === selected.id)) return [...filtered, selected].sort((a, b) => a.name.localeCompare(b.name, 'es'))
-    return filtered.sort((a, b) => a.name.localeCompare(b.name, 'es'))
-  }, [managers, principalResponsibleId])
-
-  const principalResponsibleName = managers.find(manager => manager.id === principalResponsibleId)?.name || 'Sin asignar'
-
-  async function savePrincipalResponsible(managerId: string) {
+  async function addResponsibleLabels() {
     if (!supabase || !matrixId || !canManage || saving) return
-    const nextId = managerId || null
+    const additions = splitLabels(responsibleDraft).filter(label => !responsibleLabels.some(current => normalize(current) === normalize(label)))
+    if (!additions.length) {
+      setResponsibleDraft('')
+      return
+    }
     setSaving(true)
     onError('')
     onNotice('')
-    const { error } = await supabase.from('matrices').update({ principal_responsible_manager_id: nextId }).eq('id', matrixId)
+    const payload = additions.map((label, index) => ({ matrix_id: matrixId, label, sort_order: responsibleLabels.length + index }))
+    const { error } = await supabase.from('matrix_principal_responsible_labels').insert(payload)
     setSaving(false)
     if (error) {
-      onError('No pudimos actualizar el Gerente Responsable.')
+      onError('No pudimos agregar el Gerente Responsable.')
       return
     }
-    setPrincipalResponsibleId(managerId)
+    setResponsibleLabels(current => [...current, ...additions])
+    setResponsibleDraft('')
+    onNotice(additions.length === 1 ? 'Gerente Responsable agregado.' : 'Gerentes Responsables agregados.')
+  }
+
+  async function removeResponsibleLabel(label: string) {
+    if (!supabase || !matrixId || !canManage || saving) return
+    setSaving(true)
+    onError('')
+    onNotice('')
+    const { error } = await supabase.from('matrix_principal_responsible_labels').delete().eq('matrix_id', matrixId).eq('label', label)
+    setSaving(false)
+    if (error) {
+      onError('No pudimos quitar el Gerente Responsable.')
+      return
+    }
+    setResponsibleLabels(current => current.filter(item => item !== label))
     onNotice('Gerente Responsable actualizado.')
+  }
+
+  function handleDraftKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== 'Enter') return
+    event.preventDefault()
+    void addResponsibleLabels()
   }
 
   if (unitCode === 'CENTRAL' || !matrixId || !target) return null
@@ -101,7 +135,18 @@ export default function UnitPlanLeadershipHeader({ hostRef, matrixId, unitCode, 
     <div className="matrix-unit-leadership-grid" data-unit-code={unitCode}>
       <div><b>Unidad</b><span>{unitName}</span></div>
       <div><b>Gerente de Unidad</b><span>{UNIT_MANAGER_NAMES[unitCode]}</span></div>
-      <div><b>Gerente Responsable</b>{canManage ? <select aria-label="Gerente Responsable" value={principalResponsibleId} disabled={saving} onChange={event => void savePrincipalResponsible(event.target.value)}><option value="">Sin asignar</option>{gerenteManagers.map(manager => <option key={manager.id} value={manager.id}>{manager.name}</option>)}</select> : <span>{principalResponsibleName}</span>}</div>
+      <div className="matrix-unit-principal-responsibles">
+        <b>Gerente Responsable</b>
+        {canManage ? <div className="matrix-unit-principal-editor">
+          <div className="matrix-unit-principal-entry">
+            <input aria-label="Agregar Gerente Responsable" value={responsibleDraft} disabled={saving} onChange={event => setResponsibleDraft(event.target.value)} onKeyDown={handleDraftKeyDown} placeholder="Escribe un responsable"/>
+            <button type="button" disabled={saving || !responsibleDraft.trim()} onClick={() => void addResponsibleLabels()}>Agregar responsable</button>
+          </div>
+          <div className="matrix-unit-principal-chips">
+            {responsibleLabels.length ? responsibleLabels.map(label => <span key={normalize(label)}>{label}<button type="button" disabled={saving} aria-label={`Quitar ${label}`} onClick={() => void removeResponsibleLabel(label)}>×</button></span>) : <small>Sin asignar</small>}
+          </div>
+        </div> : <span className="matrix-unit-principal-readonly">{responsibleLabels.length ? responsibleLabels.join(', ') : 'Sin asignar'}</span>}
+      </div>
     </div>,
     target,
   )
