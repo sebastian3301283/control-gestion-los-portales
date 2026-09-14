@@ -364,7 +364,7 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
 
   function startNewRow() {
     if (rowFormOpen || !effectiveCanManage) return
-    const objective = availableObjectives.at(-1) || ''
+    const objective = availableObjectives[availableObjectives.length - 1] || ''
     if (objective) setCollapsedObjectives(current => { const next = new Set(current); next.delete(normalizeText(objective)); return next })
     setEditingRowId(null)
     setRowDraft({ ...emptyRow, objective_group: objective })
@@ -591,7 +591,7 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
           updateDraft('objective_group', event.target.value)
           setCollapsedObjectives(current => { const next = new Set(current); next.delete(normalizeText(event.target.value)); return next })
         }
-      }}><option value="">Seleccionar objetivo</option>{availableObjectives.map(objective => <option key={objective} value={objective}>{objective}</option>)}<option value="__new__">+ Crear nuevo objetivo</option></select> : <input value={rowDraft.objective_group || ''} onChange={event => updateDraft('objective_group', event.target.value)} placeholder={availableObjectives.length ? 'Escribe el nuevo objetivo' : 'Escribe el primer objetivo'} autoFocus={!editingRowId}/>}</label>{creatingObjective && availableObjectives.length > 0 && <button type="button" onClick={() => { const objective = availableObjectives.at(-1) || ''; setCreatingObjective(false); updateDraft('objective_group', objective) }}>Usar objetivo existente</button>}</div>
+      }}><option value="">Seleccionar objetivo</option>{availableObjectives.map(objective => <option key={objective} value={objective}>{objective}</option>)}<option value="__new__">+ Crear nuevo objetivo</option></select> : <input value={rowDraft.objective_group || ''} onChange={event => updateDraft('objective_group', event.target.value)} placeholder={availableObjectives.length ? 'Escribe el nuevo objetivo' : 'Escribe el primer objetivo'} autoFocus={!editingRowId}/>}</label>{creatingObjective && availableObjectives.length > 0 && <button type="button" onClick={() => { const objective = availableObjectives[availableObjectives.length - 1] || ''; setCreatingObjective(false); updateDraft('objective_group', objective) }}>Usar objetivo existente</button>}</div>
     </td></tr>
   }
 
