@@ -1,7 +1,7 @@
 import { Users } from 'lucide-react'
 import { useEffect, useRef, useState, type FocusEvent as ReactFocusEvent, type ReactNode } from 'react'
 import { supabase } from './lib/supabase'
-import { parentRowIdFromChange, sameCollaborationLocation, shouldRefreshMatrix } from './matrix-realtime-events.js'
+import { matrixRecordIdFromChange, parentRowIdFromChange, sameCollaborationLocation, shouldRefreshMatrix } from './matrix-realtime-events.js'
 import { collaborationLocationLabel, flattenPresenceState, type CollaborationLocation, type MatrixPresenceUser } from './matrix-realtime-presence.js'
 import './matrix-realtime-layer.css'
 
@@ -104,6 +104,9 @@ export default function MatrixRealtimeLayer({ children, matrixId }: Props) {
           const incoming = payload as { user_id?: string; location?: CollaborationLocation | null }
           if (!incoming.user_id) return
           setUsers(current => current.map(item => item.user_id === incoming.user_id ? { ...item, location: incoming.location || null } : item))
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'matrices' }, payload => {
+          if (matrixRecordIdFromChange(payload) === matrixId) requestRefresh('matrices', payload.eventType)
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'matrix_rows' }, payload => {
           if (shouldRefreshMatrix(payload, matrixId)) requestRefresh('matrix_rows', payload.eventType)
