@@ -3,13 +3,21 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
 const planning = await readFile(new URL('../src/PlanningGuidelines.tsx', import.meta.url), 'utf8')
+const catalog = await readFile(new URL('../src/GuidelineCatalogV2.tsx', import.meta.url), 'utf8')
 const v13 = await readFile(new URL('../src/MatrixWorkspaceV13.tsx', import.meta.url), 'utf8')
 const themeCss = await readFile(new URL('../src/matrix-workspace-v12-unit-theme.css', import.meta.url), 'utf8')
 
-test('Abrir matriz se reubica en Acciones antes de Editar y Eliminar', () => {
-  assert.match(planning, /\.guideline-row-matrix-arrow/)
-  assert.match(planning, /\.guideline-actions/)
-  assert.match(planning, /actions\.insertBefore\(arrow, actions\.firstChild\)/)
+test('Abrir matriz se renderiza directamente en Acciones antes de Editar y Eliminar', () => {
+  const actionsIndex = catalog.indexOf('<div className="guideline-actions">')
+  const arrowIndex = catalog.indexOf('guideline-row-matrix-arrow', actionsIndex)
+  const editIndex = catalog.indexOf('openEdit(item)', arrowIndex)
+  const deleteIndex = catalog.indexOf('deleteGuideline(item)', editIndex)
+  assert.ok(actionsIndex >= 0, 'falta el contenedor Acciones')
+  assert.ok(arrowIndex > actionsIndex, 'Abrir matriz debe estar dentro de Acciones')
+  assert.ok(editIndex > arrowIndex, 'Abrir matriz debe aparecer antes de Editar')
+  assert.ok(deleteIndex > editIndex, 'Eliminar debe permanecer después de Editar')
+  assert.doesNotMatch(planning, /actions\.insertBefore\(arrow, actions\.firstChild\)/)
+  assert.doesNotMatch(planning, /relocateMatrixActions/)
 })
 
 test('las tres acciones de lineamientos quedan reservadas a Gestión Estratégica', () => {
