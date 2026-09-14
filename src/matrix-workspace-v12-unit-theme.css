@@ -1,0 +1,13 @@
+.matrix-v12-theme-host{--matrix-v12-accent:#1769aa;min-width:0;max-width:100%}
+.matrix-v12--central{--matrix-v12-accent:#1769aa}
+.matrix-v12--hu{--matrix-v12-accent:#2e9b5f}
+.matrix-v12--dep{--matrix-v12-accent:#e88324}
+.matrix-v12--vs{--matrix-v12-accent:#42bfe8}
+.matrix-v12--hot{--matrix-v12-accent:#171717}
+
+.matrix-v12-theme-host .matrix-v12-view-toggle button.active{background:var(--matrix-v12-accent);box-shadow:0 4px 12px color-mix(in srgb,var(--matrix-v12-accent) 22%,transparent)}
+.matrix-v12-theme-host .matrix-v12-summary{border-top:4px solid var(--matrix-v12-accent)}
+.matrix-v12-theme-host .matrix-v12-summary>header span{color:var(--matrix-v12-accent)}
+.matrix-v12-theme-host .matrix-v12-summary-table th{background:var(--matrix-v12-accent)}
+.matrix-v12-theme-host .matrix-v12-summary>header{border-bottom-color:color-mix(in srgb,var(--matrix-v12-accent) 24%,#dce6ec)}
+.matrix-v12-theme-host .matrix-v12-summary tbody tr:hover td{background:color-mix(in srgb,var(--matrix-v12-accent) 5%,#fff)}
