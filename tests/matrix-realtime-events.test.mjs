@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import * as realtimeEvents from '../src/matrix-realtime-events.js'
 import {
   matrixIdFromChange,
   parentRowIdFromChange,
@@ -26,6 +27,16 @@ test('refreshes the active matrix safely for an unscoped delete payload', () => 
   assert.equal(matrixIdFromChange(deletion), '')
   assert.equal(shouldRefreshMatrix(deletion, 'matrix-a'), true)
   assert.equal(shouldRefreshMatrix(deletion, ''), false)
+})
+
+test('extracts the matrix record id so metadata changes stay scoped to the active matrix', () => {
+  assert.equal(typeof realtimeEvents.matrixRecordIdFromChange, 'function')
+  assert.equal(realtimeEvents.matrixRecordIdFromChange({ eventType: 'UPDATE', new: { id: 'matrix-a' }, old: { id: 'matrix-a' } }), 'matrix-a')
+  assert.equal(realtimeEvents.matrixRecordIdFromChange({ eventType: 'DELETE', new: {}, old: { id: 'matrix-b' } }), 'matrix-b')
+  assert.notEqual(
+    realtimeEvents.matrixRecordIdFromChange({ eventType: 'UPDATE', new: { id: 'matrix-b' }, old: { id: 'matrix-b' } }),
+    'matrix-a',
+  )
 })
 
 test('extracts the parent row for subpoint and responsible relation changes', () => {
