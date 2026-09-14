@@ -4,7 +4,7 @@
 
 **Goal:** Reducir deuda técnica real sin alterar el comportamiento aprobado de Fase 1 ni romper Central, HU, DEP, VS o HOT.
 
-**Architecture:** Partir del grafo de imports real desde `src/main.tsx`, distinguir runtime activo de generaciones antiguas y conservar CSS/helpers todavía consumidos por la cadena activa. Las limpiezas de wrappers DOM se abordarán solo cuando puedan sustituirse por contratos declarativos sin cambiar flujos ni datos.
+**Architecture:** Partir del grafo de imports real desde `src/main.tsx`, distinguir runtime activo de generaciones antiguas y conservar CSS/helpers todavía consumidos por la cadena activa. Las limpiezas de wrappers DOM se abordan solo cuando pueden sustituirse por contratos declarativos sin cambiar flujos ni datos.
 
 **Tech Stack:** React 18, TypeScript 5.7, Vite 6, Supabase JS, Node test runner.
 
@@ -25,45 +25,41 @@
 ### Task 1: Baseline y mapa de alcanzabilidad runtime
 
 **Files:**
-- Modify: `tests/audit-cleanliness.test.mjs`
-- Create: `tests/phase2-runtime-reachability.test.mjs`
+- Modified: `tests/audit-cleanliness.test.mjs`
+- Created: `tests/phase2-runtime-reachability.test.mjs`
 
-- [ ] Construir el grafo de imports relativos desde `src/main.tsx`, incluyendo imports estáticos, dinámicos y CSS.
-- [ ] Reportar implementaciones runtime no alcanzables sin confundir `.d.ts` compañeros de módulos JS activos.
-- [ ] Añadir regresiones que impidan reintroducir generaciones retiradas.
+- [x] Construir el grafo de imports relativos desde `src/main.tsx`, incluyendo imports estáticos, dinámicos y CSS.
+- [x] Reportar implementaciones runtime no alcanzables sin confundir `.d.ts` compañeros de módulos JS activos.
+- [x] Añadir regresiones que impidan reintroducir generaciones retiradas.
+
+**Resultado:** el primer RED detectó exactamente seis archivos runtime inalcanzables y protegió `matrix-subpoints.js` al demostrar que sí sigue activo.
 
 ### Task 2: Retirar generaciones y helpers realmente muertos
 
-**Files:**
-- Delete only when proven unreachable: legacy TSX/JS/CSS generations and tests dedicated exclusively to them.
-
-- [ ] Retirar `MatrixWorkspaceV10.tsx` solo si no existe ruta de import activa.
-- [ ] Revisar helpers históricos usados únicamente por esa generación (`central-table-rows`, `matrix-subpoints`, `central-excel-model`) y retirar solo los que queden sin consumidor runtime.
-- [ ] Conservar hojas CSS antiguas todavía importadas por `CentralExcelWorkspace`, `UnitExcelWorkspace`, V11/V12/V13 o componentes activos.
+- [x] Retirar `MatrixWorkspaceV10.tsx` después de demostrar que no existe ruta de import activa.
+- [x] Retirar los helpers/CSS probadamente inalcanzables: `central-table-rows.js`, su `.d.ts`, `central-excel-model.js`, `catalog-configuration-v2.css`, `matrix-subpoints.css` y `new-guideline.css`.
+- [x] Retirar pruebas exclusivas de V10/helpers muertos y reorientar la cobertura mixta de responsables a `CentralExcelWorkspace`.
+- [x] Conservar `matrix-subpoints.js` y las hojas CSS antiguas que todavía son importadas por `CentralExcelWorkspace`, `UnitExcelWorkspace`, V11/V12/V13 o componentes activos.
 
 ### Task 3: Limpiar adaptadores DOM demostrablemente redundantes
 
-**Files:**
-- Inspect: `src/CatalogConfiguration.tsx`, `src/PlanningGuidelines.tsx`, `src/MatrixWorkspace.tsx`, V11/V12/V13 and their active children.
-- Modify only wrappers whose behavior can be expressed declaratively without changing output.
+**Inspeccionados:** `src/CatalogConfiguration.tsx`, `src/PlanningGuidelines.tsx`, `src/MatrixWorkspace.tsx`, V11/V12/V13 y sus hijos activos.
 
-- [ ] Identificar `MutationObserver`, `document.createElement`, clicks sintéticos y aliases puente.
-- [ ] Eliminar primero solo los que ya fueron reemplazados por renderizado/props nativos.
-- [ ] Mantener temporalmente cualquier adaptador que todavía sea necesario para Central o para compatibilidad visual, documentando por qué no se elimina aún.
+- [x] Identificar `MutationObserver`, `document.createElement`, clicks sintéticos y aliases puente.
+- [x] Confirmar que el adaptador de flecha de Lineamientos ya fue reemplazado por renderizado nativo y permanece eliminado.
+- [x] Mantener los adaptadores restantes porque todavía implementan comportamiento activo: apertura contextual de Central, filtros/compatibilidad visual de Configuración y ajustes vigentes de Lineamientos/Resumen. Retirarlos aquí cambiaría comportamiento y queda fuera de una limpieza segura.
 
 ### Task 4: Higiene de imports, estados y lógica duplicada
 
-**Files:**
-- Inspect all active files reachable from `src/main.tsx`.
-
-- [ ] Eliminar imports, estados, funciones y listeners sin uso cuando TypeScript/tests demuestren que son redundantes.
-- [ ] Mantener timers de colaboración/locks que tengan función activa (por ejemplo heartbeat) y comprobar cleanup.
-- [ ] No cambiar contratos de Supabase ni permisos en esta fase.
+- [x] El mapa de alcanzabilidad deja cero módulos runtime huérfanos en `src` (excluyendo declaraciones `.d.ts`).
+- [x] Mantener listeners/timers de colaboración y Realtime que continúan cubiertos por regresiones activas.
+- [x] No cambiar contratos de Supabase, RLS ni permisos en esta fase.
+- [x] Añadir protección en `audit-cleanliness` para impedir reintroducir `MatrixWorkspaceV10`.
 
 ### Task 5: Verificación integral de Fase 2
 
-- [ ] Ejecutar toda la suite Node y exigir cero fallos.
-- [ ] Ejecutar TypeScript y exigir cero errores.
-- [ ] Ejecutar build de producción y exigir éxito.
+- [ ] Ejecutar toda la suite Node y exigir cero fallos sobre el HEAD final.
+- [ ] Ejecutar TypeScript y exigir cero errores sobre el HEAD final.
+- [ ] Ejecutar build de producción y exigir éxito sobre el HEAD final.
 - [ ] Revisar CI final del HEAD exacto.
 - [ ] Confirmar que `main` y Supabase no fueron modificados.
