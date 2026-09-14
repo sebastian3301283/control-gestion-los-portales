@@ -31,6 +31,7 @@ type GuidelineManagement = { guideline_id: string; management_id: string; sort_o
 type GuidelineResponsible = { guideline_id: string; manager_id: string; sort_order: number }
 type GuidelineCentralManagement = { guideline_id: string; management_id: string; sort_order: number }
 type GuidelineUnitAreaLabel = { guideline_id: string; label: string; sort_order: number }
+type GuidelineCentralAreaLabel = { guideline_id: string; label: string; sort_order: number }
 
 const planningGetCache = new Map<string, CacheEntry<unknown>>()
 
@@ -223,6 +224,19 @@ export function loadGuidelineUnitAreaLabels(guidelineIds: string[], force = fals
   }, force)
 }
 
+export function loadGuidelineCentralAreaLabels(guidelineIds: string[], force = false) {
+  const normalizedIds = normalizeIds(guidelineIds)
+  if (!normalizedIds.length) return Promise.resolve([] as GuidelineCentralAreaLabel[])
+  const key = normalizedIds.join(',')
+  return cachedPlanningGet<GuidelineCentralAreaLabel[]>(`guideline-multi:central-area-labels:${key}`, () => {
+    const client = requireSupabase()
+    return rowsOrThrow<GuidelineCentralAreaLabel>(client.from('planning_guideline_central_area_labels')
+      .select('guideline_id,label,sort_order')
+      .in('guideline_id', normalizedIds)
+      .order('sort_order'))
+  }, force)
+}
+
 export function loadGuidelineMultiRelations(guidelineIds: string[], force = false) {
   const normalizedIds = normalizeIds(guidelineIds)
   if (!normalizedIds.length) {
@@ -263,10 +277,11 @@ export async function loadNonCentralGuidelineData(periodId: string, unitCode: st
   const legacyManagementIds = guidelines.map(item => item.management_id)
   const managements = await loadManagementsByIds([...catalogManagementIds, ...legacyManagementIds])
   const guidelineIds = guidelines.map(item => item.id)
-  const [managementRelations, centralRelations, unitAreaLabels] = await Promise.all([
+  const [managementRelations, centralRelations, unitAreaLabels, centralAreaLabels] = await Promise.all([
     loadGuidelineManagementRelations(guidelineIds),
     loadGuidelineCentralManagements(guidelineIds),
     loadGuidelineUnitAreaLabels(guidelineIds),
+    loadGuidelineCentralAreaLabels(guidelineIds),
   ])
   return {
     periods,
@@ -274,7 +289,7 @@ export async function loadNonCentralGuidelineData(periodId: string, unitCode: st
     centralManagements,
     guidelines,
     catalog,
-    relations: { managements: managementRelations, centralManagements: centralRelations, unitAreaLabels },
+    relations: { managements: managementRelations, centralManagements: centralRelations, unitAreaLabels, centralAreaLabels },
   }
 }
 
