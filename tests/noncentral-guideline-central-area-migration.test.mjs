@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
-const migration = await readFile(new URL('../supabase/migrations/20260914160000_noncentral_guideline_central_areas.sql', import.meta.url), 'utf8').catch(() => '')
+const migration = await readFile(new URL('../supabase/migrations/20260914153906_noncentral_guideline_central_areas.sql', import.meta.url), 'utf8').catch(() => '')
 
 test('la migración separa Áreas de Central de las Áreas de Unidad', () => {
   assert.match(migration, /create table if not exists public\.planning_guideline_central_managements/)
