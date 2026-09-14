@@ -8,19 +8,20 @@ const history = await readFile(new URL('../src/MatrixWorkspaceV12.tsx', import.m
 const app = await readFile(new URL('../src/App.tsx', import.meta.url), 'utf8')
 const dashboard = await readFile(new URL('../src/Dashboard.tsx', import.meta.url), 'utf8')
 
-test('lineamientos no Central cargan relaciones múltiples y áreas activadas por unidad', () => {
-  assert.match(guideline, /loadGuidelineMultiRelations/)
-  assert.match(guideline, /matrix_unit_area_catalog/)
+test('lineamientos no Central cargan Áreas de Unidad y Áreas de Central separadas', () => {
+  assert.match(guideline, /loadNonCentralGuidelineData/)
+  assert.match(guideline, /matrixAreaIds/)
   assert.match(guideline, /selectedManagementIds/)
-  assert.match(guideline, /selectedResponsibleIds/)
+  assert.match(guideline, /selectedCentralManagementIds/)
   assert.match(guideline, /save_planning_guideline_multi/)
 })
 
-test('lineamientos no Central muestran múltiples gerencias y responsables sin cambiar Central', () => {
+test('lineamientos no Central muestran múltiples Áreas de Unidad y Central sin cambiar Central', () => {
   assert.match(guideline, /guideline-multi-chip/)
   assert.match(guideline, /unitCode !== 'CENTRAL'/)
-  assert.match(guideline, /Gerencias responsables/)
-  assert.match(guideline, /Gerentes responsables · Bonistas/)
+  assert.match(guideline, /Áreas de Unidad/)
+  assert.match(guideline, /Áreas de Central/)
+  assert.match(guideline, /Gerente responsable · Bonistas/)
 })
 
 test('matriz no Central muestra encabezado de plan y objetivos agrupados como el Excel', () => {
