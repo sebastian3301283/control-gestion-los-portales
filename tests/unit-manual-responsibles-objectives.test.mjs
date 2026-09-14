@@ -30,6 +30,6 @@ test('nueva accion se renderiza al final del objetivo seleccionado', () => {
 test('Gerente Responsable tiene modo lectura y modo edicion con Listo', () => {
   assert.match(leadership, /editingResponsibles/)
   assert.match(leadership, />Listo</)
-  assert.match(leadership, />Editar</)
+  assert.match(leadership, /responsibleLabels\.length \? 'Editar' : 'Agregar responsables'/)
   assert.match(leadership, /Agregar responsables/)
 })
