@@ -39,6 +39,7 @@ export default function UnitPlanLeadershipHeader({ hostRef, matrixId, unitCode, 
   const [target, setTarget] = useState<HTMLElement | null>(null)
   const [responsibleLabels, setResponsibleLabels] = useState<string[]>([])
   const [responsibleDraft, setResponsibleDraft] = useState('')
+  const [editingResponsibles, setEditingResponsibles] = useState(false)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -64,9 +65,10 @@ export default function UnitPlanLeadershipHeader({ hostRef, matrixId, unitCode, 
   }, [hostRef, unitCode, matrixId])
 
   useEffect(() => {
+    setEditingResponsibles(false)
+    setResponsibleDraft('')
     if (!supabase || unitCode === 'CENTRAL' || !matrixId) {
       setResponsibleLabels([])
-      setResponsibleDraft('')
       return
     }
     let cancelled = false
@@ -137,7 +139,7 @@ export default function UnitPlanLeadershipHeader({ hostRef, matrixId, unitCode, 
       <div><b>Gerente de Unidad</b><span>{UNIT_MANAGER_NAMES[unitCode]}</span></div>
       <div className="matrix-unit-principal-responsibles">
         <b>Gerente Responsable</b>
-        {canManage ? <div className="matrix-unit-principal-editor">
+        {canManage ? editingResponsibles ? <div className="matrix-unit-principal-editor">
           <div className="matrix-unit-principal-entry">
             <input aria-label="Agregar Gerente Responsable" value={responsibleDraft} disabled={saving} onChange={event => setResponsibleDraft(event.target.value)} onKeyDown={handleDraftKeyDown} placeholder="Escribe un responsable"/>
             <button type="button" disabled={saving || !responsibleDraft.trim()} onClick={() => void addResponsibleLabels()}>Agregar responsable</button>
@@ -145,6 +147,10 @@ export default function UnitPlanLeadershipHeader({ hostRef, matrixId, unitCode, 
           <div className="matrix-unit-principal-chips">
             {responsibleLabels.length ? responsibleLabels.map(label => <span key={normalize(label)}>{label}<button type="button" disabled={saving} aria-label={`Quitar ${label}`} onClick={() => void removeResponsibleLabel(label)}>×</button></span>) : <small>Sin asignar</small>}
           </div>
+          <div className="matrix-unit-principal-editor-actions"><button type="button" className="done" disabled={saving} onClick={() => { setResponsibleDraft(''); setEditingResponsibles(false) }}>Listo</button></div>
+        </div> : <div className="matrix-unit-principal-display">
+          <div className="matrix-unit-principal-display-chips">{responsibleLabels.length ? responsibleLabels.map(label => <span key={normalize(label)}>{label}</span>) : <small>Sin asignar</small>}</div>
+          <button type="button" className="edit" onClick={() => setEditingResponsibles(true)}>{responsibleLabels.length ? 'Editar' : 'Agregar responsables'}</button>
         </div> : <span className="matrix-unit-principal-readonly">{responsibleLabels.length ? responsibleLabels.join(', ') : 'Sin asignar'}</span>}
       </div>
     </div>,
