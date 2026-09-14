@@ -255,6 +255,15 @@ export function loadGuidelineMultiRelations(guidelineIds: string[], force = fals
   ]).then(([managements, responsibles]) => ({ managements, responsibles }))
 }
 
+export async function loadScopedGuidelineAssignees(unitCode: string) {
+  const [managements, managers] = await Promise.all([
+    loadScopedManagements(unitCode),
+    loadScopedManagers(unitCode),
+  ])
+  const links = await loadManagerManagements(managements.map(item => item.id))
+  return { managements, managers, links }
+}
+
 export async function loadScopedGuidelineData(periodId: string, unitCode: string) {
   const [periods, managements, managers, guidelines, catalog] = await Promise.all([
     loadPlanningPeriods(),
