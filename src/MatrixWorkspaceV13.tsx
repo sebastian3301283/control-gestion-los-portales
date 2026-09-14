@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import MatrixRealtimeLayer from './MatrixRealtimeLayer'
 import MatrixWorkspaceV12 from './MatrixWorkspaceV12'
+import UnitPlanLeadershipHeader from './UnitPlanLeadershipHeader'
 import './matrix-workspace-v12-unit-theme.css'
 
 type UnitCode = 'HU' | 'DEP' | 'VS' | 'HOT' | 'CENTRAL'
@@ -17,6 +18,7 @@ type Props = {
 }
 
 export default function MatrixWorkspaceV13(props: Props) {
+  const hostRef = useRef<HTMLDivElement>(null)
   const [activeMatrixId, setActiveMatrixId] = useState('')
 
   useEffect(() => setActiveMatrixId(''), [props.periodId, props.unitCode])
@@ -28,7 +30,8 @@ export default function MatrixWorkspaceV13(props: Props) {
 
   const { onActiveMatrixChange: _onActiveMatrixChange, ...workspaceProps } = props
   return <MatrixRealtimeLayer matrixId={activeMatrixId}>
-    <div className={`matrix-v12-theme-host matrix-v12--${props.unitCode.toLowerCase()}`}>
+    <div ref={hostRef} className={`matrix-v12-theme-host matrix-v12--${props.unitCode.toLowerCase()}`}>
+      {props.unitCode !== 'CENTRAL' && <UnitPlanLeadershipHeader hostRef={hostRef} matrixId={activeMatrixId} unitCode={props.unitCode} unitName={props.unitName} canManage={props.canManage} onError={props.onError} onNotice={props.onNotice} />}
       <MatrixWorkspaceV12 {...workspaceProps} onActiveMatrixChange={handleActiveMatrixChange} />
     </div>
   </MatrixRealtimeLayer>
