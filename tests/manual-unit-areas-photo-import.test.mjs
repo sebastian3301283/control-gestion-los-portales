@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises'
 const catalog = await readFile(new URL('../src/GuidelineCatalogV2.tsx', import.meta.url), 'utf8')
 const importer = await readFile(new URL('../src/GuidelineMultiImport.tsx', import.meta.url), 'utf8')
 const cache = await readFile(new URL('../src/lib/planning-query-cache.ts', import.meta.url), 'utf8')
-const migration = await readFile(new URL('../supabase/migrations/20260914170500_manual_unit_areas_and_photo_import.sql', import.meta.url), 'utf8').catch(() => '')
+const migration = await readFile(new URL('../supabase/migrations/20260914160051_manual_unit_areas_and_photo_import.sql', import.meta.url), 'utf8').catch(() => '')
 
 test('Áreas de Unidad se editan como etiquetas libres y no como catálogo visible', () => {
   assert.match(catalog, /selectedUnitAreaLabels/)
