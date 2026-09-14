@@ -222,7 +222,7 @@ export default function MatrixWorkspaceV12(props: Props) {
     setPendingRestoreVersion(version)
   }
 
-  async function confirmRestore() {
+  async function restoreVersion() {
     const version = pendingRestoreVersion
     if (!version || !supabase || restoringVersionNo !== null) return
     if (hostRef.current?.querySelector('.matrix-collab-user')) {
@@ -404,7 +404,7 @@ export default function MatrixWorkspaceV12(props: Props) {
       </div>
       <div className="matrix-v12-restore-confirm-actions">
         <button type="button" className="secondary" onClick={() => setPendingRestoreVersion(null)} disabled={restoringVersionNo !== null}>Cancelar</button>
-        <button type="button" className="primary" onClick={() => void confirmRestore()} disabled={restoringVersionNo !== null}>{restoringVersionNo === pendingRestoreVersion.version_no && <LoaderCircle className="spin" size={14}/>} {restoringVersionNo === pendingRestoreVersion.version_no ? 'Restaurando...' : 'Sí, restaurar'}</button>
+        <button type="button" className="primary" onClick={() => void restoreVersion()} disabled={restoringVersionNo !== null}>{restoringVersionNo === pendingRestoreVersion.version_no && <LoaderCircle className="spin" size={14}/>} {restoringVersionNo === pendingRestoreVersion.version_no ? 'Restaurando...' : 'Sí, restaurar'}</button>
       </div>
     </section>
   </div> : null
