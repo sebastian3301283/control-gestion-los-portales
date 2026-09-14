@@ -540,7 +540,7 @@ export default function GuidelineMultiImport({ unit, periodId, open, onClose, on
   const activeRows = useMemo(() => rows.filter(row => row.enabled && (row.category.trim() || row.code.trim() || row.text.trim())), [rows])
 
   const unitTechnicalCandidates = useMemo(() => managements.filter(item => item.active && item.unit_code === unit.code && matrixAreaIds.includes(item.id)), [managements, matrixAreaIds, unit.code])
-  const centralCandidates = useMemo(() => managements.filter(item => item.active && item.unit_code === 'CENTRAL'), [managements])
+  const centralManagements = useMemo(() => managements.filter(item => item.active && item.unit_code === 'CENTRAL'), [managements])
 
   useEffect(() => {
     if (!open || !supabase) return
@@ -622,14 +622,14 @@ export default function GuidelineMultiImport({ unit, periodId, open, onClose, on
         const fallbackManagementId = technicalManagementIds[0] || unitTechnicalCandidates[0]?.id || ''
         if (!fallbackManagementId) throw new Error('No hay un área técnica activa para crear las matrices de esta unidad.')
         const managementIds = technicalManagementIds.length ? technicalManagementIds : [fallbackManagementId]
-        const centralManagementIds = matchCatalogMany(row.centralAreas, centralCandidates)
         const { data, error: rpcError } = await supabase.rpc('save_planning_guideline_multi', {
           guideline_id_input: null,
           period_id_input: periodId,
           unit_code_input: unit.code,
           management_ids_input: managementIds,
-          central_management_ids_input: centralManagementIds,
+          central_management_ids_input: matchCatalogMany(row.centralAreas, centralManagements),
           unit_area_labels_input: row.unitAreas,
+          central_area_labels_input: row.centralAreas,
           category_input: category,
           code_input: code,
           guideline_text_input: fullText,
@@ -656,7 +656,7 @@ export default function GuidelineMultiImport({ unit, periodId, open, onClose, on
         <div className="guideline-import-icon"><FileText size={22}/></div>
         <div><span>Importación inteligente</span><h3>Importar lineamientos</h3><p>{isCentral ? 'En Central se importan únicamente Categoría, N° y Lineamiento. El área se toma del selector de la pantalla.' : 'Lee tablas con Categoría, Lineamiento, Áreas de Unidad y Áreas de Central. Siempre podrás corregir lo detectado antes de guardar.'}</p></div>
       </header>
-      <div className="guideline-import-context"><strong>{unit.code} · {unit.name}</strong><span>{isCentral ? 'Se guardarán en el área seleccionada y únicamente en el periodo actual.' : 'Las Áreas de Unidad quedan como texto manual; Áreas de Central se relacionan con el catálogo Central.'}</span></div>
+      <div className="guideline-import-context"><strong>{unit.code} · {unit.name}</strong><span>{isCentral ? 'Se guardarán en el área seleccionada y únicamente en el periodo actual.' : 'Áreas de Unidad y Áreas de Central quedan como texto manual; las coincidencias con catálogos se usan solo internamente.'}</span></div>
       <input ref={inputRef} type="file" accept=".xlsx,.xls,.pdf,.ppt,.pptx,.png,.jpg,.jpeg,.webp" hidden onChange={event => { const file = event.target.files?.[0]; if (file) void processFile(file); event.currentTarget.value = '' }}/>
       <button className="guideline-import-picker" type="button" onClick={() => inputRef.current?.click()} disabled={loading || saving}>
         <span><FileSpreadsheet size={26}/></span><div><strong>{fileName || 'Seleccionar archivo'}</strong><small>Excel · PDF · PowerPoint · PNG/JPG/WEBP · máximo 50 MB</small></div><b>{loading ? <LoaderCircle className="spin" size={18}/> : 'Elegir archivo'}</b>
