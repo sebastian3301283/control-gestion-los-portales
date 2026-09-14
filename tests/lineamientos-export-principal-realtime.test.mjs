@@ -10,7 +10,7 @@ const planning = await readFile(new URL('../src/PlanningGuidelines.tsx', import.
 const leadership = await readFile(new URL('../src/UnitPlanLeadershipHeader.tsx', import.meta.url), 'utf8')
 const realtimeCss = await readFile(new URL('../src/matrix-realtime-layer.css', import.meta.url), 'utf8')
 const exporter = await readOptional(new URL('../src/lib/styled-guideline-export.ts', import.meta.url))
-const migration = await readOptional(new URL('../supabase/migrations/20260914182000_matrix_principal_responsible_labels.sql', import.meta.url))
+const migration = await readOptional(new URL('../supabase/migrations/20260914175633_matrix_principal_responsible_labels.sql', import.meta.url))
 
 test('Gestión Estratégica puede descargar Lineamientos en Excel con formato por unidad', () => {
   assert.match(planning, /exportStyledGuidelineWorkbook/)
