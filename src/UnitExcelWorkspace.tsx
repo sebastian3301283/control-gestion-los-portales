@@ -602,10 +602,10 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
       <td className="matrix-central-sheet-cell"><select value={rowDraft.priority || ''} onChange={event => updateDraft('priority', event.target.value)} aria-label="Prioridad"><option value="">—</option><option>Alta</option><option>Media</option><option>Baja</option></select></td>
       <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.milestones || ''} onChange={event => updateDraft('milestones', event.target.value)} placeholder="Hito o fecha" aria-label="Hitos o fechas"/></td>
       <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.deliverables || ''} onChange={event => updateDraft('deliverables', event.target.value)} placeholder="Entregable" aria-label="Entregable"/></td>
-      <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.risks || ''} onChange={event => updateDraft('risks', event.target.value)} placeholder="Riesgos de no ejecutar" aria-label="Riesgos de no ejecutar"/></td>
-      <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.restrictions || ''} onChange={event => updateDraft('restrictions', event.target.value)} placeholder="Restricciones" aria-label="Restricciones"/></td>
       <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.support || ''} onChange={event => updateDraft('support', event.target.value)} placeholder="Soporte" aria-label="Soporte"/></td>
       <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.committee || ''} onChange={event => updateDraft('committee', event.target.value)} placeholder="Comité" aria-label="Comité"/></td>
+      <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.risks || ''} onChange={event => updateDraft('risks', event.target.value)} placeholder="Riesgos de no ejecutar" aria-label="Riesgos de no ejecutar"/></td>
+      <td className="matrix-central-sheet-cell"><textarea rows={1} value={rowDraft.restrictions || ''} onChange={event => updateDraft('restrictions', event.target.value)} placeholder="Restricciones" aria-label="Restricciones"/></td>
     </tr>
   }
 
@@ -637,7 +637,7 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
       <div className="matrix-v5-summary"><div><span>Área</span><strong>{selectedArea?.name || '—'}</strong></div><div><span>Unidad</span><strong>{unitName}</strong></div><div><span>Responsable principal</span><strong>{firstResponsible}</strong></div></div>
       <div className="matrix-unit-excel-note">Esta matriz pertenece únicamente al lineamiento desde el que ingresaste.</div>
 
-      <div className="matrix-v5-sheet-card"><div className="matrix-v5-sheet-scroll" style={zoomStyle}><table className="matrix-v5-sheet matrix-v10-central-excel matrix-central-spreadsheet-grid matrix-unit-excel"><thead><tr><th>Acción</th><th>Responsable</th><th>Prioridad</th><th>Hitos / Fechas</th><th>Entregable</th><th>Riesgos de no ejecutar</th><th>Restricciones</th><th>Soporte</th><th>Comité</th></tr></thead><tbody>
+      <div className="matrix-v5-sheet-card"><div className="matrix-v5-sheet-scroll" style={zoomStyle}><table className="matrix-v5-sheet matrix-v10-central-excel matrix-central-spreadsheet-grid matrix-unit-excel"><thead><tr><th>Acción</th><th>Responsable</th><th>Prioridad</th><th>Hitos / Fechas</th><th>Entregable</th><th>Soporte</th><th>Comité</th><th>Riesgos de no ejecutar</th><th>Restricciones</th></tr></thead><tbody>
         {rowsLoading ? <tr><td colSpan={tableColSpan} className="matrix-v5-table-empty"><LoaderCircle className="spin" size={20}/> Cargando matriz...</td></tr> : rows.length === 0 && !rowFormOpen ? <tr><td colSpan={tableColSpan} className="matrix-v5-table-empty">La matriz está lista. Presiona “Añadir acción” para comenzar.</td></tr> : objectiveGroups.map((group, groupIndex) => {
           const groupKey = normalizeText(group.objective) || `objective-${groupIndex}`
           const isDraftForGroup = !creatingObjective && normalizeText(rowDraft.objective_group) === normalizeText(group.objective)
@@ -652,7 +652,7 @@ export default function UnitExcelWorkspace({ periodId, year, unitCode, unitName,
                 <td className="matrix-v5-action-cell"><span>{row.objective || '—'}</span></td>
                 <td>{names.length ? <div className="matrix-unit-manual-responsible-chips matrix-unit-manual-responsible-chips--readonly">{names.map(name => <span key={normalizeText(name)}>{name}</span>)}</div> : '—'}</td>
                 <td>{row.priority ? <span className={`matrix-v5-priority matrix-v5-priority--${priorityClass(row.priority)}`}>{row.priority}</span> : '—'}</td>
-                <td>{row.milestones || '—'}</td><td>{row.deliverables || '—'}</td><td>{row.risks || '—'}</td><td>{row.restrictions || '—'}</td><td>{row.support || '—'}</td><td>{row.committee || '—'}</td>
+                <td>{row.milestones || '—'}</td><td>{row.deliverables || '—'}</td><td>{row.support || '—'}</td><td>{row.committee || '—'}</td><td>{row.risks || '—'}</td><td>{row.restrictions || '—'}</td>
               </tr>
             })}
             {!isCollapsed && isDraftForGroup && rowFormOpen && !editingRowId && <>{renderObjectiveEditorRow(`new-unit-objective-${groupKey}`)}{renderSpreadsheetDraftRow(`new-unit-action-${groupKey}`)}</>}
