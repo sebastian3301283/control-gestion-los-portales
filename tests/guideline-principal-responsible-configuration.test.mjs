@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile, readdir } from 'node:fs/promises'
 
 const config = await readFile(new URL('../src/CatalogConfiguration.tsx', import.meta.url), 'utf8')
+const responsibleAccordion = await readFile(new URL('../src/GuidelineResponsibleAccordion.tsx', import.meta.url), 'utf8')
 const leadership = await readFile(new URL('../src/UnitPlanLeadershipHeader.tsx', import.meta.url), 'utf8')
 const leadershipCss = await readFile(new URL('../src/unit-plan-leadership-header.css', import.meta.url), 'utf8')
 
@@ -17,7 +18,8 @@ async function findResponsibleMigration() {
 }
 
 test('Configuración administra Gerentes Responsables manuales por lineamiento', async () => {
-  assert.match(config, /GuidelineResponsibleConfiguration/)
+  assert.match(config, /GuidelineResponsibleAccordion/)
+  assert.match(responsibleAccordion, /GuidelineResponsibleConfiguration/)
   const source = await readFile(new URL('../src/GuidelineResponsibleConfiguration.tsx', import.meta.url), 'utf8')
   assert.match(source, /planning_guidelines/)
   assert.match(source, /planning_guideline_principal_responsible_labels/)
