@@ -36,7 +36,8 @@ test('la configuración de gerentes responsables usa filas y controles compactos
 test('HU, VS, DEP y HOT muestran las tres acciones alineadas en una sola fila', () => {
   assert.match(catalog, /className="guideline-actions"[\s\S]*guideline-row-matrix-arrow[\s\S]*title="Editar"[\s\S]*className="danger"/)
   assert.match(catalogCss, /\.guideline-actions\{[^}]*display:flex[^}]*align-items:center[^}]*flex-wrap:nowrap/)
-  assert.match(catalogCss, /\.guideline-actions \.guideline-row-matrix-arrow\{[^}]*height:34px[^}]*min-width:108px/)
+  assert.match(catalogCss, /\.guideline-actions \.guideline-row-matrix-arrow\{[^}]*min-width:108px/)
+  assert.match(catalogCss, /\.guideline-actions \.guideline-row-matrix-arrow\{[^}]*height:34px/)
   assert.match(catalogCss, /\.guideline-actions>button:not\(\.guideline-row-matrix-arrow\)\{[^}]*width:34px[^}]*height:34px/)
   assert.match(catalogCss, /\.guideline-v2-table th:nth-child\(6\)\{width:210px/)
   assert.match(unitOverrides, /\.guideline-v2-table--hot th:nth-child\(6\)\{width:210px!important\}/)
