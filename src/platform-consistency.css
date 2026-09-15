@@ -119,10 +119,210 @@
   border-radius: var(--ui-radius-control);
 }
 
+/* Permissions: improve readability while preserving CENTRAL/non-CENTRAL behavior. */
+.permission-v4 .permission-v4-help {
+  padding: var(--ui-space-3) var(--ui-space-4);
+  border-radius: var(--ui-radius-control);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.permission-v4 .permission-v4-help strong,
+.permission-v4 .permission-v4-title-row strong,
+.permission-v4 .permission-v4-area-head strong {
+  font-size: 12px;
+}
+
+.permission-v4 .permission-v4-modal {
+  border-color: var(--ui-border);
+  border-radius: 20px;
+}
+
+.permission-v4 .permission-v4-modal-head {
+  padding: var(--ui-space-5) var(--ui-space-6);
+}
+
+.permission-v4 .permission-v4-modal-head small {
+  font-size: 10px;
+}
+
+.permission-v4 .permission-v4-modal-head p {
+  margin-top: var(--ui-space-1);
+  color: var(--ui-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.permission-v4 .permission-v4-modal-head>button {
+  width: var(--ui-icon-control);
+  height: var(--ui-icon-control);
+  border-radius: var(--ui-radius-control);
+}
+
+.permission-v4 .permission-v4-modal-role {
+  gap: var(--ui-space-3);
+  padding: var(--ui-space-4) var(--ui-space-6);
+}
+
+.permission-v4 .permission-v4-modal-role>label>span {
+  margin-bottom: var(--ui-space-1);
+  font-size: 11px;
+}
+
+.permission-v4 .permission-v4-modal-role select {
+  min-height: var(--ui-control-height);
+  height: var(--ui-control-height);
+  border-radius: var(--ui-radius-control);
+  font-size: 11px;
+}
+
+.permission-v4 .permission-v4-role-help {
+  padding: var(--ui-space-3);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.permission-v4 .permission-v4-unit-tabs {
+  gap: var(--ui-space-2);
+  padding: var(--ui-space-3) var(--ui-space-6);
+}
+
+.permission-v4 .permission-v4-unit-tabs button {
+  min-height: 64px;
+  padding: var(--ui-space-3);
+  border-radius: var(--ui-radius-control);
+}
+
+.permission-v4 .permission-v4-unit-tabs button strong {
+  font-size: 11px;
+}
+
+.permission-v4 .permission-v4-unit-tabs button span {
+  margin-top: 2px;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.permission-v4 .permission-v4-area-editor,
+.permission-v4 .permission-v4-guideline-editor {
+  padding-inline: var(--ui-space-6);
+  padding-bottom: var(--ui-space-4);
+}
+
+.permission-v4 .permission-v4-area-head span,
+.permission-v4 .permission-v4-selection-note span {
+  font-size: 10px;
+}
+
+.permission-v4 .permission-v4-area-row {
+  min-height: 58px;
+  gap: var(--ui-space-3);
+  padding: var(--ui-space-2) var(--ui-space-3);
+}
+
+.permission-v4 .permission-v4-area-row>div:first-child strong {
+  font-size: 11px;
+}
+
+.permission-v4 .permission-v4-area-row>div:first-child span,
+.permission-v4 .permission-v4-area-control>span,
+.permission-v4 .permission-v4-selection-note strong {
+  font-size: 10px;
+}
+
+.permission-v4 .permission-v4-guideline-mode {
+  min-height: var(--ui-toolbar-height);
+  height: auto;
+  padding: var(--ui-space-2) var(--ui-space-3);
+}
+
+.permission-v4 .permission-v4-guideline-mode strong {
+  font-size: 10px;
+}
+
+.permission-v4 .permission-v4-guideline-mode span,
+.permission-v4 .permission-v4-guideline-count {
+  font-size: 9.5px;
+}
+
+.permission-v4 .permission-v4-guideline-accordion {
+  margin-bottom: var(--ui-space-2);
+  border-color: var(--ui-border);
+  border-radius: var(--ui-radius-control);
+}
+
+.permission-v4 .permission-v4-guideline-accordion>summary {
+  min-height: 66px;
+  padding: var(--ui-space-3) var(--ui-space-4);
+}
+
+.permission-v4 .permission-v4-guideline-number {
+  font-size: 10px;
+}
+
+.permission-v4 .permission-v4-guideline-summary strong {
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.permission-v4 .permission-v4-guideline-status>span {
+  font-size: 9.5px;
+}
+
+.permission-v4 .permission-v4-guideline-controls {
+  gap: var(--ui-space-2);
+  padding: var(--ui-space-3) var(--ui-space-4) var(--ui-space-4);
+}
+
+.permission-v4 .permission-v4-guideline-control {
+  min-height: 64px;
+  padding: var(--ui-space-3);
+  border-radius: var(--ui-radius-control);
+}
+
+.permission-v4 .permission-v4-guideline-control>div>span {
+  font-size: 11px;
+}
+
+.permission-v4 .permission-v4-guideline-control>div>small {
+  margin-top: 3px;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.permission-v4 .permission-v4-edit-btn,
+.permission-v4 .permission-v4-modal-foot button {
+  min-height: var(--ui-toolbar-height);
+  height: var(--ui-toolbar-height);
+  border-radius: var(--ui-radius-control);
+  font-size: 10.5px;
+}
+
+.permission-v4 button:focus-visible,
+.permission-v4 select:focus-visible,
+.permission-v4 input:focus-visible,
+.permission-v4 summary:focus-visible {
+  outline: none;
+  box-shadow: var(--ui-focus-ring);
+}
+
+.permission-v4 summary:focus-visible {
+  border-radius: var(--ui-radius-control);
+}
+
 @media (max-width: 760px) {
   .catalog-config .config-accordion-head,
   .guideline-responsible-accordion .config-accordion-head {
     min-height: 70px;
     padding: var(--ui-space-3) var(--ui-space-4);
+  }
+
+  .permission-v4 .permission-v4-modal-head,
+  .permission-v4 .permission-v4-modal-role,
+  .permission-v4 .permission-v4-unit-tabs,
+  .permission-v4 .permission-v4-area-editor,
+  .permission-v4 .permission-v4-guideline-editor {
+    padding-left: var(--ui-space-4);
+    padding-right: var(--ui-space-4);
   }
 }
