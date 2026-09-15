@@ -258,8 +258,28 @@ using (
   )
 );
 
--- Processes are compatibility metadata for non-Central matrices. Reading a
--- non-Central process requires access to at least one exact guideline matrix.
+-- Reading process compatibility metadata through a SECURITY DEFINER helper
+-- avoids recursive RLS between processes and matrices.
+create or replace function public.can_access_noncentral_process(process_id_input uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select exists (
+    select 1
+    from public.matrices m
+    where m.process_id = process_id_input
+      and m.unit_code in ('HU', 'VS', 'DEP', 'HOT')
+      and m.guideline_id is not null
+      and public.can_access_guideline_multi(m.guideline_id)
+  );
+$$;
+
+revoke execute on function public.can_access_noncentral_process(uuid) from public, anon;
+grant execute on function public.can_access_noncentral_process(uuid) to authenticated;
+
 drop policy if exists processes_select_area on public.processes;
 create policy processes_select_area
 on public.processes
@@ -273,16 +293,7 @@ using (
   )
   or (
     unit_code <> 'CENTRAL'
-    and (
-      public.is_global_planning_manager()
-      or exists (
-        select 1
-        from public.matrices m
-        where m.process_id = processes.id
-          and m.guideline_id is not null
-          and public.can_access_guideline_multi(m.guideline_id)
-      )
-    )
+    and public.can_access_noncentral_process(id)
   )
 );
 
