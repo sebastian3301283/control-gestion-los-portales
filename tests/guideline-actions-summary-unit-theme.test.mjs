@@ -20,9 +20,10 @@ test('Abrir matriz se renderiza directamente en Acciones antes de Editar y Elimi
   assert.doesNotMatch(planning, /relocateMatrixActions/)
 })
 
-test('las tres acciones de lineamientos quedan reservadas a Gestión Estratégica', () => {
-  assert.match(planning, /onPrefetchMatrixForGuideline=\{canManage \? prefetchMatrixForGuideline : undefined\}/)
-  assert.match(planning, /onOpenMatrixForGuideline=\{canManage \? openMatrixForGuideline : undefined\}/)
+test('Ir a matriz queda disponible en consulta y editar eliminar siguen reservados a Gestión Estratégica', () => {
+  assert.match(planning, /onPrefetchMatrixForGuideline=\{prefetchMatrixForGuideline\}/)
+  assert.match(planning, /onOpenMatrixForGuideline=\{openMatrixForGuideline\}/)
+  assert.match(catalog, /\{canManage && <><button[\s\S]*title="Editar"[\s\S]*title="Eliminar"/)
 })
 
 test('MatrixWorkspaceV12 hereda el color de cada unidad en Resumen', () => {
