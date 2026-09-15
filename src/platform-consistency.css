@@ -434,6 +434,129 @@
   box-shadow: var(--ui-focus-ring);
 }
 
+/* Matrices: harmonize controls and dialogs without touching spreadsheet geometry. */
+.matrix-v11-host .matrix-v11-guideline-shortcut button {
+  min-height: var(--ui-toolbar-height);
+  border-radius: var(--ui-radius-control);
+}
+
+.matrix-v11-host .matrix-v11-restore-button {
+  min-height: var(--ui-toolbar-height);
+  border-radius: var(--ui-radius-control);
+  font-size: 10px;
+}
+
+.matrix-v11-host .matrix-v11-switch-dialog {
+  border-color: var(--ui-border);
+  border-radius: 20px;
+  padding: var(--ui-space-5);
+}
+
+.matrix-v11-host .matrix-v11-switch-dialog button {
+  min-height: var(--ui-toolbar-height);
+  border-radius: var(--ui-radius-control);
+}
+
+.matrix-v12-host .matrix-v12-editor {
+  gap: var(--ui-space-4);
+  border-color: var(--ui-border);
+  border-radius: var(--ui-radius-panel);
+  box-shadow: var(--ui-panel-shadow);
+}
+
+.matrix-v12-host .matrix-v12-editor>header>button {
+  width: var(--ui-icon-control);
+  height: var(--ui-icon-control);
+  border-radius: var(--ui-radius-control);
+}
+
+.matrix-v12-host .matrix-v12-subpoints-head>button,
+.matrix-v12-host .matrix-v12-editor>footer button,
+.matrix-v12-host .matrix-v12-view-toggle button {
+  min-height: var(--ui-toolbar-height);
+  border-radius: var(--ui-radius-control);
+}
+
+.matrix-v12-host .matrix-v12-view-toggle {
+  gap: 4px;
+  border-color: var(--ui-border);
+  border-radius: var(--ui-radius-control);
+}
+
+.matrix-v12-host .matrix-v12-summary {
+  border-color: var(--ui-border);
+  border-radius: var(--ui-radius-panel);
+  box-shadow: var(--ui-panel-shadow);
+}
+
+.matrix-v12-host .matrix-v12-history-dialog {
+  border: 1px solid var(--ui-border);
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+.matrix-v12-host .matrix-v12-history-version {
+  border-radius: var(--ui-radius-control)!important;
+}
+
+.matrix-v12-host .matrix-v12-history-actions button,
+.matrix-v12-host .matrix-v12-history-footer button {
+  min-height: var(--ui-toolbar-height);
+  border-radius: var(--ui-radius-control);
+}
+
+.matrix-v12-host .matrix-v12-restore-confirm {
+  border-color: var(--ui-border);
+  border-radius: 20px;
+  box-shadow: 0 28px 80px rgba(25,55,78,.2);
+}
+
+.matrix-v12-host .matrix-v12-restore-confirm-actions button {
+  min-height: var(--ui-toolbar-height);
+  border-radius: var(--ui-radius-control);
+}
+
+.matrix-v5--sheet .matrix-central-commandbar-primary button,
+.matrix-v5--sheet .matrix-central-commandbar-context button {
+  min-height: var(--ui-toolbar-height);
+  border-radius: var(--ui-radius-control);
+}
+
+.matrix-v5--central .matrix-central-commandbar-primary button {
+  min-height: var(--ui-toolbar-height);
+  border-radius: var(--ui-radius-control);
+}
+
+.matrix-v5--central .matrix-central-commandbar-context,
+.matrix-v5--sheet .matrix-central-commandbar-context {
+  gap: var(--ui-space-2);
+  border-radius: var(--ui-radius-control);
+}
+
+.matrix-v5--central .matrix-central-top-actions button {
+  min-height: var(--ui-toolbar-height);
+  border-radius: var(--ui-radius-control);
+}
+
+.matrix-v5--sheet .matrix-unit-objective-picker select,
+.matrix-v5--sheet .matrix-unit-objective-picker input,
+.matrix-v5--sheet .matrix-unit-objective-picker>button {
+  min-height: var(--ui-toolbar-height);
+  border-radius: var(--ui-radius-control);
+}
+
+.matrix-v11-host button:focus-visible,
+.matrix-v11-host input:focus-visible,
+.matrix-v11-host select:focus-visible,
+.matrix-v11-host textarea:focus-visible,
+.matrix-v12-host button:focus-visible,
+.matrix-v12-host input:focus-visible,
+.matrix-v12-host select:focus-visible,
+.matrix-v12-host textarea:focus-visible {
+  outline: none;
+  box-shadow: var(--ui-focus-ring);
+}
+
 @media (max-width: 760px) {
   .catalog-config .config-accordion-head,
   .guideline-responsible-accordion .config-accordion-head {
@@ -457,5 +580,10 @@
 
   .guideline-ppt-panel {
     padding: var(--ui-space-3);
+  }
+
+  .matrix-v11-host .matrix-v11-switch-dialog,
+  .matrix-v12-host .matrix-v12-restore-confirm {
+    padding: var(--ui-space-4);
   }
 }
