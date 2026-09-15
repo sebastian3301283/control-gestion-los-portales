@@ -57,14 +57,18 @@ test('Ir a matriz keeps the same contained button layout for HU VS DEP and HOT',
   assert.match(css, /\.planning-guidelines-host \.guideline-actions \.guideline-row-matrix-arrow>svg\{[^}]*display:block[^}]*flex:0 0 auto[^}]*\}/s)
 })
 
-test('HU and VS give more width to Lineamientos and less width to both area columns', async () => {
+test('HU and VS give more width to Lineamientos and less width to both area columns without changing CENTRAL', async () => {
   const css = await source(catalogCssUrl)
+  const catalog = await source(guidelineCatalogUrl)
 
-  assert.match(css, /\.guideline-v2-table\{[^}]*min-width:1200px[^}]*\}/s)
-  assert.match(css, /\.guideline-v2-table th:nth-child\(3\)\{width:400px\}/)
-  assert.match(css, /\.guideline-v2-table th:nth-child\(4\)\{width:180px\}/)
-  assert.match(css, /\.guideline-v2-table th:nth-child\(5\)\{width:190px\}/)
-  assert.match(css, /\.guideline-v2-table th:nth-child\(6\)\{width:210px\}/)
+  assert.match(catalog, /guideline-v2-table--noncentral/)
+  assert.match(css, /\.guideline-v2-table--noncentral\{[^}]*min-width:1200px[^}]*\}/s)
+  assert.match(css, /\.guideline-v2-table--noncentral th:nth-child\(3\)\{width:400px\}/)
+  assert.match(css, /\.guideline-v2-table--noncentral th:nth-child\(4\)\{width:180px\}/)
+  assert.match(css, /\.guideline-v2-table--noncentral th:nth-child\(5\)\{width:190px\}/)
+  assert.match(css, /\.guideline-v2-table--noncentral th:nth-child\(6\)\{width:210px\}/)
+  assert.match(css, /\.guideline-v2-table th:nth-child\(4\)\{width:230px\}/)
+  assert.match(css, /\.guideline-v2-table th:nth-child\(5\)\{width:250px\}/)
 })
 
 test('DEP and HOT preserve their special layouts while prioritizing Lineamientos', async () => {
