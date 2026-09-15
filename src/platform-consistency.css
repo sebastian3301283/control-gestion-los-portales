@@ -1,0 +1,589 @@
+/* Shared visual consistency layer. Keep selectors specific so module layout remains intact. */
+
+.dashboard-shell .dashboard-nav button,
+.dashboard-shell .sidebar-logout,
+.dashboard-shell .mobile-menu,
+.dashboard-shell .icon-button,
+.dashboard-shell .sidebar-close {
+  min-height: var(--ui-control-height);
+  border-radius: var(--ui-radius-control);
+}
+
+.dashboard-shell .mobile-menu,
+.dashboard-shell .icon-button,
+.dashboard-shell .sidebar-close {
+  width: var(--ui-icon-control);
+  height: var(--ui-icon-control);
+  min-height: var(--ui-icon-control);
+}
+
+.dashboard-shell .dashboard-nav button:focus-visible,
+.dashboard-shell .icon-button:focus-visible,
+.dashboard-shell .mobile-menu:focus-visible,
+.dashboard-shell .sidebar-close:focus-visible,
+.dashboard-shell .sidebar-logout:focus-visible,
+.dashboard-shell .profile-chip:focus-visible,
+.dashboard-shell .dashboard-search input:focus-visible {
+  outline: none;
+  box-shadow: var(--ui-focus-ring);
+}
+
+.dashboard-shell .dashboard-sidebar,
+.dashboard-shell .dashboard-topbar {
+  border-color: var(--ui-border);
+}
+
+.dashboard-shell .dashboard-content {
+  color: var(--ui-text);
+}
+
+.catalog-config .config-accordion,
+.period-config,
+.guideline-responsible-accordion.config-accordion {
+  border-color: var(--ui-border);
+  border-radius: var(--ui-radius-panel);
+  box-shadow: var(--ui-panel-shadow);
+}
+
+.catalog-config .config-accordion-head,
+.guideline-responsible-accordion .config-accordion-head {
+  min-height: 76px;
+  gap: var(--ui-space-3);
+  padding: var(--ui-space-4) var(--ui-space-5);
+}
+
+.catalog-config .config-accordion-head:focus-visible,
+.guideline-responsible-accordion .config-accordion-head:focus-visible,
+.period-config button:focus-visible,
+.catalog-config button:focus-visible,
+.catalog-config input:focus-visible,
+.catalog-config select:focus-visible {
+  outline: none;
+  box-shadow: var(--ui-focus-ring);
+}
+
+.catalog-config .catalog-template-button,
+.catalog-config .catalog-unit-selector button,
+.catalog-config .catalog-hu-groups button,
+.period-config .period-add {
+  min-height: var(--ui-control-height);
+  border-radius: var(--ui-radius-control);
+}
+
+.catalog-config .catalog-add,
+.catalog-config .catalog-save,
+.catalog-config .catalog-cancel,
+.catalog-config .catalog-edit,
+.period-config .period-edit-button,
+.period-config .period-delete-button {
+  min-height: var(--ui-toolbar-height);
+  border-radius: var(--ui-radius-control);
+}
+
+.catalog-config .catalog-hero,
+.catalog-config .catalog-form,
+.catalog-config .catalog-directory-scroll,
+.catalog-config .area-editor-card,
+.period-config .period-table-scroll {
+  border-color: var(--ui-border);
+}
+
+.catalog-config .catalog-hero,
+.catalog-config .catalog-form {
+  border-radius: var(--ui-radius-panel);
+}
+
+.catalog-config .config-accordion-head h2,
+.guideline-responsible-accordion .config-accordion-head h2 {
+  color: var(--ui-text);
+  line-height: 1.25;
+}
+
+.catalog-config .config-accordion-head p,
+.guideline-responsible-accordion .config-accordion-head p,
+.period-config .period-toolbar small {
+  color: var(--ui-muted);
+  line-height: 1.45;
+}
+
+.period-config .period-modal,
+.catalog-config .config-modal {
+  border: 1px solid var(--ui-border);
+  border-radius: 20px;
+}
+
+.period-config .period-modal-close,
+.catalog-config .config-modal-close {
+  width: var(--ui-icon-control);
+  height: var(--ui-icon-control);
+  border-radius: var(--ui-radius-control);
+}
+
+/* Permissions: improve readability while preserving CENTRAL/non-CENTRAL behavior. */
+.permission-v4 .permission-v4-help {
+  padding: var(--ui-space-3) var(--ui-space-4);
+  border-radius: var(--ui-radius-control);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.permission-v4 .permission-v4-help strong,
+.permission-v4 .permission-v4-title-row strong,
+.permission-v4 .permission-v4-area-head strong {
+  font-size: 12px;
+}
+
+.permission-v4 .permission-v4-modal {
+  border-color: var(--ui-border);
+  border-radius: 20px;
+}
+
+.permission-v4 .permission-v4-modal-head {
+  padding: var(--ui-space-5) var(--ui-space-6);
+}
+
+.permission-v4 .permission-v4-modal-head small {
+  font-size: 10px;
+}
+
+.permission-v4 .permission-v4-modal-head p {
+  margin-top: var(--ui-space-1);
+  color: var(--ui-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.permission-v4 .permission-v4-modal-head>button {
+  width: var(--ui-icon-control);
+  height: var(--ui-icon-control);
+  border-radius: var(--ui-radius-control);
+}
+
+.permission-v4 .permission-v4-modal-role {
+  gap: var(--ui-space-3);
+  padding: var(--ui-space-4) var(--ui-space-6);
+}
+
+.permission-v4 .permission-v4-modal-role>label>span {
+  margin-bottom: var(--ui-space-1);
+  font-size: 11px;
+}
+
+.permission-v4 .permission-v4-modal-role select {
+  min-height: var(--ui-control-height);
+  height: var(--ui-control-height);
+  border-radius: var(--ui-radius-control);
+  font-size: 11px;
+}
+
+.permission-v4 .permission-v4-role-help {
+  padding: var(--ui-space-3);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.permission-v4 .permission-v4-unit-tabs {
+  gap: var(--ui-space-2);
+  padding: var(--ui-space-3) var(--ui-space-6);
+}
+
+.permission-v4 .permission-v4-unit-tabs button {
+  min-height: 64px;
+  padding: var(--ui-space-3);
+  border-radius: var(--ui-radius-control);
+}
+
+.permission-v4 .permission-v4-unit-tabs button strong {
+  font-size: 11px;
+}
+
+.permission-v4 .permission-v4-unit-tabs button span {
+  margin-top: 2px;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.permission-v4 .permission-v4-area-editor,
+.permission-v4 .permission-v4-guideline-editor {
+  padding-inline: var(--ui-space-6);
+  padding-bottom: var(--ui-space-4);
+}
+
+.permission-v4 .permission-v4-area-head span,
+.permission-v4 .permission-v4-selection-note span {
+  font-size: 10px;
+}
+
+.permission-v4 .permission-v4-area-row {
+  min-height: 58px;
+  gap: var(--ui-space-3);
+  padding: var(--ui-space-2) var(--ui-space-3);
+}
+
+.permission-v4 .permission-v4-area-row>div:first-child strong {
+  font-size: 11px;
+}
+
+.permission-v4 .permission-v4-area-row>div:first-child span,
+.permission-v4 .permission-v4-area-control>span,
+.permission-v4 .permission-v4-selection-note strong {
+  font-size: 10px;
+}
+
+.permission-v4 .permission-v4-guideline-mode {
+  min-height: var(--ui-toolbar-height);
+  height: auto;
+  padding: var(--ui-space-2) var(--ui-space-3);
+}
+
+.permission-v4 .permission-v4-guideline-mode strong {
+  font-size: 10px;
+}
+
+.permission-v4 .permission-v4-guideline-mode span,
+.permission-v4 .permission-v4-guideline-count {
+  font-size: 9.5px;
+}
+
+.permission-v4 .permission-v4-guideline-accordion {
+  margin-bottom: var(--ui-space-2);
+  border-color: var(--ui-border);
+  border-radius: var(--ui-radius-control);
+}
+
+.permission-v4 .permission-v4-guideline-accordion>summary {
+  min-height: 66px;
+  padding: var(--ui-space-3) var(--ui-space-4);
+}
+
+.permission-v4 .permission-v4-guideline-number {
+  font-size: 10px;
+}
+
+.permission-v4 .permission-v4-guideline-summary strong {
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.permission-v4 .permission-v4-guideline-status>span {
+  font-size: 9.5px;
+}
+
+.permission-v4 .permission-v4-guideline-controls {
+  gap: var(--ui-space-2);
+  padding: var(--ui-space-3) var(--ui-space-4) var(--ui-space-4);
+}
+
+.permission-v4 .permission-v4-guideline-control {
+  min-height: 64px;
+  padding: var(--ui-space-3);
+  border-radius: var(--ui-radius-control);
+}
+
+.permission-v4 .permission-v4-guideline-control>div>span {
+  font-size: 11px;
+}
+
+.permission-v4 .permission-v4-guideline-control>div>small {
+  margin-top: 3px;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.permission-v4 .permission-v4-edit-btn,
+.permission-v4 .permission-v4-modal-foot button {
+  min-height: var(--ui-toolbar-height);
+  height: var(--ui-toolbar-height);
+  border-radius: var(--ui-radius-control);
+  font-size: 10.5px;
+}
+
+.permission-v4 button:focus-visible,
+.permission-v4 select:focus-visible,
+.permission-v4 input:focus-visible,
+.permission-v4 summary:focus-visible {
+  outline: none;
+  box-shadow: var(--ui-focus-ring);
+}
+
+.permission-v4 summary:focus-visible {
+  border-radius: var(--ui-radius-control);
+}
+
+/* Guidelines: normalize surrounding chrome without touching approved table widths. */
+.planning-guidelines-host .planning-guidelines-heading-actions {
+  gap: var(--ui-space-2);
+  padding: var(--ui-space-1);
+  border-color: var(--ui-border);
+  border-radius: var(--ui-radius-control);
+  box-shadow: var(--ui-panel-shadow);
+}
+
+.planning-guidelines-host .planning-guideline-matrix-button {
+  min-height: var(--ui-control-height);
+  border-radius: var(--ui-radius-control);
+}
+
+.planning-guidelines-host .planning-guideline-fullscreen-button,
+.planning-guidelines-host .planning-guideline-import-button {
+  min-height: var(--ui-toolbar-height);
+  border-radius: var(--ui-radius-control);
+}
+
+.planning-guidelines-host .guideline-v2-table-wrap {
+  border-color: var(--ui-border);
+  border-radius: var(--ui-radius-control);
+}
+
+.planning-guidelines-host .guideline-v2-table thead th {
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.planning-guidelines-host .guideline-v2-table td {
+  line-height: 1.45;
+}
+
+.planning-guidelines-host button:focus-visible,
+.planning-guidelines-host select:focus-visible,
+.planning-guidelines-host input:focus-visible,
+.planning-guidelines-host textarea:focus-visible {
+  outline: none;
+  box-shadow: var(--ui-focus-ring);
+}
+
+/* Support documents: align card, controls, empty state and viewer. */
+.guideline-ppt-panel {
+  gap: var(--ui-space-3);
+  padding: var(--ui-space-4);
+  border-color: var(--ui-border);
+  border-radius: var(--ui-radius-panel);
+  box-shadow: var(--ui-panel-shadow);
+}
+
+.guideline-ppt-panel .guideline-ppt-head {
+  gap: var(--ui-space-4);
+}
+
+.guideline-ppt-panel .guideline-ppt-head h4 {
+  margin: 4px 0;
+  color: var(--ui-text);
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+.guideline-ppt-panel .guideline-ppt-head p {
+  color: var(--ui-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.guideline-ppt-panel .guideline-ppt-upload {
+  min-height: var(--ui-control-height);
+  padding-inline: var(--ui-space-4);
+  border-radius: var(--ui-radius-control);
+}
+
+.guideline-ppt-panel .guideline-ppt-view {
+  min-height: var(--ui-toolbar-height);
+  padding-inline: var(--ui-space-3);
+  border-radius: var(--ui-radius-control);
+}
+
+.guideline-ppt-panel .guideline-ppt-delete {
+  width: var(--ui-icon-control);
+  min-height: var(--ui-icon-control);
+  height: var(--ui-icon-control);
+  border-radius: var(--ui-radius-control);
+}
+
+.guideline-ppt-panel .guideline-ppt-empty {
+  min-height: 60px;
+  padding: var(--ui-space-3) var(--ui-space-4);
+  border-radius: var(--ui-radius-control);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.guideline-ppt-panel .guideline-ppt-file {
+  gap: var(--ui-space-3);
+  padding: var(--ui-space-3);
+  border-color: var(--ui-border);
+  border-radius: var(--ui-radius-control);
+}
+
+.guideline-ppt-panel .guideline-ppt-viewer {
+  border-color: var(--ui-border);
+  border-radius: 20px;
+}
+
+.guideline-ppt-panel .guideline-ppt-viewer-head,
+.guideline-ppt-panel .guideline-ppt-viewer-foot {
+  border-color: var(--ui-border);
+}
+
+.guideline-ppt-panel .guideline-ppt-viewer-head button {
+  min-height: var(--ui-toolbar-height);
+  border-radius: var(--ui-radius-control);
+}
+
+.guideline-ppt-panel button:focus-visible,
+.guideline-ppt-panel select:focus-visible,
+.guideline-ppt-panel a:focus-visible {
+  outline: none;
+  box-shadow: var(--ui-focus-ring);
+}
+
+/* Matrices: harmonize controls and dialogs without touching spreadsheet geometry. */
+.matrix-v11-host .matrix-v11-guideline-shortcut button {
+  min-height: var(--ui-toolbar-height);
+  border-radius: var(--ui-radius-control);
+}
+
+.matrix-v11-host .matrix-v11-restore-button {
+  min-height: var(--ui-toolbar-height);
+  border-radius: var(--ui-radius-control);
+  font-size: 10px;
+}
+
+.matrix-v11-host .matrix-v11-switch-dialog {
+  border-color: var(--ui-border);
+  border-radius: 20px;
+  padding: var(--ui-space-5);
+}
+
+.matrix-v11-host .matrix-v11-switch-dialog button {
+  min-height: var(--ui-toolbar-height);
+  border-radius: var(--ui-radius-control);
+}
+
+.matrix-v12-host .matrix-v12-editor {
+  gap: var(--ui-space-4);
+  border-color: var(--ui-border);
+  border-radius: var(--ui-radius-panel);
+  box-shadow: var(--ui-panel-shadow);
+}
+
+.matrix-v12-host .matrix-v12-editor>header>button {
+  width: var(--ui-icon-control);
+  height: var(--ui-icon-control);
+  border-radius: var(--ui-radius-control);
+}
+
+.matrix-v12-host .matrix-v12-subpoints-head>button,
+.matrix-v12-host .matrix-v12-editor>footer button,
+.matrix-v12-host .matrix-v12-view-toggle button {
+  min-height: var(--ui-toolbar-height);
+  border-radius: var(--ui-radius-control);
+}
+
+.matrix-v12-host .matrix-v12-view-toggle {
+  gap: 4px;
+  border-color: var(--ui-border);
+  border-radius: var(--ui-radius-control);
+}
+
+.matrix-v12-host .matrix-v12-summary {
+  border-color: var(--ui-border);
+  border-radius: var(--ui-radius-panel);
+  box-shadow: var(--ui-panel-shadow);
+}
+
+.matrix-v12-host .matrix-v12-history-dialog {
+  border: 1px solid var(--ui-border);
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+.matrix-v12-host .matrix-v12-history-version {
+  border-radius: var(--ui-radius-control)!important;
+}
+
+.matrix-v12-host .matrix-v12-history-actions button,
+.matrix-v12-host .matrix-v12-history-footer button {
+  min-height: var(--ui-toolbar-height);
+  border-radius: var(--ui-radius-control);
+}
+
+.matrix-v12-host .matrix-v12-restore-confirm {
+  border-color: var(--ui-border);
+  border-radius: 20px;
+  box-shadow: 0 28px 80px rgba(25,55,78,.2);
+}
+
+.matrix-v12-host .matrix-v12-restore-confirm-actions button {
+  min-height: var(--ui-toolbar-height);
+  border-radius: var(--ui-radius-control);
+}
+
+.matrix-v5--sheet .matrix-central-commandbar-primary button,
+.matrix-v5--sheet .matrix-central-commandbar-context button {
+  min-height: var(--ui-toolbar-height);
+  border-radius: var(--ui-radius-control);
+}
+
+.matrix-v5--central .matrix-central-commandbar-primary button {
+  min-height: var(--ui-toolbar-height);
+  border-radius: var(--ui-radius-control);
+}
+
+.matrix-v5--central .matrix-central-commandbar-context,
+.matrix-v5--sheet .matrix-central-commandbar-context {
+  gap: var(--ui-space-2);
+  border-radius: var(--ui-radius-control);
+}
+
+.matrix-v5--central .matrix-central-top-actions button {
+  min-height: var(--ui-toolbar-height);
+  border-radius: var(--ui-radius-control);
+}
+
+.matrix-v5--sheet .matrix-unit-objective-picker select,
+.matrix-v5--sheet .matrix-unit-objective-picker input,
+.matrix-v5--sheet .matrix-unit-objective-picker>button {
+  min-height: var(--ui-toolbar-height);
+  border-radius: var(--ui-radius-control);
+}
+
+.matrix-v11-host button:focus-visible,
+.matrix-v11-host input:focus-visible,
+.matrix-v11-host select:focus-visible,
+.matrix-v11-host textarea:focus-visible,
+.matrix-v12-host button:focus-visible,
+.matrix-v12-host input:focus-visible,
+.matrix-v12-host select:focus-visible,
+.matrix-v12-host textarea:focus-visible {
+  outline: none;
+  box-shadow: var(--ui-focus-ring);
+}
+
+@media (max-width: 760px) {
+  .catalog-config .config-accordion-head,
+  .guideline-responsible-accordion .config-accordion-head {
+    min-height: 70px;
+    padding: var(--ui-space-3) var(--ui-space-4);
+  }
+
+  .permission-v4 .permission-v4-modal-head,
+  .permission-v4 .permission-v4-modal-role,
+  .permission-v4 .permission-v4-unit-tabs,
+  .permission-v4 .permission-v4-area-editor,
+  .permission-v4 .permission-v4-guideline-editor {
+    padding-left: var(--ui-space-4);
+    padding-right: var(--ui-space-4);
+  }
+
+  .planning-guidelines-host .planning-guidelines-heading-actions {
+    gap: var(--ui-space-1);
+    padding: var(--ui-space-1);
+  }
+
+  .guideline-ppt-panel {
+    padding: var(--ui-space-3);
+  }
+
+  .matrix-v11-host .matrix-v11-switch-dialog,
+  .matrix-v12-host .matrix-v12-restore-confirm {
+    padding: var(--ui-space-4);
+  }
+}

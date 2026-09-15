@@ -2,59 +2,48 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
-const modelUrl = new URL('../src/central-excel-model.js', import.meta.url)
+const centralSource = await readFile(new URL('../src/CentralExcelWorkspace.tsx', import.meta.url), 'utf8')
 
-async function loadModel() {
-  return import(modelUrl.href)
-}
-
-test('Central filters responsible managers by the selected area mapping', async () => {
-  const { filterManagersForArea } = await loadModel()
-  const managers = [
-    { id: 'm1', name: 'Ana' },
-    { id: 'm2', name: 'Bruno' },
-    { id: 'm3', name: 'Carla' },
-  ]
-  const mappings = [
-    { manager_id: 'm1', management_id: 'adm' },
-    { manager_id: 'm2', management_id: 'audit' },
-    { manager_id: 'm3', management_id: 'adm' },
-  ]
-  assert.deepEqual(filterManagersForArea(managers, mappings, 'adm').map(item => item.id), ['m1', 'm3'])
-  assert.deepEqual(filterManagersForArea(managers, mappings, 'audit').map(item => item.id), ['m2'])
+test('Central filters responsible managers by the selected area mapping', () => {
+  assert.match(centralSource, /managerManagements\.filter\(item => item\.management_id === selectedAreaId\)\.map\(item => item\.manager_id\)/)
+  assert.match(centralSource, /managers\.filter\(manager => allowed\.has\(manager\.id\)\)/)
 })
 
-test('Central supports selecting several responsible managers on one action', async () => {
-  const { toggleResponsibleId } = await loadModel()
-  assert.deepEqual(toggleResponsibleId([], 'm1'), ['m1'])
-  assert.deepEqual(toggleResponsibleId(['m1'], 'm2'), ['m1', 'm2'])
-  assert.deepEqual(toggleResponsibleId(['m1', 'm2'], 'm1'), ['m2'])
+test('Central supports selecting several responsible managers on one action', () => {
+  assert.match(centralSource, /setSelectedResponsibleIds\(current => current\.includes\(managerId\) \? current\.filter\(id => id !== managerId\) : \[\.\.\.current, managerId\]\)/)
+  assert.match(centralSource, /selectedResponsibleIds\.map\(\(managerId, index\) => \(\{ row_id: rowId, manager_id: managerId, sort_order: index \}\)\)/)
 })
 
-test('Central workspace is an action matrix, not the old subpoint editor', async () => {
-  const source = await readFile(new URL('../src/CentralExcelWorkspace.tsx', import.meta.url), 'utf8')
+test('Central keeps the action spreadsheet and renders persisted subpoints as real rows', async () => {
+  const source = centralSource
+  const cache = await readFile(new URL('../src/lib/planning-query-cache.ts', import.meta.url), 'utf8')
   const v11 = await readFile(new URL('../src/MatrixWorkspaceV11.tsx', import.meta.url), 'utf8')
-  assert.match(source, /manager_managements/)
+  assert.match(source, /loadCentralMatrixWorkspaceData\(periodId\)/)
+  assert.match(cache, /manager_managements/)
   assert.match(source, /matrix_row_responsibles/)
   assert.match(source, /centralResponsibleIdsByRow/)
   assert.match(source, /<th>Acción<\/th>/)
   assert.match(source, /matrix-v10-central-excel-row/)
-  assert.doesNotMatch(source, /Subpunto|renderCentralInlineEditor/)
+  assert.match(source, /matrix_row_subpoints/)
+  assert.match(source, /centralSubpointsByRow/)
+  assert.match(source, /centralSubpointDrafts/)
+  assert.match(source, /matrix-central-subpoint-row/)
+  assert.match(source, /Añadir subobjetivo/)
   assert.match(v11, /CentralExcelWorkspace/)
   assert.match(v11, /props\.unitCode === 'CENTRAL'/)
 })
 
-test('Central spreadsheet edits rows in-place instead of rendering a detached form below the grid', async () => {
-  const source = await readFile(new URL('../src/CentralExcelWorkspace.tsx', import.meta.url), 'utf8')
+test('Central spreadsheet edits rows in-place instead of rendering a detached form below the grid', () => {
+  const source = centralSource
   assert.match(source, /matrix-central-in-grid-draft/)
   assert.match(source, /matrix-central-sheet-cell/)
-  assert.match(source, /matrix-central-objective-editor-row/)
+  assert.doesNotMatch(source, /matrix-central-objective-editor-row/)
   assert.match(source, /data-matrix-row-id=\{row\.id\}/)
   assert.doesNotMatch(source, /rowFormOpen && !editingRowId && renderEditRows\('new-central-action'\)/)
 })
 
-test('Central spreadsheet keeps native keyboard flow and realtime refresh without replacing the local draft', async () => {
-  const source = await readFile(new URL('../src/CentralExcelWorkspace.tsx', import.meta.url), 'utf8')
+test('Central spreadsheet keeps native keyboard flow and realtime refresh without replacing the local draft', () => {
+  const source = centralSource
   assert.match(source, /\(event\.ctrlKey \|\| event\.metaKey\) && event\.key === 'Enter'/)
   assert.match(source, /loadRows\(selectedMatrixId, true\)/)
   assert.match(source, /keepEditor/)

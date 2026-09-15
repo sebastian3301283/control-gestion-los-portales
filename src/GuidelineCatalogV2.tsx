@@ -1,6 +1,8 @@
-import { FormEvent, useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { BookOpenText, Check, ChevronDown, LoaderCircle, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
+import { FormEvent, useEffect, useMemo, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from 'react'
+import { ArrowRight, BookOpenText, Check, ChevronDown, LoaderCircle, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { deleteGuidelineSupportFiles } from './guideline-support-storage'
 import { supabase } from './lib/supabase'
+import { invalidatePlanningCache, loadGuidelineCentralAreaLabels, loadGuidelineCentralManagements, loadGuidelineMultiRelations, loadGuidelineUnitAreaLabels, loadManagerManagements, loadNonCentralGuidelineData, loadScopedGuidelineAssignees, loadScopedGuidelineData, loadScopedManagements } from './lib/planning-query-cache'
 import './guideline-catalog.css'
 import './guideline-catalog-v2.css'
 
@@ -9,18 +11,34 @@ type Period = { id: string; year: number; name: string; status: 'DRAFT' | 'OPEN'
 type Management = { id: string; name: string; unit_code: string; directory_group: string; active: boolean }
 type Manager = { id: string; name: string; cargo: string | null; unit_code: string; directory_group: string; active: boolean }
 type ManagerManagement = { manager_id: string; management_id: string }
+type GuidelineManagement = { guideline_id: string; management_id: string; sort_order: number }
+type GuidelineResponsible = { guideline_id: string; manager_id: string; sort_order: number }
+type GuidelineCentralManagement = { guideline_id: string; management_id: string; sort_order: number }
+type GuidelineUnitAreaLabel = { guideline_id: string; label: string; sort_order: number }
+type GuidelineCentralAreaLabel = { guideline_id: string; label: string; sort_order: number }
 type Guideline = {
   id: string
   period_id: string
   unit_code: string
   management_id: string
+  category: string | null
   code: string | null
   guideline_text: string
   responsible_manager_id: string | null
   active: boolean
   sort_order: number
 }
-type Props = { units?: Unit[]; canManage: boolean }
+type GuidelineSelection = { id: string; managementId: string; label: string }
+type Props = {
+  units?: Unit[]
+  canManage: boolean
+  scopePeriodId?: string
+  scopeUnitCode?: string
+  selectedGuidelineId?: string | null
+  onSelectGuideline?: (guideline: GuidelineSelection) => void
+  onPrefetchMatrixForGuideline?: (managementId: string, guidelineId: string) => void
+  onOpenMatrixForGuideline?: (managementId: string, guidelineId: string) => void
+}
 
 const fallbackUnits: Unit[] = [
   { code: 'CENTRAL', name: 'Central' },
@@ -56,8 +74,7 @@ function splitGuideline(value: string, explicitCode?: string | null) {
 
 function displayNumber(item: Guideline, index: number) {
   const parsed = splitGuideline(item.guideline_text, item.code)
-  const match = parsed.code.match(/L(\d+)/i)
-  return match ? Number(match[1]) : index + 1
+  return parsed.code || String(index + 1)
 }
 
 function colorForArea(name: string) {
@@ -66,8 +83,35 @@ function colorForArea(name: string) {
   return areaPalette[hash % areaPalette.length]
 }
 
-export default function GuidelineCatalogV2({ units, canManage }: Props) {
+function selectionFor(item: Guideline): GuidelineSelection {
+  return { id: item.id, managementId: item.management_id, label: item.guideline_text }
+}
+
+function splitAreaLabels(value: string) {
+  return [...new Map(value
+    .split(/[\n,;/]+/)
+    .map(item => item.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .map(item => [normalize(item), item] as const)).values()]
+}
+
+function resolveTechnicalManagementIds(labels: string[], options: Management[]) {
+  const resolved: string[] = []
+  labels.forEach(label => {
+    const source = normalize(label)
+    const exact = options.find(item => normalize(item.name) === source)
+    const fuzzy = exact || options.find(item => {
+      const name = normalize(item.name)
+      return source.length >= 3 && name.length >= 3 && (source.includes(name) || name.includes(source))
+    })
+    if (fuzzy && !resolved.includes(fuzzy.id)) resolved.push(fuzzy.id)
+  })
+  return resolved
+}
+
+export default function GuidelineCatalogV2({ units, canManage, scopePeriodId, scopeUnitCode, selectedGuidelineId, onSelectGuideline, onPrefetchMatrixForGuideline, onOpenMatrixForGuideline }: Props) {
   const unitOptions = units?.length ? units : fallbackUnits
+  const scoped = Boolean(scopePeriodId && scopeUnitCode)
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -75,26 +119,64 @@ export default function GuidelineCatalogV2({ units, canManage }: Props) {
   const [notice, setNotice] = useState('')
   const [periods, setPeriods] = useState<Period[]>([])
   const [managements, setManagements] = useState<Management[]>([])
+  const [centralManagements, setCentralManagements] = useState<Management[]>([])
   const [managers, setManagers] = useState<Manager[]>([])
   const [links, setLinks] = useState<ManagerManagement[]>([])
+  const [assigneeManagements, setAssigneeManagements] = useState<Management[]>([])
+  const [assigneeManagers, setAssigneeManagers] = useState<Manager[]>([])
+  const [assigneeLinks, setAssigneeLinks] = useState<ManagerManagement[]>([])
   const [guidelines, setGuidelines] = useState<Guideline[]>([])
-  const [periodId, setPeriodId] = useState('')
-  const [unitCode, setUnitCode] = useState(unitOptions.find(unit => unit.code === 'CENTRAL')?.code || unitOptions[0]?.code || 'CENTRAL')
+  const [guidelineManagements, setGuidelineManagements] = useState<GuidelineManagement[]>([])
+  const [guidelineResponsibles, setGuidelineResponsibles] = useState<GuidelineResponsible[]>([])
+  const [guidelineCentralManagements, setGuidelineCentralManagements] = useState<GuidelineCentralManagement[]>([])
+  const [guidelineUnitAreaLabels, setGuidelineUnitAreaLabels] = useState<GuidelineUnitAreaLabel[]>([])
+  const [guidelineCentralAreaLabels, setGuidelineCentralAreaLabels] = useState<GuidelineCentralAreaLabel[]>([])
+  const [matrixAreaIds, setMatrixAreaIds] = useState<string[]>([])
+  const [periodId, setPeriodId] = useState(scopePeriodId || '')
+  const [unitCode, setUnitCode] = useState(scopeUnitCode || unitOptions.find(unit => unit.code === 'CENTRAL')?.code || unitOptions[0]?.code || 'CENTRAL')
   const [areaFilter, setAreaFilter] = useState('')
-  const [search, setSearch] = useState('')
   const [formOpen, setFormOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [formPeriodId, setFormPeriodId] = useState('')
   const [formUnitCode, setFormUnitCode] = useState('CENTRAL')
   const [formAreaId, setFormAreaId] = useState('')
+  const [formCategory, setFormCategory] = useState('')
   const [formCode, setFormCode] = useState('')
   const [formText, setFormText] = useState('')
   const [formResponsibleId, setFormResponsibleId] = useState('')
+  const [selectedManagementIds, setSelectedManagementIds] = useState<string[]>([])
+  const [selectedUnitAreaLabels, setSelectedUnitAreaLabels] = useState<string[]>([])
+  const [unitAreaDraft, setUnitAreaDraft] = useState('')
+  const [selectedCentralAreaLabels, setSelectedCentralAreaLabels] = useState<string[]>([])
+  const [centralAreaDraft, setCentralAreaDraft] = useState('')
+  const [selectedResponsibleIds, setSelectedResponsibleIds] = useState<string[]>([])
   const [formActive, setFormActive] = useState(true)
 
   const managerById = useMemo(() => new Map(managers.map(item => [item.id, item])), [managers])
   const managementById = useMemo(() => new Map(managements.map(item => [item.id, item])), [managements])
+  const centralManagementById = useMemo(() => new Map(centralManagements.map(item => [item.id, item])), [centralManagements])
   const unitByCode = useMemo(() => new Map(unitOptions.map(item => [item.code, item.name])), [unitOptions])
+
+  const managementIdsByGuideline = useMemo(() => {
+    const grouped = new Map<string, string[]>()
+    guidelineManagements.forEach(link => grouped.set(link.guideline_id, [...(grouped.get(link.guideline_id) || []), link.management_id]))
+    return grouped
+  }, [guidelineManagements])
+  const centralManagementIdsByGuideline = useMemo(() => {
+    const grouped = new Map<string, string[]>()
+    guidelineCentralManagements.forEach(link => grouped.set(link.guideline_id, [...(grouped.get(link.guideline_id) || []), link.management_id]))
+    return grouped
+  }, [guidelineCentralManagements])
+  const unitAreaLabelsByGuideline = useMemo(() => {
+    const grouped = new Map<string, string[]>()
+    guidelineUnitAreaLabels.forEach(link => grouped.set(link.guideline_id, [...(grouped.get(link.guideline_id) || []), link.label]))
+    return grouped
+  }, [guidelineUnitAreaLabels])
+  const centralAreaLabelsByGuideline = useMemo(() => {
+    const grouped = new Map<string, string[]>()
+    guidelineCentralAreaLabels.forEach(link => grouped.set(link.guideline_id, [...(grouped.get(link.guideline_id) || []), link.label]))
+    return grouped
+  }, [guidelineCentralAreaLabels])
 
   const uniqueAreas = useMemo(() => {
     const unique = new Map<string, Management>()
@@ -106,6 +188,28 @@ export default function GuidelineCatalogV2({ units, canManage }: Props) {
     return [...unique.values()].sort((a, b) => a.name.localeCompare(b.name, 'es'))
   }, [managements])
 
+  const formManagementOptions = useMemo(() => {
+    if (formUnitCode === 'CENTRAL') return managements.filter(item => item.active && item.unit_code === 'CENTRAL').sort((a, b) => a.name.localeCompare(b.name, 'es'))
+    const allowed = new Set(matrixAreaIds)
+    return managements.filter(item => item.active && allowed.has(item.id)).sort((a, b) => a.name.localeCompare(b.name, 'es'))
+  }, [managements, formUnitCode, matrixAreaIds])
+
+  const assignmentManagementOptions = useMemo(() => assigneeManagements
+    .filter(item => item.active && item.unit_code === formUnitCode)
+    .sort((a, b) => a.name.localeCompare(b.name, 'es')), [assigneeManagements, formUnitCode])
+
+  const centralManagementOptions = useMemo(() => centralManagements.filter(item => item.active && item.unit_code === 'CENTRAL').sort((a, b) => a.name.localeCompare(b.name, 'es')), [centralManagements])
+
+  const responsibleOptions = useMemo(() => {
+    if (!formAreaId) return []
+    if (formUnitCode === 'CENTRAL') {
+      const allowedManagerIds = new Set(links.filter(link => link.management_id === formAreaId).map(link => link.manager_id))
+      return managers.filter(item => item.active && allowedManagerIds.has(item.id)).sort((a, b) => a.name.localeCompare(b.name, 'es'))
+    }
+    const allowedManagerIds = new Set(assigneeLinks.filter(link => link.management_id === formAreaId).map(link => link.manager_id))
+    return assigneeManagers.filter(item => item.active && item.unit_code === formUnitCode && allowedManagerIds.has(item.id)).sort((a, b) => a.name.localeCompare(b.name, 'es'))
+  }, [formAreaId, formUnitCode, managers, links, assigneeManagers, assigneeLinks])
+
   const filteredGuidelines = useMemo(() => guidelines.filter(item => {
     if (periodId && item.period_id !== periodId) return false
     if (item.unit_code !== unitCode) return false
@@ -114,9 +218,8 @@ export default function GuidelineCatalogV2({ units, canManage }: Props) {
       const itemName = managementById.get(item.management_id)?.name || ''
       if (normalize(selectedName) !== normalize(itemName)) return false
     }
-    if (search.trim() && !normalize(item.guideline_text).includes(normalize(search))) return false
     return true
-  }).sort((a, b) => a.sort_order - b.sort_order || a.guideline_text.localeCompare(b.guideline_text, 'es')), [guidelines, periodId, unitCode, areaFilter, search, managementById])
+  }).sort((a, b) => a.sort_order - b.sort_order || a.guideline_text.localeCompare(b.guideline_text, 'es')), [guidelines, periodId, unitCode, areaFilter, managementById])
 
   const centralGroups = useMemo(() => {
     if (unitCode !== 'CENTRAL') return [] as Array<{ name: string; items: Guideline[] }>
@@ -131,71 +234,183 @@ export default function GuidelineCatalogV2({ units, canManage }: Props) {
     return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name, 'es'))
   }, [filteredGuidelines, managementById, unitCode])
 
-  const responsibleOptions = useMemo(() => {
-    if (!formAreaId) return managers.filter(item => item.active).sort((a, b) => a.name.localeCompare(b.name, 'es'))
-    const areaName = managementById.get(formAreaId)?.name || ''
-    const equivalentIds = new Set(managements.filter(item => item.active && normalize(item.name) === normalize(areaName)).map(item => item.id))
-    const linkedManagerIds = new Set(links.filter(link => equivalentIds.has(link.management_id)).map(link => link.manager_id))
-    return managers.filter(item => item.active && linkedManagerIds.has(item.id)).sort((a, b) => a.name.localeCompare(b.name, 'es'))
-  }, [formAreaId, managements, managers, links, managementById])
+  useEffect(() => { void loadAll(scopePeriodId, scopeUnitCode) }, [])
+  useEffect(() => {
+    if (!scoped || !periodId || !unitCode) return
+    if (periodId === scopePeriodId && unitCode === scopeUnitCode) return
+    void loadAll(periodId, unitCode)
+  }, [periodId, unitCode, scoped, scopePeriodId, scopeUnitCode])
 
-  useEffect(() => { void loadAll() }, [])
+  useEffect(() => {
+    if (!selectedGuidelineId || unitCode === 'CENTRAL') return
+    const item = guidelines.find(guideline => guideline.id === selectedGuidelineId && guideline.unit_code === unitCode && (!periodId || guideline.period_id === periodId))
+    if (item) onSelectGuideline?.(selectionFor(item))
+  }, [selectedGuidelineId, guidelines, unitCode, periodId, onSelectGuideline])
 
-  async function loadAll() {
+  async function setMultiRelations(nextGuidelines: Guideline[]) {
+    try {
+      const relations = await loadGuidelineMultiRelations(nextGuidelines.map(item => item.id))
+      setGuidelineManagements(relations.managements as GuidelineManagement[])
+      setGuidelineResponsibles(relations.responsibles as GuidelineResponsible[])
+    } catch {
+      setGuidelineManagements([])
+      setGuidelineResponsibles([])
+    }
+  }
+
+  async function loadAssigneesForUnit(nextUnitCode: string, preferredManagementId = '') {
+    if (nextUnitCode === 'CENTRAL') {
+      setAssigneeManagements([])
+      setAssigneeManagers([])
+      setAssigneeLinks([])
+      return
+    }
+    try {
+      const data = await loadScopedGuidelineAssignees(nextUnitCode)
+      setAssigneeManagements(data.managements as Management[])
+      setAssigneeManagers(data.managers as Manager[])
+      setAssigneeLinks(data.links as ManagerManagement[])
+      if (preferredManagementId && !data.managements.some(item => item.active && item.unit_code === nextUnitCode && item.id === preferredManagementId)) {
+        setFormAreaId('')
+        setFormResponsibleId('')
+      }
+    } catch {
+      setAssigneeManagements([])
+      setAssigneeManagers([])
+      setAssigneeLinks([])
+    }
+  }
+
+  async function loadAll(requestPeriodId = scopePeriodId, requestUnitCode = scopeUnitCode) {
     if (!supabase) return
     setLoading(true); setError('')
-    const [periodResult, areaResult, managerResult, linkResult, guidelineResult] = await Promise.all([
-      supabase.from('planning_periods').select('id,year,name,status').order('year'),
-      supabase.from('managements_global').select('id,name,unit_code,directory_group,active').eq('active', true).order('name'),
-      supabase.from('managers').select('id,name,cargo,unit_code,directory_group,active').eq('active', true).order('name'),
-      supabase.from('manager_managements').select('manager_id,management_id'),
-      supabase.from('planning_guidelines').select('id,period_id,unit_code,management_id,code,guideline_text,responsible_manager_id,active,sort_order').order('sort_order').order('created_at'),
-    ])
-    setLoading(false)
-    if (periodResult.error || areaResult.error || managerResult.error || linkResult.error || guidelineResult.error) {
-      setError('No pudimos cargar el catálogo de lineamientos.'); return
-    }
-    const nextPeriods = (periodResult.data || []) as Period[]
-    setPeriods(nextPeriods)
-    setManagements((areaResult.data || []) as Management[])
-    setManagers((managerResult.data || []) as Manager[])
-    setLinks((linkResult.data || []) as ManagerManagement[])
-    setGuidelines((guidelineResult.data || []) as Guideline[])
-    if (!periodId && nextPeriods.length) {
-      const preferred = nextPeriods.find(item => item.status === 'OPEN') || nextPeriods[0]
-      setPeriodId(preferred.id)
-    }
+    const targetUnit = requestUnitCode || unitCode
+    try {
+      if (requestPeriodId && targetUnit && targetUnit !== 'CENTRAL') {
+        const data = await loadNonCentralGuidelineData(requestPeriodId, targetUnit)
+        const nextGuidelines = data.guidelines as Guideline[]
+        setPeriods(data.periods as Period[])
+        setManagements(data.managements as Management[])
+        setCentralManagements(data.centralManagements as Management[])
+        setManagers([])
+        setLinks([])
+        setGuidelines(nextGuidelines)
+        setGuidelineManagements(data.relations.managements as GuidelineManagement[])
+        setGuidelineResponsibles([])
+        setGuidelineCentralManagements(data.relations.centralManagements as GuidelineCentralManagement[])
+        setGuidelineUnitAreaLabels(data.relations.unitAreaLabels as GuidelineUnitAreaLabel[])
+        setGuidelineCentralAreaLabels(data.relations.centralAreaLabels as GuidelineCentralAreaLabel[])
+        setMatrixAreaIds(data.catalog.map(item => String(item.management_id)))
+        setPeriodId(requestPeriodId)
+        setUnitCode(targetUnit)
+        return
+      }
+
+      if (requestPeriodId && targetUnit === 'CENTRAL') {
+        const data = await loadScopedGuidelineData(requestPeriodId, targetUnit)
+        const nextManagements = data.managements as Management[]
+        const nextGuidelines = data.guidelines as Guideline[]
+        setPeriods(data.periods as Period[])
+        setManagements(nextManagements)
+        setCentralManagements([])
+        setManagers(data.managers as Manager[])
+        setGuidelines(nextGuidelines)
+        setGuidelineCentralManagements([])
+        setGuidelineUnitAreaLabels([])
+        setGuidelineCentralAreaLabels([])
+        setMatrixAreaIds(data.catalog.map(item => String(item.management_id)))
+        setPeriodId(requestPeriodId)
+        setUnitCode(targetUnit)
+        try { setLinks(await loadManagerManagements(nextManagements.map(item => item.id)) as ManagerManagement[]) } catch { setLinks([]) }
+        await setMultiRelations(nextGuidelines)
+        return
+      }
+
+      const [periodResult, areaResult, managerResult, linkResult, guidelineResult, matrixAreaResult] = await Promise.all([
+        supabase.from('planning_periods').select('id,year,name,status').order('year'),
+        supabase.from('managements_global').select('id,name,unit_code,directory_group,active').eq('active', true).order('name'),
+        supabase.from('managers').select('id,name,cargo,unit_code,directory_group,active').eq('active', true).order('name'),
+        supabase.from('manager_managements').select('manager_id,management_id'),
+        supabase.from('planning_guidelines').select('id,period_id,unit_code,management_id,category,code,guideline_text,responsible_manager_id,active,sort_order').order('sort_order').order('created_at'),
+        supabase.from('matrix_unit_area_catalog').select('unit_code,management_id').order('created_at'),
+      ])
+      if (periodResult.error || areaResult.error || managerResult.error || linkResult.error || guidelineResult.error || matrixAreaResult.error) throw new Error('LOAD')
+      const nextPeriods = (periodResult.data || []) as Period[]
+      const nextGuidelines = (guidelineResult.data || []) as Guideline[]
+      const nextManagements = (areaResult.data || []) as Management[]
+      setPeriods(nextPeriods)
+      setManagements(nextManagements)
+      setCentralManagements(nextManagements.filter(item => item.unit_code === 'CENTRAL'))
+      setManagers((managerResult.data || []) as Manager[])
+      setLinks((linkResult.data || []) as ManagerManagement[])
+      setGuidelines(nextGuidelines)
+      setMatrixAreaIds((matrixAreaResult.data || []).filter(item => String(item.unit_code) === unitCode).map(item => String(item.management_id)))
+      await setMultiRelations(nextGuidelines)
+      try { setGuidelineCentralManagements(await loadGuidelineCentralManagements(nextGuidelines.map(item => item.id)) as GuidelineCentralManagement[]) } catch { setGuidelineCentralManagements([]) }
+      try { setGuidelineUnitAreaLabels(await loadGuidelineUnitAreaLabels(nextGuidelines.map(item => item.id)) as GuidelineUnitAreaLabel[]) } catch { setGuidelineUnitAreaLabels([]) }
+      try { setGuidelineCentralAreaLabels(await loadGuidelineCentralAreaLabels(nextGuidelines.map(item => item.id)) as GuidelineCentralAreaLabel[]) } catch { setGuidelineCentralAreaLabels([]) }
+      if (!periodId && nextPeriods.length) {
+        const currentYear = new Date().getFullYear()
+        const preferred = nextPeriods.find(item => item.year === currentYear) || nextPeriods.find(item => item.status === 'OPEN') || nextPeriods[0]
+        setPeriodId(preferred.id)
+      }
+    } catch {
+      setError('No pudimos cargar el catálogo de lineamientos.')
+    } finally { setLoading(false) }
   }
 
   function openNew() {
     setEditingId(null)
     setFormPeriodId(periodId || periods[0]?.id || '')
     setFormUnitCode(unitCode)
-    setFormAreaId(unitCode === 'CENTRAL' ? (areaFilter || uniqueAreas[0]?.id || '') : (uniqueAreas[0]?.id || ''))
+    const options = unitCode === 'CENTRAL' ? managements.filter(item => item.active && item.unit_code === 'CENTRAL') : formManagementOptions
+    const firstManagementId = options[0]?.id || ''
+    setFormAreaId(unitCode === 'CENTRAL' ? (areaFilter || firstManagementId) : '')
+    setSelectedManagementIds(unitCode === 'CENTRAL' || !firstManagementId ? [] : [firstManagementId])
+    setSelectedUnitAreaLabels([])
+    setUnitAreaDraft('')
+    setSelectedCentralAreaLabels([])
+    setCentralAreaDraft('')
+    setFormCategory('')
     setFormCode('')
     setFormText('')
     setFormResponsibleId('')
+    setSelectedResponsibleIds([])
     setFormActive(true)
     setFormOpen(true); setError(''); setNotice('')
+    if (unitCode !== 'CENTRAL') void loadAssigneesForUnit(unitCode)
   }
 
   function openEdit(item: Guideline) {
     const parsed = splitGuideline(item.guideline_text, item.code)
+    const multiManagementIds = managementIdsByGuideline.get(item.id) || [item.management_id]
+    const centralIds = centralManagementIdsByGuideline.get(item.id) || []
+    const manualLabels = unitAreaLabelsByGuideline.get(item.id) || multiManagementIds.map(id => managementById.get(id)?.name || '').filter(Boolean)
+    const centralLabels = centralAreaLabelsByGuideline.get(item.id) || centralIds.map(id => centralManagementById.get(id)?.name || '').filter(Boolean)
     setEditingId(item.id)
     setFormPeriodId(item.period_id)
     setFormUnitCode(item.unit_code)
     setFormAreaId(item.management_id)
+    setSelectedManagementIds(item.unit_code === 'CENTRAL' ? [] : multiManagementIds)
+    setSelectedUnitAreaLabels(item.unit_code === 'CENTRAL' ? [] : manualLabels)
+    setUnitAreaDraft('')
+    setSelectedCentralAreaLabels(item.unit_code === 'CENTRAL' ? [] : centralLabels)
+    setCentralAreaDraft('')
+    setFormCategory(item.category || '')
     setFormCode(parsed.code)
     setFormText(parsed.text)
     setFormResponsibleId(item.responsible_manager_id || '')
+    setSelectedResponsibleIds([])
     setFormActive(item.active)
     setFormOpen(true); setError(''); setNotice('')
+    if (item.unit_code !== 'CENTRAL') void loadAssigneesForUnit(item.unit_code, item.management_id)
   }
 
   function closeForm() { setFormOpen(false); setEditingId(null) }
 
   async function syncMatrix(guidelineId: string, guidelineText: string, nextPeriodId: string, nextUnitCode: string, managementId: string) {
     if (!supabase) return
+    if (nextUnitCode !== 'CENTRAL') return
     if (editingId) await supabase.from('matrices').update({ guideline_id: null, guideline_text: null }).eq('guideline_id', editingId)
     const { data: processData } = await supabase.from('processes').select('id,management_id').eq('unit_code', nextUnitCode).eq('active', true)
     const areaName = managementById.get(managementId)?.name || ''
@@ -204,29 +419,88 @@ export default function GuidelineCatalogV2({ units, canManage }: Props) {
     if (processIds.length) await supabase.from('matrices').update({ guideline_id: guidelineId, guideline_text: guidelineText }).eq('period_id', nextPeriodId).eq('unit_code', nextUnitCode).in('process_id', processIds)
   }
 
+  function addUnitAreaLabels() {
+    const additions = splitAreaLabels(unitAreaDraft)
+    if (!additions.length) return
+    setSelectedUnitAreaLabels(current => {
+      const next = [...current]
+      additions.forEach(label => {
+        if (!next.some(item => normalize(item) === normalize(label))) next.push(label)
+      })
+      return next
+    })
+    setUnitAreaDraft('')
+  }
+
+  function addCentralAreaLabels() {
+    const additions = splitAreaLabels(centralAreaDraft)
+    if (!additions.length) return
+    setSelectedCentralAreaLabels(current => {
+      const next = [...current]
+      additions.forEach(label => {
+        if (!next.some(item => normalize(item) === normalize(label))) next.push(label)
+      })
+      return next
+    })
+    setCentralAreaDraft('')
+  }
+
   async function saveGuideline(event: FormEvent) {
     event.preventDefault()
     if (!supabase || !canManage) return
     const text = formText.trim().replace(/\s+/g, ' ')
+    const category = formCategory.trim()
     const code = formCode.trim().toUpperCase().replace(/\s+/g, '')
-    if (!formPeriodId || !formUnitCode || !formAreaId || !text) { setError('Completa periodo, unidad, gerencia y lineamiento.'); return }
+    const isCentralForm = formUnitCode === 'CENTRAL'
+    if (!formPeriodId || !formUnitCode || !text || (isCentralForm ? !formAreaId : !selectedUnitAreaLabels.length)) {
+      setError('Completa periodo, unidad, área y lineamiento.'); return
+    }
     const guidelineText = code ? `${code}: ${text}` : text
     setSaving(true); setError(''); setNotice('')
     try {
-      let id = editingId
-      if (editingId) {
-        const { error: updateError } = await supabase.from('planning_guidelines').update({ period_id: formPeriodId, unit_code: formUnitCode, management_id: formAreaId, code: code || null, guideline_text: guidelineText, responsible_manager_id: formResponsibleId || null, active: formActive }).eq('id', editingId)
-        if (updateError) throw updateError
+      if (!isCentralForm) {
+        // HU/DEP/VS/HOT are lineamiento-owned. The visible area labels are planning metadata only.
+        // Keep every active management in the unit as hidden compatibility ownership so access is
+        // unit-wide and the legacy non-null management/process schema never blocks a lineamiento.
+        const technicalManagementIds = (await loadScopedManagements(formUnitCode)).map(item => item.id)
+        const orderedTechnicalManagementIds = formAreaId && technicalManagementIds.includes(formAreaId)
+          ? [formAreaId, ...technicalManagementIds.filter(id => id !== formAreaId)]
+          : technicalManagementIds
+        const technicalCentralManagementIds = resolveTechnicalManagementIds(selectedCentralAreaLabels, centralManagementOptions)
+        if (!technicalManagementIds.length) throw new Error('No hay configuración interna activa para esta unidad.')
+        const { data, error: rpcError } = await supabase.rpc('save_planning_guideline_multi', {
+          guideline_id_input: editingId || null,
+          period_id_input: formPeriodId,
+          unit_code_input: formUnitCode,
+          management_ids_input: orderedTechnicalManagementIds,
+          central_management_ids_input: technicalCentralManagementIds,
+          unit_area_labels_input: selectedUnitAreaLabels,
+          central_area_labels_input: selectedCentralAreaLabels,
+          category_input: formCategory.trim() || null,
+          code_input: code || null,
+          guideline_text_input: guidelineText,
+          responsible_ids_input: formResponsibleId ? [formResponsibleId] : [],
+          active_input: formActive,
+        })
+        if (rpcError || !data) throw rpcError || new Error('No se recibió el lineamiento guardado.')
       } else {
-        const { data, error: insertError } = await supabase.from('planning_guidelines').insert({ period_id: formPeriodId, unit_code: formUnitCode, management_id: formAreaId, code: code || null, guideline_text: guidelineText, responsible_manager_id: formResponsibleId || null, active: formActive, sort_order: guidelines.filter(item => item.period_id === formPeriodId && item.unit_code === formUnitCode).length }).select('id').single()
-        if (insertError || !data) throw insertError || new Error('INSERT')
-        id = String(data.id)
+        let id = editingId
+        if (editingId) {
+          const { error: updateError } = await supabase.from('planning_guidelines').update({ period_id: formPeriodId, unit_code: formUnitCode, management_id: formAreaId, category: category || null, code: code || null, guideline_text: guidelineText, responsible_manager_id: formResponsibleId || null, active: formActive }).eq('id', editingId)
+          if (updateError) throw updateError
+        } else {
+          const { data, error: insertError } = await supabase.from('planning_guidelines').insert({ period_id: formPeriodId, unit_code: formUnitCode, management_id: formAreaId, category: category || null, code: code || null, guideline_text: guidelineText, responsible_manager_id: formResponsibleId || null, active: formActive, sort_order: guidelines.filter(item => item.period_id === formPeriodId && item.unit_code === formUnitCode).length }).select('id').single()
+          if (insertError || !data) throw insertError || new Error('INSERT')
+          id = String(data.id)
+        }
+        if (id) await syncMatrix(id, guidelineText, formPeriodId, formUnitCode, formAreaId)
       }
-      if (id) await syncMatrix(id, guidelineText, formPeriodId, formUnitCode, formAreaId)
+      invalidatePlanningCache(`planning-guidelines:${formPeriodId}:${formUnitCode}`)
       const nextEditing = Boolean(editingId)
-      closeForm(); await loadAll(); setPeriodId(formPeriodId); setUnitCode(formUnitCode); setAreaFilter(formUnitCode === 'CENTRAL' ? formAreaId : ''); setNotice(nextEditing ? 'Lineamiento actualizado y sincronizado con su matriz.' : 'Lineamiento creado y sincronizado con su matriz.')
+      const primaryAreaId = isCentralForm ? formAreaId : selectedManagementIds[0] || ''
+      closeForm(); await loadAll(formPeriodId, formUnitCode); setPeriodId(formPeriodId); setUnitCode(formUnitCode); setAreaFilter(formUnitCode === 'CENTRAL' ? primaryAreaId : ''); setNotice(nextEditing ? 'Lineamiento actualizado y sincronizado con su matriz.' : 'Lineamiento creado y sincronizado con su matriz.')
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : ''
+      const message = cause && typeof cause === 'object' && 'message' in cause ? String((cause as { message?: unknown }).message || '') : ''
       setError(`No pudimos guardar el lineamiento${message ? `: ${message}` : '.'}`)
     } finally { setSaving(false) }
   }
@@ -235,33 +509,79 @@ export default function GuidelineCatalogV2({ units, canManage }: Props) {
     if (!supabase || !canManage) return
     if (!window.confirm(`¿Eliminar el lineamiento “${item.guideline_text}”?`)) return
     setSaving(true); setError(''); setNotice('')
+
+    if (item.unit_code !== 'CENTRAL') {
+      const supportResult = await deleteGuidelineSupportFiles(item.unit_code, item.period_id, item.id)
+      if (supportResult.error) {
+        setSaving(false)
+        setError(supportResult.error)
+        return
+      }
+      const deleteResult = await supabase.from('planning_guidelines').delete().eq('id', item.id)
+      setSaving(false)
+      if (deleteResult.error) { setError('No pudimos eliminar el lineamiento y su matriz.'); return }
+      invalidatePlanningCache(`planning-guidelines:${item.period_id}:${item.unit_code}`)
+      setNotice('Lineamiento, matriz y soportes eliminados.'); await loadAll(item.period_id, item.unit_code); return
+    }
+
     const clearResult = await supabase.from('matrices').update({ guideline_id: null, guideline_text: null }).eq('guideline_id', item.id)
     const deleteResult = clearResult.error ? clearResult : await supabase.from('planning_guidelines').delete().eq('id', item.id)
     setSaving(false)
     if (deleteResult.error) { setError('No pudimos eliminar el lineamiento.'); return }
-    setNotice('Lineamiento eliminado.'); await loadAll()
+    invalidatePlanningCache(`planning-guidelines:${item.period_id}:${item.unit_code}`)
+    setNotice('Lineamiento eliminado.'); await loadAll(item.period_id, item.unit_code)
+  }
+
+  function stopAndRun(event: ReactMouseEvent<HTMLButtonElement>, action: () => void) {
+    event.stopPropagation()
+    action()
+  }
+
+  function renderTextChips(labels: string[]) {
+    if (!labels.length) return <span className="muted">Sin asignar</span>
+    return <div className="guideline-multi-chips">{labels.map(label => <span className="guideline-multi-chip" key={normalize(label)}>{label}</span>)}</div>
   }
 
   function renderTable(items: Guideline[], accent: string) {
     const tableStyle = { '--guideline-accent': accent } as CSSProperties
+    const showActions = canManage || (unitCode !== 'CENTRAL' && Boolean(onOpenMatrixForGuideline))
     return <div className="guideline-v2-table-wrap" style={tableStyle}>
       <table className="guideline-catalog-table guideline-v2-table">
-        <thead><tr><th>N°</th><th>Lineamientos Estratégicos</th><th>Gerencia Responsable</th><th>Gerente Responsable</th>{canManage && <th>Acciones</th>}</tr></thead>
+        <thead><tr><th>N°</th><th>Categoría</th><th>Lineamientos Estratégicos</th><th>{unitCode === 'CENTRAL' ? 'Gerencia Responsable' : 'Áreas de Unidad'}</th><th>{unitCode === 'CENTRAL' ? 'Gerente Responsable' : 'Áreas de Central'}</th>{showActions && <th>Acciones</th>}</tr></thead>
         <tbody>
-          {items.length === 0 ? <tr><td colSpan={canManage ? 5 : 4} className="guideline-empty">No hay lineamientos en esta vista.</td></tr> : items.map((item, index) => {
+          {items.length === 0 ? <tr><td colSpan={showActions ? 6 : 5} className="guideline-empty">No hay lineamientos en esta vista.</td></tr> : items.map((item, index) => {
             const responsible = item.responsible_manager_id ? managerById.get(item.responsible_manager_id) : null
+            const managementIds = managementIdsByGuideline.get(item.id) || [item.management_id]
+            const unitLabels = unitAreaLabelsByGuideline.get(item.id) || managementIds.map(id => managementById.get(id)?.name || '').filter(Boolean)
+            const centralIds = centralManagementIdsByGuideline.get(item.id) || []
+            const centralLabels = centralAreaLabelsByGuideline.get(item.id) || centralIds.map(id => centralManagementById.get(id)?.name || '').filter(Boolean)
             const parsed = splitGuideline(item.guideline_text, item.code)
-            return <tr key={item.id} className={!item.active ? 'inactive-row' : ''}>
+            const isSelected = unitCode !== 'CENTRAL' && selectedGuidelineId === item.id
+            return <tr key={item.id} className={`${!item.active ? 'inactive-row ' : ''}${isSelected ? 'guideline-selected' : ''}`.trim()} aria-selected={isSelected || undefined} onClick={() => unitCode !== 'CENTRAL' && onSelectGuideline?.({ id: item.id, managementId: item.management_id, label: item.guideline_text })}>
               <td className="guideline-number">{displayNumber(item, index)}</td>
-              <td className="guideline-text-cell">{parsed.code && <strong className="guideline-code">{parsed.code}: </strong>}<span>{parsed.text}</span></td>
-              <td className="guideline-management">{managementById.get(item.management_id)?.name || '—'}</td>
-              <td>{responsible ? <div className="guideline-responsible"><strong>{responsible.name}</strong><small>{responsible.cargo || 'Bonista'}</small></div> : <span className="muted">Sin asignar</span>}</td>
-              {canManage && <td><div className="guideline-actions"><button onClick={() => openEdit(item)} title="Editar"><Pencil size={14}/></button><button className="danger" onClick={() => void deleteGuideline(item)} title="Eliminar"><Trash2 size={14}/></button></div></td>}
+              <td className="guideline-category">{item.category || '—'}</td>
+              <td className="guideline-text-cell"><span className="guideline-text-copy">{parsed.text}</span></td>
+              <td className="guideline-management">{unitCode === 'CENTRAL' ? (managementById.get(item.management_id)?.name || '—') : renderTextChips(unitLabels)}</td>
+              <td>{unitCode === 'CENTRAL' ? (responsible ? <div className="guideline-responsible"><strong>{responsible.name}</strong><small>{responsible.cargo || 'Bonista'}</small></div> : <span className="muted">Sin asignar</span>) : renderTextChips(centralLabels)}</td>
+              {showActions && <td><div className="guideline-actions">{unitCode !== 'CENTRAL' && onOpenMatrixForGuideline && <button type="button" className="guideline-row-matrix-arrow" onPointerEnter={() => onPrefetchMatrixForGuideline?.(item.management_id, item.id)} onFocus={() => onPrefetchMatrixForGuideline?.(item.management_id, item.id)} onClick={event => stopAndRun(event, () => onOpenMatrixForGuideline?.(item.management_id, item.id))} title="Abrir matriz de este lineamiento" aria-label={`Abrir matriz de ${parsed.code || `lineamiento ${index + 1}`}`}><ArrowRight size={18}/></button>}{canManage && <><button onClick={event => stopAndRun(event, () => openEdit(item))} title="Editar"><Pencil size={14}/></button><button className="danger" onClick={event => stopAndRun(event, () => void deleteGuideline(item))} title="Eliminar"><Trash2 size={14}/></button></>}</div></td>}
             </tr>
           })}
         </tbody>
       </table>
     </div>
+  }
+
+  function switchFormUnit(nextUnitCode: string) {
+    setFormUnitCode(nextUnitCode)
+    setFormAreaId('')
+    setFormResponsibleId('')
+    setSelectedManagementIds([])
+    setSelectedUnitAreaLabels([])
+    setUnitAreaDraft('')
+    setSelectedCentralAreaLabels([])
+    setCentralAreaDraft('')
+    setSelectedResponsibleIds([])
+    void loadAssigneesForUnit(nextUnitCode)
   }
 
   return <section className={`guideline-config config-accordion ${open ? 'open' : ''}`}>
@@ -272,18 +592,17 @@ export default function GuidelineCatalogV2({ units, canManage }: Props) {
     </button>
 
     {open && <div className="config-accordion-body guideline-config-body guideline-v2-body">
-      {error && <div className="guideline-message error">{error}</div>}
+      {!formOpen && error && <div className="guideline-message error">{error}</div>}
       {notice && <div className="guideline-message success"><Check size={14}/>{notice}</div>}
 
       <div className="guideline-unit-selector" role="tablist" aria-label="Unidad de lineamientos">
-        {unitOptions.map(unit => <button key={unit.code} type="button" className={unitCode === unit.code ? 'active' : ''} onClick={() => { setUnitCode(unit.code); setAreaFilter(''); setError(''); setNotice('') }}><strong>{unit.code}</strong><small>{unit.name}</small></button>)}
+        {unitOptions.map(unit => <button key={unit.code} type="button" className={unitCode === unit.code ? 'active' : ''} onClick={() => { setUnitCode(unit.code); setAreaFilter(''); setError(''); setNotice(''); if (periodId) void loadAll(periodId, unit.code) }}><strong>{unit.code}</strong><small>{unit.name}</small></button>)}
       </div>
 
       <div className="guideline-toolbar guideline-v2-toolbar">
         <div className="guideline-filters guideline-v2-filters">
-          <select value={periodId} onChange={event => setPeriodId(event.target.value)}>{periods.map(item => <option key={item.id} value={item.id}>{item.year}{item.status === 'OPEN' ? ' · Actual' : ''}</option>)}</select>
+          <select value={periodId} onChange={event => { setPeriodId(event.target.value); void loadAll(event.target.value, unitCode) }}>{periods.map(item => <option key={item.id} value={item.id}>{item.year}{item.status === 'OPEN' ? ' · Actual' : ''}</option>)}</select>
           {unitCode === 'CENTRAL' && <select value={areaFilter} onChange={event => setAreaFilter(event.target.value)}><option value="">Todas las gerencias</option>{uniqueAreas.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>}
-          <label><Search size={15}/><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar lineamiento"/></label>
         </div>
         {canManage && <button className="guideline-add" onClick={openNew}><Plus size={15}/> Nuevo lineamiento</button>}
       </div>
@@ -295,13 +614,16 @@ export default function GuidelineCatalogV2({ units, canManage }: Props) {
       {formOpen && <div className="guideline-modal-backdrop" role="presentation" onMouseDown={event => { if (event.currentTarget === event.target && !saving) closeForm() }}><form className="guideline-modal" onSubmit={saveGuideline}>
         <button className="guideline-modal-close" type="button" onClick={closeForm} disabled={saving}><X size={18}/></button>
         <div className="guideline-modal-heading"><span><BookOpenText size={20}/></span><div><small>{editingId ? 'Editar' : 'Nuevo'}</small><h3>Lineamiento estratégico</h3></div></div>
+        {error && <div className="guideline-message error guideline-modal-error">{error}</div>}
         <div className="guideline-form-grid">
           <label>Periodo<select value={formPeriodId} onChange={event => setFormPeriodId(event.target.value)} required>{periods.map(item => <option key={item.id} value={item.id}>{item.year}</option>)}</select></label>
-          <label>Unidad<select value={formUnitCode} onChange={event => { setFormUnitCode(event.target.value); setFormResponsibleId('') }} required>{unitOptions.map(item => <option key={item.code} value={item.code}>{item.name}</option>)}</select></label>
-          <label>Gerencia responsable<select value={formAreaId} onChange={event => { setFormAreaId(event.target.value); setFormResponsibleId('') }} required><option value="">Seleccionar gerencia</option>{uniqueAreas.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+          <label>Unidad<select value={formUnitCode} onChange={event => switchFormUnit(event.target.value)} required>{unitOptions.map(item => <option key={item.code} value={item.code}>{item.name}</option>)}</select></label>
+          {formUnitCode === 'CENTRAL' ? <label>Gerencia responsable<select value={formAreaId} onChange={event => { setFormAreaId(event.target.value); setFormResponsibleId('') }} required><option value="">Seleccionar gerencia</option>{formManagementOptions.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label> : <div className="guideline-multi-field"><span>Áreas de Unidad</span><div className="guideline-free-area-entry"><input value={unitAreaDraft} placeholder="Escribe un área" onChange={event => setUnitAreaDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); addUnitAreaLabels() } }}/><button type="button" onClick={addUnitAreaLabels}>Agregar área</button></div><div className="guideline-editable-chips">{selectedUnitAreaLabels.map(label => <span key={normalize(label)}>{label}<button type="button" aria-label={`Quitar ${label}`} onClick={() => setSelectedUnitAreaLabels(current => current.filter(item => normalize(item) !== normalize(label)))}>×</button></span>)}</div><small>Escribe las áreas manualmente. Puedes agregar varias y no se muestran opciones de ningún catálogo.</small></div>}
+          {formUnitCode !== 'CENTRAL' && <label>Gerencia responsable (opcional)<select value={formAreaId} onChange={event => { setFormAreaId(event.target.value); setFormResponsibleId('') }}><option value="">Sin gerencia asignada</option>{assignmentManagementOptions.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select><small>Solo se muestran gerencias activas de la unidad seleccionada.</small></label>}
+          <label>Categoría<input value={formCategory} onChange={event => setFormCategory(event.target.value)} placeholder="Ej. Estratégico"/></label>
           <label>Código<input value={formCode} onChange={event => setFormCode(event.target.value)} placeholder="L5"/></label>
           <label className="wide">Lineamiento<textarea value={formText} onChange={event => setFormText(event.target.value)} placeholder="Desarrollar productos alineados..." required/></label>
-          <label className="wide">Gerente responsable · Bonistas<select value={formResponsibleId} onChange={event => setFormResponsibleId(event.target.value)}><option value="">Sin responsable</option>{responsibleOptions.map(item => <option key={item.id} value={item.id}>{item.name} · {item.cargo || 'Sin cargo'} · {unitByCode.get(item.unit_code) || item.unit_code}</option>)}</select><small>La lista sale directamente del directorio de Bonistas y se filtra por la gerencia seleccionada.</small></label>
+          {formUnitCode === 'CENTRAL' ? <label className="wide">Gerente responsable · Bonistas<select value={formResponsibleId} onChange={event => setFormResponsibleId(event.target.value)}><option value="">Sin responsable</option>{responsibleOptions.map(item => <option key={item.id} value={item.id}>{item.name} · {item.cargo || 'Sin cargo'} · {unitByCode.get(item.unit_code) || item.unit_code}</option>)}</select><small>La lista sale directamente del directorio de Bonistas y se filtra por la gerencia seleccionada.</small></label> : <><label className="wide">Gerente responsable · Bonistas<select value={formResponsibleId} onChange={event => setFormResponsibleId(event.target.value)} disabled={!formAreaId}><option value="">Sin responsable</option>{responsibleOptions.map(item => <option key={item.id} value={item.id}>{item.name} · {item.cargo || 'Sin cargo'} · {unitByCode.get(item.unit_code) || item.unit_code}</option>)}</select><small>Solo se muestran Bonistas activos de la unidad vinculados a la gerencia seleccionada.</small></label><div className="guideline-multi-field wide"><span>Áreas de Central</span><div className="guideline-free-area-entry"><input value={centralAreaDraft} placeholder="Escribe un área de Central" onChange={event => setCentralAreaDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); addCentralAreaLabels() } }}/><button type="button" onClick={addCentralAreaLabels}>Agregar área Central</button></div><div className="guideline-editable-chips">{selectedCentralAreaLabels.map(label => <span key={normalize(label)}>{label}<button type="button" aria-label={`Quitar ${label}`} onClick={() => setSelectedCentralAreaLabels(current => current.filter(item => normalize(item) !== normalize(label)))}>×</button></span>)}</div><small>Escribe las áreas de Central manualmente. Puedes agregar varias aunque todavía no existan en el catálogo.</small></div></>}
           <label className="guideline-active"><input type="checkbox" checked={formActive} onChange={event => setFormActive(event.target.checked)}/> Activo</label>
         </div>
         <div className="guideline-modal-actions"><button type="button" onClick={closeForm} disabled={saving}>Cancelar</button><button className="primary" type="submit" disabled={saving}>{saving && <LoaderCircle className="spin" size={15}/>} Guardar lineamiento</button></div>

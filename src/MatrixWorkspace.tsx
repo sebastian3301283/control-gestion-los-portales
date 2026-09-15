@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import MatrixWorkspaceV13 from './MatrixWorkspaceV13'
 import { supabase } from './lib/supabase'
+import { loadScopedManagements } from './lib/planning-query-cache'
 import './matrix-workspace-v6.css'
 import './matrix-workspace-v9.css'
 import './matrix-workspace-v10.css'
@@ -15,12 +16,13 @@ type Props = {
   canManage: boolean
   onError: (message: string) => void
   onNotice: (message: string) => void
-  onViewGuidelines?: () => void
+  onViewGuidelines?: (target?: { managementId: string; guidelineId: string | null }) => void
 }
 type MatrixTarget = {
   periodId: string
   unitCode: string
   managementId: string
+  guidelineId?: string | null
   createdAt: number
 }
 
@@ -39,14 +41,19 @@ export default function MatrixWorkspace(props: Props) {
 
     if (!target || target.periodId !== props.periodId || target.unitCode !== props.unitCode || Date.now() - target.createdAt > 30000) return
 
+    // HU/DEP/VS/HOT resolve the exact matrix by guideline_id inside UnitExcelWorkspace.
+    // Keep the target untouched here so the unit workspace can consume it after its data loads.
+    if (props.unitCode !== 'CENTRAL' && target.guidelineId) return
+
     let stopped = false
     let observer: MutationObserver | null = null
     let timeout = 0
 
     void (async () => {
-      const { data, error } = await supabase.from('managements_global').select('name').eq('id', target!.managementId).maybeSingle()
-      if (stopped || error || !data?.name) return
-      const targetName = String(data.name).trim().toLocaleLowerCase('es')
+      const managements = await loadScopedManagements(props.unitCode)
+      const management = managements.find(item => item.id === target!.managementId)
+      if (stopped || !management?.name) return
+      const targetName = String(management.name).trim().toLocaleLowerCase('es')
 
       const tryOpen = () => {
         const root = hostRef.current
@@ -76,5 +83,5 @@ export default function MatrixWorkspace(props: Props) {
     }
   }, [props.periodId, props.unitCode])
 
-  return <div ref={hostRef}><MatrixWorkspaceV13 {...props}/></div>
+  return <div ref={hostRef} className="matrix-workspace-host"><MatrixWorkspaceV13 {...props}/></div>
 }

@@ -6,6 +6,28 @@
   background: #edf3f8;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+
+  --ui-space-1: 6px;
+  --ui-space-2: 8px;
+  --ui-space-3: 12px;
+  --ui-space-4: 16px;
+  --ui-space-5: 20px;
+  --ui-space-6: 24px;
+  --ui-control-height: 40px;
+  --ui-toolbar-height: 36px;
+  --ui-icon-control: 36px;
+  --ui-radius-control: 10px;
+  --ui-radius-panel: 16px;
+  --ui-border: #dbe5ed;
+  --ui-focus-ring: 0 0 0 3px rgba(23, 111, 179, .14);
+  --ui-text: #17384f;
+  --ui-muted: #748897;
+  --ui-primary: #176fb3;
+  --ui-danger: #b74740;
+  --ui-surface: #ffffff;
+  --ui-surface-soft: #f8fbfd;
+  --ui-success: #2b9561;
+  --ui-panel-shadow: 0 8px 24px rgba(24, 58, 91, .05);
 }
 
 * { box-sizing: border-box; }
@@ -150,3 +172,5 @@ button { cursor: pointer; }
   .shield-bg { display: none; }
   .existing-account { flex-wrap: wrap; }
 }
+
+.module-loading-surface{min-height:100vh;display:grid;place-items:center;align-content:center;gap:10px;padding:24px;box-sizing:border-box;background:#f8fafc;color:#33536b;font-size:13px;font-weight:750}.module-loading-surface--module{min-height:260px;width:100%;border:1px solid #dce6ed;border-radius:14px;background:#fff}.module-loading-surface .spin{color:#176fb3}
