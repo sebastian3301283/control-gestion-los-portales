@@ -1,0 +1,128 @@
+/* Shared visual consistency layer. Keep selectors specific so module layout remains intact. */
+
+.dashboard-shell .dashboard-nav button,
+.dashboard-shell .sidebar-logout,
+.dashboard-shell .mobile-menu,
+.dashboard-shell .icon-button,
+.dashboard-shell .sidebar-close {
+  min-height: var(--ui-control-height);
+  border-radius: var(--ui-radius-control);
+}
+
+.dashboard-shell .mobile-menu,
+.dashboard-shell .icon-button,
+.dashboard-shell .sidebar-close {
+  width: var(--ui-icon-control);
+  height: var(--ui-icon-control);
+  min-height: var(--ui-icon-control);
+}
+
+.dashboard-shell .dashboard-nav button:focus-visible,
+.dashboard-shell .icon-button:focus-visible,
+.dashboard-shell .mobile-menu:focus-visible,
+.dashboard-shell .sidebar-close:focus-visible,
+.dashboard-shell .sidebar-logout:focus-visible,
+.dashboard-shell .profile-chip:focus-visible,
+.dashboard-shell .dashboard-search input:focus-visible {
+  outline: none;
+  box-shadow: var(--ui-focus-ring);
+}
+
+.dashboard-shell .dashboard-sidebar,
+.dashboard-shell .dashboard-topbar {
+  border-color: var(--ui-border);
+}
+
+.dashboard-shell .dashboard-content {
+  color: var(--ui-text);
+}
+
+.catalog-config .config-accordion,
+.period-config,
+.guideline-responsible-accordion.config-accordion {
+  border-color: var(--ui-border);
+  border-radius: var(--ui-radius-panel);
+  box-shadow: var(--ui-panel-shadow);
+}
+
+.catalog-config .config-accordion-head,
+.guideline-responsible-accordion .config-accordion-head {
+  min-height: 76px;
+  gap: var(--ui-space-3);
+  padding: var(--ui-space-4) var(--ui-space-5);
+}
+
+.catalog-config .config-accordion-head:focus-visible,
+.guideline-responsible-accordion .config-accordion-head:focus-visible,
+.period-config button:focus-visible,
+.catalog-config button:focus-visible,
+.catalog-config input:focus-visible,
+.catalog-config select:focus-visible {
+  outline: none;
+  box-shadow: var(--ui-focus-ring);
+}
+
+.catalog-config .catalog-template-button,
+.catalog-config .catalog-unit-selector button,
+.catalog-config .catalog-hu-groups button,
+.period-config .period-add {
+  min-height: var(--ui-control-height);
+  border-radius: var(--ui-radius-control);
+}
+
+.catalog-config .catalog-add,
+.catalog-config .catalog-save,
+.catalog-config .catalog-cancel,
+.catalog-config .catalog-edit,
+.period-config .period-edit-button,
+.period-config .period-delete-button {
+  min-height: var(--ui-toolbar-height);
+  border-radius: var(--ui-radius-control);
+}
+
+.catalog-config .catalog-hero,
+.catalog-config .catalog-form,
+.catalog-config .catalog-directory-scroll,
+.catalog-config .area-editor-card,
+.period-config .period-table-scroll {
+  border-color: var(--ui-border);
+}
+
+.catalog-config .catalog-hero,
+.catalog-config .catalog-form {
+  border-radius: var(--ui-radius-panel);
+}
+
+.catalog-config .config-accordion-head h2,
+.guideline-responsible-accordion .config-accordion-head h2 {
+  color: var(--ui-text);
+  line-height: 1.25;
+}
+
+.catalog-config .config-accordion-head p,
+.guideline-responsible-accordion .config-accordion-head p,
+.period-config .period-toolbar small {
+  color: var(--ui-muted);
+  line-height: 1.45;
+}
+
+.period-config .period-modal,
+.catalog-config .config-modal {
+  border: 1px solid var(--ui-border);
+  border-radius: 20px;
+}
+
+.period-config .period-modal-close,
+.catalog-config .config-modal-close {
+  width: var(--ui-icon-control);
+  height: var(--ui-icon-control);
+  border-radius: var(--ui-radius-control);
+}
+
+@media (max-width: 760px) {
+  .catalog-config .config-accordion-head,
+  .guideline-responsible-accordion .config-accordion-head {
+    min-height: 70px;
+    padding: var(--ui-space-3) var(--ui-space-4);
+  }
+}
