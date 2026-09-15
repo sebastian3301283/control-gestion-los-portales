@@ -33,6 +33,8 @@ test('guideline helpers keep CENTRAL by area and use exact guideline permissions
   assert.match(sql, /gup\.guideline_id = g\.id/)
   assert.match(sql, /gup\.can_view = true/)
   assert.match(sql, /gup\.can_edit = true/)
+  assert.match(sql, /create or replace function public\.can_access_unit\(unit_code_input text\)/)
+  assert.match(sql, /join public\.planning_guidelines g on g\.id = gup\.guideline_id/)
 })
 
 test('matrix RLS does not retain area/process fallback for non-central units', async () => {
@@ -41,6 +43,23 @@ test('matrix RLS does not retain area/process fallback for non-central units', a
   assert.match(sql, /create policy matrices_update_area[\s\S]*?unit_code = 'central'[\s\S]*?can_edit_management[\s\S]*?unit_code <> 'central'[\s\S]*?can_edit_guideline_multi\(guideline_id\)/)
   assert.match(sql, /create policy matrix_rows_select_area[\s\S]*?m\.unit_code = 'central'[\s\S]*?can_access_management[\s\S]*?m\.unit_code <> 'central'[\s\S]*?can_access_guideline_multi\(m\.guideline_id\)/)
   assert.match(sql, /create policy matrix_rows_update_area[\s\S]*?m\.unit_code = 'central'[\s\S]*?can_edit_management[\s\S]*?m\.unit_code <> 'central'[\s\S]*?can_edit_guideline_multi\(m\.guideline_id\)/)
+})
+
+test('subpoints responsibles locks and history inherit the same exact non-central guideline authorization', async () => {
+  const sql = await permissionMigration()
+  for (const policy of [
+    'matrix_row_subpoints_select_area',
+    'matrix_row_subpoints_update_area',
+    'matrix_row_responsibles_select_area',
+    'matrix_row_responsibles_update_area',
+    'matrix_row_edit_locks_read',
+    'matrix_versions_select_access',
+  ]) assert.match(sql, new RegExp(`create policy ${policy}[\\s\\S]*?can_(?:access|edit)_guideline_multi`))
+
+  assert.match(sql, /create or replace function public\.try_lock_matrix_row\(row_id_input uuid\)/)
+  assert.match(sql, /v_unit_code = 'central'[\s\S]*?can_edit_management\(v_management_id, v_unit_code\)/)
+  assert.match(sql, /v_unit_code <> 'central'[\s\S]*?can_edit_guideline_multi\(v_guideline_id\)/)
+  assert.match(sql, /create policy processes_select_area[\s\S]*?unit_code = 'central'[\s\S]*?can_access_management[\s\S]*?unit_code <> 'central'[\s\S]*?can_access_guideline_multi/)
 })
 
 test('permission editor keeps CENTRAL area UI separate and renders closed non-central guideline accordions', async () => {
