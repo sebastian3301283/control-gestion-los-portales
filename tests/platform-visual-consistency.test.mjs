@@ -55,3 +55,16 @@ test('dashboard and configuration use the shared consistency layer', () => {
   assert.match(consistency, /min-height:\s*var\(--ui-control-height\)/)
   assert.match(consistency, /border-radius:\s*var\(--ui-radius-panel\)/)
 })
+
+test('permission catalog keeps important labels readable and controls aligned', () => {
+  const consistency = readFileSync(consistencyUrl, 'utf8')
+
+  assert.match(consistency, /\.permission-v4 \.permission-v4-help\s*\{[^}]*font-size:\s*11px/s)
+  assert.match(consistency, /\.permission-v4 \.permission-v4-modal-head p\s*\{[^}]*font-size:\s*11px/s)
+  assert.match(consistency, /\.permission-v4 \.permission-v4-modal-role>label>span\s*\{[^}]*font-size:\s*11px/s)
+  assert.match(consistency, /\.permission-v4 \.permission-v4-unit-tabs button strong\s*\{[^}]*font-size:\s*11px/s)
+  assert.match(consistency, /\.permission-v4 \.permission-v4-guideline-summary strong\s*\{[^}]*font-size:\s*11px/s)
+  assert.match(consistency, /\.permission-v4 \.permission-v4-guideline-control>div>span\s*\{[^}]*font-size:\s*11px/s)
+  assert.match(consistency, /\.permission-v4 button:focus-visible/)
+  assert.match(consistency, /\.permission-v4 \.permission-v4-modal-role select\s*\{[^}]*min-height:\s*var\(--ui-control-height\)/s)
+})
