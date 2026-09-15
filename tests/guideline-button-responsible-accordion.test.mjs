@@ -28,9 +28,19 @@ test('responsible configuration uses the same closed accordion shell as Periodos
 test('Ir a matriz keeps label and arrow inside one shared button box', async () => {
   const css = await source(visualFixesUrl)
   const main = await source(mainUrl)
+  const buttonRule = css.match(/\.planning-guidelines-host \.guideline-actions \.guideline-row-matrix-arrow\{([^}]*)\}/s)?.[1] || ''
 
   assert.match(main, /import '\.\/guideline-visual-fixes\.css'/)
-  assert.match(css, /\.planning-guidelines-host \.guideline-actions \.guideline-row-matrix-arrow\{[^}]*min-width:108px!important[^}]*min-height:46px!important[^}]*display:inline-flex!important[^}]*flex-direction:column!important[^}]*align-items:center!important[^}]*justify-content:center!important[^}]*overflow:hidden!important[^}]*\}/s)
+  for (const expected of [
+    /display:inline-flex!important/,
+    /flex-direction:column!important/,
+    /align-items:center!important/,
+    /justify-content:center!important/,
+    /min-width:108px!important/,
+    /min-height:46px!important/,
+    /overflow:hidden!important/,
+  ]) assert.match(buttonRule, expected)
+
   assert.match(css, /\.planning-guidelines-host \.guideline-actions \.guideline-row-matrix-arrow::before\{[^}]*display:block[^}]*line-height:1[^}]*\}/s)
   assert.match(css, /\.planning-guidelines-host \.guideline-actions \.guideline-row-matrix-arrow>svg\{[^}]*display:block[^}]*flex:0 0 auto[^}]*\}/s)
 })
