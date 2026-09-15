@@ -3,7 +3,7 @@ import CatalogConfigurationLegacy from './CatalogConfigurationLegacy'
 import PeriodCatalog from './PeriodCatalog'
 import PermissionCatalogV4 from './PermissionCatalogV4'
 import GuidelineAreaCatalog from './GuidelineAreaCatalog'
-import GuidelineResponsibleConfiguration from './GuidelineResponsibleConfiguration'
+import GuidelineResponsibleAccordion from './GuidelineResponsibleAccordion'
 import './configuration-area-filter.css'
 
 type Unit = { code: string; name: string }
@@ -88,7 +88,7 @@ export default function CatalogConfiguration(props: Props) {
 
   return <div ref={rootRef} className="configuration-catalog-stack" style={{ display: 'grid', gap: 16 }}>
     <PeriodCatalog canManage={props.canManage} />
-    <GuidelineResponsibleConfiguration units={props.units} canManage={props.canManage} />
+    <GuidelineResponsibleAccordion units={props.units} canManage={props.canManage} />
     <CatalogConfigurationLegacy {...props} />
     <GuidelineAreaCatalog {...props} />
     <PermissionCatalogV4 {...props} />
