@@ -32,6 +32,10 @@ function displayName(name: string) {
   return name.replace(/^\d{13}-/, '')
 }
 
+function guidelineCode(value?: string | null) {
+  return value?.match(/^\s*(L\d+)\b/i)?.[1]?.toUpperCase() || ''
+}
+
 function sizeLabel(bytes?: number) {
   if (!bytes) return ''
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
@@ -168,9 +172,10 @@ export default function GuidelinePptPanel({ unit, periodId, canManage, managemen
     await loadFiles()
   }
 
+  const supportCode = guidelineCode(guidelineLabel)
   const supportContext = isCentral
     ? (managementName ? ` · ${managementName}` : '')
-    : (guidelineLabel ? ` · ${guidelineLabel}` : '')
+    : (supportCode ? ` · ${supportCode}` : '')
 
   return <section className="guideline-ppt-panel">
     <div className="guideline-ppt-head">
