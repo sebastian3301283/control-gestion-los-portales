@@ -45,7 +45,7 @@ test('matrix RLS does not retain area/process fallback for non-central units', a
   assert.match(sql, /create policy matrix_rows_update_area[\s\S]*?m\.unit_code = 'central'[\s\S]*?can_edit_management[\s\S]*?m\.unit_code <> 'central'[\s\S]*?can_edit_guideline_multi\(m\.guideline_id\)/)
 })
 
-test('subpoints responsibles locks and history inherit the same exact non-central guideline authorization', async () => {
+test('subpoints responsibles locks history and process metadata inherit exact non-central guideline authorization', async () => {
   const sql = await permissionMigration()
   for (const policy of [
     'matrix_row_subpoints_select_area',
@@ -59,7 +59,8 @@ test('subpoints responsibles locks and history inherit the same exact non-centra
   assert.match(sql, /create or replace function public\.try_lock_matrix_row\(row_id_input uuid\)/)
   assert.match(sql, /v_unit_code = 'central'[\s\S]*?can_edit_management\(v_management_id, v_unit_code\)/)
   assert.match(sql, /v_unit_code <> 'central'[\s\S]*?can_edit_guideline_multi\(v_guideline_id\)/)
-  assert.match(sql, /create policy processes_select_area[\s\S]*?unit_code = 'central'[\s\S]*?can_access_management[\s\S]*?unit_code <> 'central'[\s\S]*?can_access_guideline_multi/)
+  assert.match(sql, /create or replace function public\.can_access_noncentral_process\(process_id_input uuid\)[\s\S]*?can_access_guideline_multi\(m\.guideline_id\)/)
+  assert.match(sql, /create policy processes_select_area[\s\S]*?unit_code = 'central'[\s\S]*?can_access_management[\s\S]*?unit_code <> 'central'[\s\S]*?can_access_noncentral_process\(id\)/)
 })
 
 test('permission editor keeps CENTRAL area UI separate and renders closed non-central guideline accordions', async () => {
@@ -74,13 +75,18 @@ test('permission editor keeps CENTRAL area UI separate and renders closed non-ce
   assert.match(source, />Edición de matriz</)
 })
 
-test('non-central toggles are compact and express edit-implies-access behavior', async () => {
+test('non-central toggles are compact and edit can be enabled directly to imply access', async () => {
   const source = await readFile(permissionCatalogUrl, 'utf8')
   const css = await readFile(permissionCssUrl, 'utf8')
   assert.match(source, /updateGuidelinePermission/)
   assert.match(source, /can_view:\s*true/)
   assert.match(source, /can_edit:/)
   assert.match(source, /from\('guideline_user_permissions'\)\.delete\(\)/)
+  const controlsStart = source.indexOf('permission-v4-guideline-controls')
+  const controlsEnd = source.indexOf('</details>', controlsStart)
+  assert.ok(controlsStart >= 0 && controlsEnd > controlsStart, 'No se encontró el bloque de controles por lineamiento')
+  const controls = source.slice(controlsStart, controlsEnd)
+  assert.doesNotMatch(controls, /disabled=\{!view\s*\|\|/, 'Edición debe poder activarse aunque Acceso esté apagado')
   assert.match(css, /\.permission-v4-guideline-accordion/)
   assert.match(css, /\.permission-v4-guideline-controls/)
   assert.match(css, /\.permission-v4-guideline-control/)
