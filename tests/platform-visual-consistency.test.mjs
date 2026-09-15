@@ -6,6 +6,9 @@ const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8
 const main = readFileSync(new URL('../src/main.tsx', import.meta.url), 'utf8')
 const consistencyUrl = new URL('../src/platform-consistency.css', import.meta.url)
 const guidelineVisual = readFileSync(new URL('../src/guideline-visual-fixes.css', import.meta.url), 'utf8')
+const matrixV12 = readFileSync(new URL('../src/matrix-workspace-v12.css', import.meta.url), 'utf8')
+const unitMatrix = readFileSync(new URL('../src/unit-excel-workspace.css', import.meta.url), 'utf8')
+const centralMatrix = readFileSync(new URL('../src/central-excel-workspace.css', import.meta.url), 'utf8')
 
 function hasToken(name, value) {
   return new RegExp(`${name}\\s*:\\s*${value.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}`).test(styles)
@@ -85,4 +88,20 @@ test('guidelines and support documents share controls without regressing approve
   assert.match(consistency, /\.guideline-ppt-panel \.guideline-ppt-view[^}]*min-height:\s*var\(--ui-toolbar-height\)/s)
   assert.match(consistency, /\.guideline-ppt-panel \.guideline-ppt-viewer\s*\{[^}]*border-radius:\s*20px/s)
   assert.match(consistency, /\.guideline-ppt-panel button:focus-visible/)
+})
+
+test('matrix polish keeps spreadsheet geometry intact', () => {
+  const consistency = readFileSync(consistencyUrl, 'utf8')
+
+  assert.match(matrixV12, /grid-template-columns:1\.15fr 2fr 1\.15fr \.65fr/)
+  assert.match(unitMatrix, /\.matrix-unit-excel\{min-width:2260px!important/)
+  assert.match(centralMatrix, /\.matrix-v10-central-excel\{[^}]*min-width:1580px/s)
+
+  assert.match(consistency, /\.matrix-v11-host \.matrix-v11-guideline-shortcut button\s*\{[^}]*min-height:\s*var\(--ui-toolbar-height\)/s)
+  assert.match(consistency, /\.matrix-v12-host \.matrix-v12-editor\s*\{[^}]*border-radius:\s*var\(--ui-radius-panel\)/s)
+  assert.match(consistency, /\.matrix-v12-host \.matrix-v12-view-toggle button\s*\{[^}]*min-height:\s*var\(--ui-toolbar-height\)/s)
+  assert.match(consistency, /\.matrix-v12-host \.matrix-v12-history-dialog\s*\{[^}]*border-radius:\s*20px/s)
+  assert.match(consistency, /\.matrix-v12-host \.matrix-v12-restore-confirm\s*\{[^}]*border-radius:\s*20px/s)
+  assert.match(consistency, /\.matrix-v11-host button:focus-visible/)
+  assert.match(consistency, /\.matrix-v5--central \.matrix-central-commandbar-primary button[^}]*min-height:\s*var\(--ui-toolbar-height\)/s)
 })
