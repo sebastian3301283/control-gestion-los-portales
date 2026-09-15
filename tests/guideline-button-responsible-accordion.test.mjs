@@ -5,7 +5,6 @@ import { readFile } from 'node:fs/promises'
 const responsibleAccordionUrl = new URL('../src/GuidelineResponsibleAccordion.tsx', import.meta.url)
 const catalogConfigurationUrl = new URL('../src/CatalogConfiguration.tsx', import.meta.url)
 const guidelineCatalogUrl = new URL('../src/GuidelineCatalogV2.tsx', import.meta.url)
-const catalogCssUrl = new URL('../src/guideline-catalog-v2.css', import.meta.url)
 const unitOverridesUrl = new URL('../src/guideline-unit-layout-overrides.css', import.meta.url)
 const mainUrl = new URL('../src/main.tsx', import.meta.url)
 const visualFixesUrl = new URL('../src/guideline-visual-fixes.css', import.meta.url)
@@ -57,32 +56,14 @@ test('Ir a matriz keeps the same contained button layout for HU VS DEP and HOT',
   assert.match(css, /\.planning-guidelines-host \.guideline-actions \.guideline-row-matrix-arrow>svg\{[^}]*display:block[^}]*flex:0 0 auto[^}]*\}/s)
 })
 
-test('HU and VS give more width to Lineamientos and less width to both area columns without changing CENTRAL', async () => {
-  const css = await source(catalogCssUrl)
-  const catalog = await source(guidelineCatalogUrl)
+test('HU VS DEP and HOT prioritize Lineamientos over area columns without changing CENTRAL', async () => {
+  const css = await source(visualFixesUrl)
+  const scope = '\\.planning-guidelines-host:not\\(\\.planning-guidelines-host--central\\)'
 
-  assert.match(catalog, /guideline-v2-table--noncentral/)
-  assert.match(css, /\.guideline-v2-table--noncentral\{[^}]*min-width:1200px[^}]*\}/s)
-  assert.match(css, /\.guideline-v2-table--noncentral th:nth-child\(3\)\{width:400px\}/)
-  assert.match(css, /\.guideline-v2-table--noncentral th:nth-child\(4\)\{width:180px\}/)
-  assert.match(css, /\.guideline-v2-table--noncentral th:nth-child\(5\)\{width:190px\}/)
-  assert.match(css, /\.guideline-v2-table--noncentral th:nth-child\(6\)\{width:210px\}/)
-  assert.match(css, /\.guideline-v2-table th:nth-child\(4\)\{width:230px\}/)
-  assert.match(css, /\.guideline-v2-table th:nth-child\(5\)\{width:250px\}/)
-})
-
-test('DEP and HOT preserve their special layouts while prioritizing Lineamientos', async () => {
-  const css = await source(unitOverridesUrl)
-
-  assert.match(css, /\.guideline-v2-table--dep\{min-width:1240px!important\}/)
-  assert.match(css, /\.guideline-v2-table--dep th:nth-child\(3\)\{width:400px!important\}/)
-  assert.match(css, /\.guideline-v2-table--dep th:nth-child\(4\)\{width:180px!important\}/)
-  assert.match(css, /\.guideline-v2-table--dep th:nth-child\(5\)\{width:190px!important\}/)
-  assert.match(css, /\.guideline-v2-table--dep th:nth-child\(6\)\{width:210px!important\}/)
-
-  assert.match(css, /\.guideline-v2-table--hot\{min-width:1050px!important\}/)
-  assert.match(css, /\.guideline-v2-table--hot th:nth-child\(3\)\{width:400px!important\}/)
-  assert.match(css, /\.guideline-v2-table--hot th:nth-child\(4\)\{width:180px!important\}/)
-  assert.match(css, /\.guideline-v2-table--hot th:nth-child\(6\)\{width:210px!important\}/)
-  assert.match(css, /\.guideline-v2-table--hot th:nth-child\(5\),\.guideline-v2-table--hot td:nth-child\(5\)\{display:none!important\}/)
+  assert.match(css, new RegExp(`${scope} \\.guideline-v2-table\\{[^}]*min-width:1200px!important[^}]*\\}`, 's'))
+  assert.match(css, new RegExp(`${scope} \\.guideline-v2-table th:nth-child\\(3\\)\\{width:400px!important\\}`))
+  assert.match(css, new RegExp(`${scope} \\.guideline-v2-table th:nth-child\\(4\\)\\{width:180px!important\\}`))
+  assert.match(css, new RegExp(`${scope} \\.guideline-v2-table th:nth-child\\(5\\)\\{width:190px!important\\}`))
+  assert.match(css, new RegExp(`${scope} \\.guideline-v2-table th:nth-child\\(6\\)\\{width:210px!important\\}`))
+  assert.doesNotMatch(css, /\.planning-guidelines-host--central \.guideline-v2-table th:nth-child\(3\)/)
 })
