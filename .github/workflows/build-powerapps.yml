@@ -1,9 +1,9 @@
-name: Build Control Gestion Power Apps V2
+name: Build Control Gestion Power Apps V3
 
 on:
   push:
     branches:
-      - powerapps-control-gestion-v1
+      - powerapps-control-gestion-v3
     paths:
       - 'powerapps/**'
       - '.github/workflows/build-powerapps.yml'
@@ -21,63 +21,72 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Setup Python dependencies
+        run: python -m pip install --disable-pip-version-check PyYAML==6.0.3
+
       - name: Install Power Platform CLI
         run: |
           dotnet tool install --global Microsoft.PowerApps.CLI.Tool
           echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
           "$HOME/.dotnet/tools/pac" help >/dev/null
 
-      - name: Restore generator and base msapp
+      - name: Restore blank base msapp
         run: |
-          base64 -d powerapps/generator_bundle.b64 > /tmp/generator_bundle.tar.gz
-          tar -xzf /tmp/generator_bundle.tar.gz -C .
           cat powerapps/base_parts/*.txt > /tmp/base_msapp.b64
           test "$(wc -c < /tmp/base_msapp.b64)" -eq 22384
           base64 -d /tmp/base_msapp.b64 > powerapps/base.msapp
           file powerapps/base.msapp
           unzip -t powerapps/base.msapp
 
-      - name: Run generator tests
-        run: python -m unittest discover -s powerapps/tests -v
+      - name: Restore V3 visual builder
+        run: |
+          cat powerapps/v3_builder_parts/*.txt > /tmp/v3_builder.b64
+          test "$(wc -c < /tmp/v3_builder.b64)" -eq 13684
+          base64 -d /tmp/v3_builder.b64 | gzip -d > powerapps/build_powerapps_v3.py
+          python -m py_compile powerapps/build_powerapps_v3.py
 
       - name: Unpack base Canvas App
         run: |
           rm -rf powerapps/unpacked
           pac canvas unpack --msapp powerapps/base.msapp --sources powerapps/unpacked --overwrite --layout SourceCode
 
-      - name: Generate and validate Control de Gestion sources
+      - name: Generate V3 visual-parity sources
         run: |
-          python powerapps/build_powerapps.py powerapps/unpacked
+          python powerapps/build_powerapps_v3.py powerapps/unpacked
           ls -la powerapps/unpacked/Src
-          grep -R "ModernDatePicker@1.0.1" powerapps/unpacked/Src
-          grep -R "ModernTextInput@1.1.1" powerapps/unpacked/Src
-          grep -R "ModernDropdown@1.0.2" powerapps/unpacked/Src
-          grep -R 'Format: ="dd/mm/yyyy"' powerapps/unpacked/Src
+          grep -R "cntSidebar" powerapps/unpacked/Src/scrInicio.pa.yaml
+          grep -R "Width: =230" powerapps/unpacked/Src/scrInicio.pa.yaml
+          grep -R "ModernDatePicker@1.0.1" powerapps/unpacked/Src/scrMatriz.pa.yaml
+          grep -R 'Format: ="dd/mm/yyyy"' powerapps/unpacked/Src/scrMatriz.pa.yaml
           ! grep -R "CustomFormat:" powerapps/unpacked/Src
-          ! grep -R "Value: =LookUp" powerapps/unpacked/Src
+          ! grep -R "ModernTextInput@1.0.0" powerapps/unpacked/Src
+
+      - name: Run V3 visual regression tests
+        env:
+          POWERAPPS_SRC_DIR: powerapps/unpacked/Src
+        run: python -m unittest -v powerapps/tests/test_powerapps_v3.py
 
       - name: Pack Canvas App with official CLI
         run: |
           mkdir -p dist
-          pac canvas pack --sources powerapps/unpacked --msapp dist/ControlGestion_PowerApps_V2.msapp --overwrite --layout SourceCode
-          file dist/ControlGestion_PowerApps_V2.msapp
-          unzip -t dist/ControlGestion_PowerApps_V2.msapp
+          pac canvas pack --sources powerapps/unpacked --msapp dist/ControlGestion_PowerApps_V3.msapp --overwrite --layout SourceCode
+          file dist/ControlGestion_PowerApps_V3.msapp
+          unzip -t dist/ControlGestion_PowerApps_V3.msapp
 
-      - name: Verify round-trip unpack
+      - name: Verify round-trip unpack and regressions
         run: |
           rm -rf powerapps/roundtrip
-          pac canvas unpack --msapp dist/ControlGestion_PowerApps_V2.msapp --sources powerapps/roundtrip --overwrite --layout SourceCode
+          pac canvas unpack --msapp dist/ControlGestion_PowerApps_V3.msapp --sources powerapps/roundtrip --overwrite --layout SourceCode
           test -f powerapps/roundtrip/Src/scrInicio.pa.yaml
           test -f powerapps/roundtrip/Src/scrMatriz.pa.yaml
-          grep -R "ModernDatePicker@1.0.1" powerapps/roundtrip/Src
-          grep -R 'Format: ="dd/mm/yyyy"' powerapps/roundtrip/Src
+          grep -R "cntSidebar" powerapps/roundtrip/Src/scrInicio.pa.yaml
           grep -R "Control de Gestión" powerapps/roundtrip/Src
           ! grep -R "CustomFormat:" powerapps/roundtrip/Src
-          ! grep -R "Value: =LookUp" powerapps/roundtrip/Src
+          POWERAPPS_SRC_DIR=powerapps/roundtrip/Src python -m unittest -v powerapps/tests/test_powerapps_v3.py
 
       - name: Upload msapp artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ControlGestion-PowerApps-V2
-          path: dist/ControlGestion_PowerApps_V2.msapp
+          name: ControlGestion-PowerApps-V3
+          path: dist/ControlGestion_PowerApps_V3.msapp
           if-no-files-found: error
