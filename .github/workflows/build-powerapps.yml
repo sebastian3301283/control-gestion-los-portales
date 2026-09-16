@@ -1,4 +1,4 @@
-name: Build Control Gestion Power Apps V1
+name: Build Control Gestion Power Apps V2
 
 on:
   push:
@@ -45,32 +45,39 @@ jobs:
           rm -rf powerapps/unpacked
           pac canvas unpack --msapp powerapps/base.msapp --sources powerapps/unpacked --overwrite --layout SourceCode
 
-      - name: Generate Control de Gestion sources
+      - name: Generate and validate Control de Gestion sources
         run: |
           python powerapps/build_powerapps.py powerapps/unpacked
           ls -la powerapps/unpacked/Src
-          grep -R "ModernDatePicker@1.0.0" powerapps/unpacked/Src
-          grep -R "dd/mm/yyyy" powerapps/unpacked/Src
+          grep -R "ModernDatePicker@1.0.1" powerapps/unpacked/Src
+          grep -R "ModernTextInput@1.1.1" powerapps/unpacked/Src
+          grep -R "ModernDropdown@1.0.2" powerapps/unpacked/Src
+          grep -R 'Format: ="dd/mm/yyyy"' powerapps/unpacked/Src
+          ! grep -R "CustomFormat:" powerapps/unpacked/Src
+          ! grep -R "Value: =LookUp" powerapps/unpacked/Src
 
       - name: Pack Canvas App with official CLI
         run: |
           mkdir -p dist
-          pac canvas pack --sources powerapps/unpacked --msapp dist/ControlGestion_PowerApps_V1.msapp --overwrite --layout SourceCode
-          file dist/ControlGestion_PowerApps_V1.msapp
-          unzip -t dist/ControlGestion_PowerApps_V1.msapp
+          pac canvas pack --sources powerapps/unpacked --msapp dist/ControlGestion_PowerApps_V2.msapp --overwrite --layout SourceCode
+          file dist/ControlGestion_PowerApps_V2.msapp
+          unzip -t dist/ControlGestion_PowerApps_V2.msapp
 
       - name: Verify round-trip unpack
         run: |
           rm -rf powerapps/roundtrip
-          pac canvas unpack --msapp dist/ControlGestion_PowerApps_V1.msapp --sources powerapps/roundtrip --overwrite --layout SourceCode
+          pac canvas unpack --msapp dist/ControlGestion_PowerApps_V2.msapp --sources powerapps/roundtrip --overwrite --layout SourceCode
           test -f powerapps/roundtrip/Src/scrInicio.pa.yaml
           test -f powerapps/roundtrip/Src/scrMatriz.pa.yaml
-          grep -R "ModernDatePicker@1.0.0" powerapps/roundtrip/Src
+          grep -R "ModernDatePicker@1.0.1" powerapps/roundtrip/Src
+          grep -R 'Format: ="dd/mm/yyyy"' powerapps/roundtrip/Src
           grep -R "Control de Gestión" powerapps/roundtrip/Src
+          ! grep -R "CustomFormat:" powerapps/roundtrip/Src
+          ! grep -R "Value: =LookUp" powerapps/roundtrip/Src
 
       - name: Upload msapp artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ControlGestion-PowerApps-V1
-          path: dist/ControlGestion_PowerApps_V1.msapp
+          name: ControlGestion-PowerApps-V2
+          path: dist/ControlGestion_PowerApps_V2.msapp
           if-no-files-found: error
