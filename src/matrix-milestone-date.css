@@ -1,0 +1,22 @@
+.matrix-milestone-date-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.matrix-milestone-date-field input[type="date"] {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.matrix-milestone-date-field small {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  line-height: 1.2;
+  color: #64748b;
+}

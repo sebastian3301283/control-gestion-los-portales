@@ -1,0 +1,6 @@
+-- Operational migration already executed in production on 2026-09-04.
+-- It removed the temporary Storage cleanup policies and the temporary HTTP
+-- extension used only for the approved test-data cleanup.
+--
+-- Intentionally no-op on replay because the corresponding temporary access
+-- migration is also a no-op in source control.

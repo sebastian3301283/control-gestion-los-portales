@@ -1,5 +1,6 @@
 /* Matrix V6: full viewport only when expanded, strict containment otherwise. */
 .planning-panel--wide{min-width:0;max-width:100%;overflow:hidden}
+.matrix-workspace-host{width:100%;min-width:0;max-width:100%}
 .matrix-v5--sheet,.matrix-v5-plan-shell,.matrix-v5-toolbar,.matrix-v5-title,.matrix-v5-guidelines-card,.matrix-v5-summary,.matrix-v5-sheet-card,.matrix-v5-footer{min-width:0;max-width:100%}
 .matrix-v5--sheet{width:100%;overflow:hidden}
 .matrix-v5-plan-shell{width:100%;overflow:hidden}

@@ -1,7 +1,22 @@
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, Suspense, lazy, useEffect, useState } from 'react'
 import { ArrowLeft, ArrowRight, Building2, CheckCircle2, HelpCircle, KeyRound, LockKeyhole, Mail, ShieldCheck } from 'lucide-react'
-import Dashboard from './DashboardRestricted'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
+
+const Dashboard = lazy(() => import('./DashboardRestricted'))
+
+function prefetchDashboardModule() {
+  void import('./DashboardRestricted').catch(() => undefined)
+}
+
+function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => reject(new Error('REQUEST_TIMEOUT')), timeoutMs)
+    Promise.resolve(promise).then(
+      value => { window.clearTimeout(timeoutId); resolve(value) },
+      error => { window.clearTimeout(timeoutId); reject(error) },
+    )
+  })
+}
 
 type View = 'chooser' | 'corporate' | 'verify' | 'personal'
 
@@ -40,6 +55,7 @@ export default function App() {
   const [message, setMessage] = useState('')
   const [messageTone, setMessageTone] = useState<MessageTone>('info')
   const [busy, setBusy] = useState(false)
+  const [busyLabel, setBusyLabel] = useState('')
   const [access, setAccess] = useState<AccessContext | null>(null)
 
   useEffect(() => {
@@ -50,16 +66,24 @@ export default function App() {
       const { data: sessionData } = await supabase.auth.getSession()
       if (!sessionData.session || !mounted) return
 
+      prefetchDashboardModule()
       const { data, error } = await supabase.rpc('current_access')
       const currentAccess = data as AccessContext | null
-      if (!mounted || error || !currentAccess?.active) return
-      if (!currentAccess.global_access && (!currentAccess.units || currentAccess.units.length === 0)) return
+      if (!mounted || error) return
+      if (!currentAccess?.active || (!currentAccess.global_access && (!currentAccess.units || currentAccess.units.length === 0))) {
+        await supabase.auth.signOut()
+        return
+      }
       setAccess(currentAccess)
     }
 
     restoreAccess()
     return () => { mounted = false }
   }, [])
+
+  useEffect(() => {
+    if (view === 'verify') prefetchDashboardModule()
+  }, [view])
 
   function setStatus(text: string, tone: MessageTone = 'info') {
     setMessage(text)
@@ -118,33 +142,48 @@ export default function App() {
     if (!supabase) return setStatus('No se pudo conectar con el servicio de autenticación.', 'error')
 
     setBusy(true)
-    const { error } = await supabase.auth.verifyOtp({
-      email,
-      token,
-      type: 'email',
-    })
+    setBusyLabel('Verificando código...')
 
-    if (error) {
+    try {
+      const { error } = await withTimeout(supabase.auth.verifyOtp({
+        email,
+        token,
+        type: 'email',
+      }), 20000)
+
+      if (error) {
+        setBusy(false)
+        setBusyLabel('')
+        return setStatus('El código no es válido o ya venció. Solicita uno nuevo.', 'error')
+      }
+
+      setBusyLabel('Validando permisos...')
+      const { data, error: accessError } = await withTimeout(supabase.rpc('current_access'), 10000)
+      const currentAccess = data as AccessContext | null
+
+      if (accessError || !currentAccess?.active) {
+        await supabase.auth.signOut()
+        setBusy(false)
+        setBusyLabel('')
+        return setStatus('Tu cuenta no tiene un perfil activo autorizado.', 'error')
+      }
+
+      if (!currentAccess.global_access && (!currentAccess.units || currentAccess.units.length === 0)) {
+        await supabase.auth.signOut()
+        setBusy(false)
+        setBusyLabel('')
+        return setStatus('Tu usuario está autorizado, pero todavía no tiene una unidad asignada.', 'error')
+      }
+
+      setBusyLabel('Abriendo Control de Gestión...')
+      setAccess(currentAccess)
       setBusy(false)
-      return setStatus('El código no es válido o ya venció. Solicita uno nuevo.', 'error')
+      setStatus('Acceso verificado correctamente.', 'success')
+    } catch {
+      setBusy(false)
+      setBusyLabel('')
+      return setStatus('La verificación está tardando más de lo esperado. Revisa tu conexión e inténtalo nuevamente.', 'error')
     }
-
-    const { data, error: accessError } = await supabase.rpc('current_access')
-    setBusy(false)
-
-    const currentAccess = data as AccessContext | null
-    if (accessError || !currentAccess?.active) {
-      await supabase.auth.signOut()
-      return setStatus('Tu cuenta no tiene un perfil activo autorizado.', 'error')
-    }
-
-    if (!currentAccess.global_access && (!currentAccess.units || currentAccess.units.length === 0)) {
-      await supabase.auth.signOut()
-      return setStatus('Tu usuario está autorizado, pero todavía no tiene una unidad asignada.', 'error')
-    }
-
-    setAccess(currentAccess)
-    setStatus('Acceso verificado correctamente.', 'success')
   }
 
   async function resendOtp() {
@@ -161,12 +200,29 @@ export default function App() {
   async function signIn(event: FormEvent) {
     event.preventDefault()
     setStatus('')
-    if (!email.trim() || !password) return setStatus('Completa correo y contraseña.', 'error')
+    const normalizedEmail = email.trim().toLowerCase()
+    if (!normalizedEmail || !password) return setStatus('Completa correo y contraseña.', 'error')
     if (!isSupabaseConfigured || !supabase) return setStatus('No se pudo conectar con Supabase.', 'error')
     setBusy(true)
-    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
+    const { error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password })
+    if (error) {
+      setBusy(false)
+      return setStatus('El correo o la contraseña no son válidos.', 'error')
+    }
+
+    prefetchDashboardModule()
+    const { data, error: accessError } = await supabase.rpc('current_access')
+    const currentAccess = data as AccessContext | null
+    if (accessError || !currentAccess?.active || (!currentAccess.global_access && (!currentAccess.units || currentAccess.units.length === 0))) {
+      await supabase.auth.signOut()
+      setBusy(false)
+      return setStatus('Tu cuenta no tiene un perfil activo con unidades asignadas.', 'error')
+    }
+
     setBusy(false)
-    setStatus(error ? error.message : 'Sesión iniciada correctamente.', error ? 'error' : 'success')
+    setEmail(normalizedEmail)
+    setAccess(currentAccess)
+    setStatus('Sesión iniciada correctamente.', 'success')
   }
 
   const resetView = (next: View) => {
@@ -174,19 +230,22 @@ export default function App() {
     setPassword('')
     setOtp('')
     setMessage('')
+    setBusyLabel('')
     setAccess(null)
     setView(next)
   }
 
   if (access) {
     return (
-      <Dashboard
-        access={access}
-        onSignOut={async () => {
-          await supabase?.auth.signOut()
-          resetView('chooser')
-        }}
-      />
+      <Suspense fallback={<div className="module-loading-surface" role="status">Cargando Control de Gestión...</div>}>
+        <Dashboard
+          access={access}
+          onSignOut={async () => {
+            await supabase?.auth.signOut()
+            resetView('chooser')
+          }}
+        />
+      </Suspense>
     )
   }
 
@@ -237,6 +296,7 @@ export default function App() {
               email={email}
               otp={otp}
               busy={busy}
+              busyLabel={busyLabel}
               message={message}
               tone={messageTone}
               onOtp={setOtp}
@@ -268,6 +328,7 @@ function OtpVerification(props: {
   email: string
   otp: string
   busy: boolean
+  busyLabel: string
   message: string
   tone: MessageTone
   onOtp: (value: string) => void
@@ -294,7 +355,7 @@ function OtpVerification(props: {
             placeholder="00000000"
           />
         </label>
-        <button className="submit-button" type="submit" disabled={props.busy}>{props.busy ? 'Verificando...' : 'Verificar y continuar'}<ArrowRight size={19}/></button>
+        <button className="submit-button" type="submit" disabled={props.busy}>{props.busy ? (props.busyLabel || 'Verificando código...') : 'Verificar y continuar'}<ArrowRight size={19}/></button>
       </form>
       <button className="resend-button" type="button" disabled={props.busy} onClick={props.onResend}>No recibí el código · Reenviar</button>
       {props.message && <div className={`form-message form-message--${props.tone}`}><CheckCircle2 size={18}/>{props.message}</div>}

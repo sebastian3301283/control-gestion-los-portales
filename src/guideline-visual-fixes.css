@@ -1,0 +1,8 @@
+.planning-guidelines-host .guideline-actions .guideline-row-matrix-arrow{box-sizing:border-box!important;display:inline-flex!important;flex:0 0 auto!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:4px!important;width:auto!important;min-width:108px!important;height:auto!important;min-height:46px!important;padding:5px 12px!important;margin-top:0!important;overflow:hidden!important;line-height:1!important}
+.planning-guidelines-host .guideline-actions .guideline-row-matrix-arrow::before{display:block;position:static;line-height:1}
+.planning-guidelines-host .guideline-actions .guideline-row-matrix-arrow>svg{display:block;flex:0 0 auto;margin:0}
+.planning-guidelines-host:not(.planning-guidelines-host--central) .guideline-v2-table{min-width:1200px!important}
+.planning-guidelines-host:not(.planning-guidelines-host--central) .guideline-v2-table th:nth-child(3){width:400px!important}
+.planning-guidelines-host:not(.planning-guidelines-host--central) .guideline-v2-table th:nth-child(4){width:180px!important}
+.planning-guidelines-host:not(.planning-guidelines-host--central) .guideline-v2-table th:nth-child(5){width:190px!important}
+.planning-guidelines-host:not(.planning-guidelines-host--central) .guideline-v2-table th:nth-child(6){width:210px!important}
