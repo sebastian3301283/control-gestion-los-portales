@@ -29,9 +29,11 @@ jobs:
 
       - name: Restore generator and base msapp
         run: |
-          echo "$(cat powerapps/generator_bundle.b64)" | base64 -d > /tmp/generator_bundle.tar.gz
+          base64 -d powerapps/generator_bundle.b64 > /tmp/generator_bundle.tar.gz
           tar -xzf /tmp/generator_bundle.tar.gz -C .
-          echo "$(cat powerapps/base_msapp.b64)" | base64 -d > powerapps/base.msapp
+          cat powerapps/base_parts/*.txt > /tmp/base_msapp.b64
+          test "$(wc -c < /tmp/base_msapp.b64)" -eq 22384
+          base64 -d /tmp/base_msapp.b64 > powerapps/base.msapp
           file powerapps/base.msapp
           unzip -t powerapps/base.msapp
 
