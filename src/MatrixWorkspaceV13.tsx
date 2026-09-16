@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import MatrixMilestoneDateEnhancer from './MatrixMilestoneDateEnhancer'
 import MatrixRealtimeLayer from './MatrixRealtimeLayer'
 import MatrixWorkspaceV12 from './MatrixWorkspaceV12'
 import UnitPlanLeadershipHeader from './UnitPlanLeadershipHeader'
@@ -33,6 +34,7 @@ export default function MatrixWorkspaceV13(props: Props) {
     <div ref={hostRef} className={`matrix-v12-theme-host matrix-v12--${props.unitCode.toLowerCase()}`}>
       {props.unitCode !== 'CENTRAL' && <UnitPlanLeadershipHeader hostRef={hostRef} matrixId={activeMatrixId} unitCode={props.unitCode} unitName={props.unitName} onError={props.onError} />}
       <MatrixWorkspaceV12 {...workspaceProps} onActiveMatrixChange={handleActiveMatrixChange} />
+      <MatrixMilestoneDateEnhancer rootRef={hostRef} />
     </div>
   </MatrixRealtimeLayer>
 }
